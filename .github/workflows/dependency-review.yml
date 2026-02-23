@@ -41,6 +41,29 @@ jobs:
         with:
           fail-on-severity: high
 
+      - name: Setup pnpm (fallback)
+        if: steps.dependency-graph.outputs.enabled != 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+
+      - name: Use Node.js 22.x (fallback)
+        if: steps.dependency-graph.outputs.enabled != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: pnpm
+
+      - name: Install dependencies (fallback)
+        if: steps.dependency-graph.outputs.enabled != 'true'
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      - name: Security audit fallback (high+)
+        if: steps.dependency-graph.outputs.enabled != 'true'
+        run: pnpm audit --audit-level high
+
       - name: Skip dependency review when dependency graph is unavailable
         if: steps.dependency-graph.outputs.enabled != 'true'
         run: |
