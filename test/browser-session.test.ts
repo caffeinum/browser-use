@@ -113,6 +113,46 @@ describe('BrowserSession Basic Operations', () => {
     expect(session._owns_browser_resources).toBe(false);
   });
 
+  it('normalizes pid values before tracking child processes', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    expect((session as any)._normalizePid(123)).toBe(123);
+    expect((session as any)._normalizePid(0)).toBeNull();
+    expect((session as any)._normalizePid(-1)).toBeNull();
+    expect((session as any)._normalizePid(Number.NaN)).toBeNull();
+  });
+
+  it('skips invalid tracked pids when killing child processes', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    (session as any)._childProcesses = new Set([0, -10, Number.NaN]);
+    const killSpy = vi.spyOn(process, 'kill');
+
+    try {
+      await (session as any)._killChildProcesses();
+      expect(killSpy).not.toHaveBeenCalled();
+      expect((session as any)._childProcesses.size).toBe(0);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
+  it('returns no child processes for invalid parent pid input', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    await expect((session as any)._getChildProcesses(0)).resolves.toEqual([]);
+    await expect((session as any)._getChildProcesses(-4)).resolves.toEqual([]);
+    await expect(
+      (session as any)._getChildProcesses(Number.NaN)
+    ).resolves.toEqual([]);
+  });
+
   it('enforces single-agent attachment claims', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),

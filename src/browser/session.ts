@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isIP } from 'node:net';
-import { spawn, exec, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLogger } from '../logging-config.js';
 import { match_url_with_domain_pattern, uuid7str } from '../utils.js';
@@ -71,7 +71,7 @@ import { SecurityWatchdog } from './watchdogs/security-watchdog.js';
 import { StorageStateWatchdog } from './watchdogs/storage-state-watchdog.js';
 import type { BaseWatchdog } from './watchdogs/base.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface BrowserSessionInit {
   id?: string;
@@ -5604,6 +5604,19 @@ export class BrowserSession {
   // region - Process Management
 
   /**
+   * Normalize pid values before issuing process operations.
+   */
+  private _normalizePid(pid: unknown): number | null {
+    if (!Number.isSafeInteger(pid) || (pid as number) <= 0) {
+      this.logger.debug(
+        `Skipping process operation for invalid pid: ${String(pid)}`
+      );
+      return null;
+    }
+    return pid as number;
+  }
+
+  /**
    * Kill all child processes spawned by this browser session
    */
   private async _killChildProcesses(): Promise<void> {
@@ -5613,26 +5626,26 @@ export class BrowserSession {
 
     this.logger.debug(`Killing ${this._childProcesses.size} child processes`);
 
-    for (const pid of this._childProcesses) {
+    for (const trackedPid of this._childProcesses) {
+      const pid = this._normalizePid(trackedPid);
+      if (!pid) {
+        continue;
+      }
+
       try {
-        // Try to kill the process
         process.kill(pid, 'SIGTERM');
         this.logger.debug(`Sent SIGTERM to process ${pid}`);
 
-        // Wait briefly and check if still alive
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         try {
-          // Check if process still exists
           process.kill(pid, 0);
-          // If we get here, process is still alive, force kill
           process.kill(pid, 'SIGKILL');
           this.logger.debug(`Sent SIGKILL to process ${pid}`);
         } catch {
           // Process is dead, ignore
         }
       } catch (error) {
-        // Process doesn't exist or we don't have permission
         this.logger.debug(
           `Could not kill process ${pid}: ${(error as Error).message}`
         );
@@ -5646,39 +5659,39 @@ export class BrowserSession {
    * Terminate the browser process and all its children
    */
   private async _terminateBrowserProcess(): Promise<void> {
-    if (!this.browser_pid) {
+    const browserPid = this._normalizePid(this.browser_pid);
+    if (!browserPid) {
       return;
     }
 
     try {
-      this.logger.debug(`Terminating browser process ${this.browser_pid}`);
+      this.logger.debug(`Terminating browser process ${browserPid}`);
 
-      // Platform-specific process tree termination
       if (process.platform === 'win32') {
-        // Windows: use taskkill to kill process tree
-        await execAsync(`taskkill /PID ${this.browser_pid} /T /F`).catch(() => {
+        await execFileAsync('taskkill', [
+          '/PID',
+          String(browserPid),
+          '/T',
+          '/F',
+        ]).catch(() => {
           // Ignore errors if process already dead
         });
       } else {
-        // Unix-like: kill process group
         try {
-          // Try to kill the process group
-          process.kill(-this.browser_pid, 'SIGTERM');
+          process.kill(-browserPid, 'SIGTERM');
           await new Promise((resolve) => setTimeout(resolve, 1000));
 
-          // Check if still alive and force kill if needed
           try {
-            process.kill(-this.browser_pid, 0);
-            process.kill(-this.browser_pid, 'SIGKILL');
+            process.kill(-browserPid, 0);
+            process.kill(-browserPid, 'SIGKILL');
           } catch {
             // Process is dead
           }
         } catch {
-          // Fallback to killing just the process
           try {
-            process.kill(this.browser_pid, 'SIGTERM');
+            process.kill(browserPid, 'SIGTERM');
             await new Promise((resolve) => setTimeout(resolve, 1000));
-            process.kill(this.browser_pid, 'SIGKILL');
+            process.kill(browserPid, 'SIGKILL');
           } catch {
             // Process doesn't exist
           }
@@ -5696,27 +5709,39 @@ export class BrowserSession {
    * Cross-platform implementation using ps on Unix-like systems and WMIC on Windows
    */
   private async _getChildProcesses(pid: number): Promise<number[]> {
+    const normalizedPid = this._normalizePid(pid);
+    if (!normalizedPid) {
+      return [];
+    }
+
     try {
       if (process.platform === 'win32') {
-        // Windows: use WMIC
-        const { stdout } = await execAsync(
-          `wmic process where (ParentProcessId=${pid}) get ProcessId`
-        );
+        const { stdout } = await execFileAsync('wmic', [
+          'process',
+          'where',
+          `ParentProcessId=${normalizedPid}`,
+          'get',
+          'ProcessId',
+        ]);
         const pids = stdout
           .split('\n')
-          .slice(1) // Skip header
+          .slice(1)
           .map((line) => parseInt(line.trim(), 10))
-          .filter((p) => !isNaN(p));
-        return pids;
-      } else {
-        // Unix-like: use ps
-        const { stdout } = await execAsync(`ps -o pid= --ppid ${pid}`);
-        const pids = stdout
-          .split('\n')
-          .map((line) => parseInt(line.trim(), 10))
-          .filter((p) => !isNaN(p));
+          .filter((p) => Number.isFinite(p));
         return pids;
       }
+
+      const { stdout } = await execFileAsync('ps', [
+        '-o',
+        'pid=',
+        '--ppid',
+        String(normalizedPid),
+      ]);
+      const pids = stdout
+        .split('\n')
+        .map((line) => parseInt(line.trim(), 10))
+        .filter((p) => Number.isFinite(p));
+      return pids;
     } catch {
       return [];
     }
@@ -5726,14 +5751,20 @@ export class BrowserSession {
    * Track a child process
    */
   private _trackChildProcess(pid: number): void {
-    this._childProcesses.add(pid);
+    const normalizedPid = this._normalizePid(pid);
+    if (normalizedPid) {
+      this._childProcesses.add(normalizedPid);
+    }
   }
 
   /**
    * Untrack a child process
    */
   private _untrackChildProcess(pid: number): void {
-    this._childProcesses.delete(pid);
+    const normalizedPid = this._normalizePid(pid);
+    if (normalizedPid) {
+      this._childProcesses.delete(normalizedPid);
+    }
   }
 
   // region: Loading Animations
