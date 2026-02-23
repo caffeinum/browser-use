@@ -177,8 +177,12 @@ class OldConfig {
     return process.env.DEEPSEEK_API_KEY ?? '';
   }
 
+  get GROQ_API_KEY() {
+    return process.env.GROQ_API_KEY ?? process.env.GROK_API_KEY ?? '';
+  }
+
   get GROK_API_KEY() {
-    return process.env.GROK_API_KEY ?? '';
+    return this.GROQ_API_KEY;
   }
 
   get NOVITA_API_KEY() {
@@ -296,8 +300,12 @@ class FlatEnvConfig {
     return process.env.DEEPSEEK_API_KEY ?? '';
   }
 
+  get GROQ_API_KEY() {
+    return process.env.GROQ_API_KEY ?? process.env.GROK_API_KEY ?? '';
+  }
+
   get GROK_API_KEY() {
-    return process.env.GROK_API_KEY ?? '';
+    return this.GROQ_API_KEY;
   }
 
   get NOVITA_API_KEY() {

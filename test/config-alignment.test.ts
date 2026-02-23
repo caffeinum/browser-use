@@ -15,6 +15,8 @@ const ENV_KEYS = [
   'BROWSER_USE_ALLOWED_DOMAINS',
   'BROWSER_USE_LLM_MODEL',
   'DEFAULT_LLM',
+  'GROQ_API_KEY',
+  'GROK_API_KEY',
 ] as const;
 
 const importConfigModule = async () => {
@@ -211,6 +213,32 @@ describe('Config alignment with latest py-browser-use defaults', () => {
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it('supports GROQ_API_KEY with GROK_API_KEY backward compatibility', async () => {
+    await withEnv(
+      {
+        GROQ_API_KEY: 'groq-live-key',
+        GROK_API_KEY: undefined,
+      },
+      async () => {
+        const { CONFIG } = await importConfigModule();
+        expect(CONFIG.GROQ_API_KEY).toBe('groq-live-key');
+        expect(CONFIG.GROK_API_KEY).toBe('groq-live-key');
+      }
+    );
+
+    await withEnv(
+      {
+        GROQ_API_KEY: undefined,
+        GROK_API_KEY: 'legacy-grok-key',
+      },
+      async () => {
+        const { CONFIG } = await importConfigModule();
+        expect(CONFIG.GROQ_API_KEY).toBe('legacy-grok-key');
+        expect(CONFIG.GROK_API_KEY).toBe('legacy-grok-key');
+      }
+    );
   });
 
   it('maps DEFAULT_LLM to llm.model when provider-specific override is absent', async () => {
