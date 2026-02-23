@@ -436,7 +436,7 @@ const create_default_config = (): DBStyleConfigJSON => {
         default: true,
         created_at: new Date().toISOString(),
         model: 'gpt-4.1-mini',
-        api_key: 'your-openai-api-key-here',
+        api_key: null,
         temperature: null,
         max_tokens: null,
       },
@@ -451,6 +451,45 @@ const create_default_config = (): DBStyleConfigJSON => {
         system_prompt: null,
       },
     },
+  };
+};
+
+const OPENAI_API_KEY_PLACEHOLDERS = new Set([
+  'your-openai-api-key-here',
+  'your-openai-api-key',
+]);
+
+const sanitize_llm_api_key = (apiKey: unknown): string | null => {
+  if (typeof apiKey !== 'string') {
+    return null;
+  }
+
+  const trimmed = apiKey.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (OPENAI_API_KEY_PLACEHOLDERS.has(trimmed.toLowerCase())) {
+    return null;
+  }
+
+  return trimmed;
+};
+
+const sanitize_db_config = (config: DBStyleConfigJSON): DBStyleConfigJSON => {
+  const sanitizedLlmEntries = Object.fromEntries(
+    Object.entries(config.llm ?? {}).map(([id, entry]) => [
+      id,
+      {
+        ...entry,
+        api_key: sanitize_llm_api_key(entry.api_key),
+      },
+    ])
+  ) as Record<string, LLMEntry>;
+
+  return {
+    ...config,
+    llm: sanitizedLlmEntries,
   };
 };
 
@@ -476,7 +515,7 @@ const load_and_migrate_config = (config_path: string): DBStyleConfigJSON => {
   try {
     const raw = JSON.parse(fs.readFileSync(config_path, 'utf-8'));
     if (looks_like_new_format(raw)) {
-      return raw as DBStyleConfigJSON;
+      return sanitize_db_config(raw as DBStyleConfigJSON);
     }
 
     logger.debug(

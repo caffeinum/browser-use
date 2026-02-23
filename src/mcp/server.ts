@@ -149,6 +149,14 @@ export class MCPServer {
     return llm && typeof llm === 'object' ? { ...llm } : {};
   }
 
+  private isPlaceholderOpenAiApiKey(apiKey: string): boolean {
+    const normalized = apiKey.trim().toLowerCase();
+    return (
+      normalized === 'your-openai-api-key-here' ||
+      normalized === 'your-openai-api-key'
+    );
+  }
+
   private seedOpenAiApiKeyFromConfig(llmConfig: Record<string, unknown>) {
     if (
       typeof process.env.OPENAI_API_KEY === 'string' &&
@@ -156,11 +164,14 @@ export class MCPServer {
     ) {
       return;
     }
+
     const configuredApiKey =
       typeof llmConfig.api_key === 'string' ? llmConfig.api_key.trim() : '';
-    if (configuredApiKey) {
-      process.env.OPENAI_API_KEY = configuredApiKey;
+    if (!configuredApiKey || this.isPlaceholderOpenAiApiKey(configuredApiKey)) {
+      return;
     }
+
+    process.env.OPENAI_API_KEY = configuredApiKey;
   }
 
   private createLlmFromModelName(

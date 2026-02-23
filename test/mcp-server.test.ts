@@ -432,6 +432,31 @@ describe('MCPServer retry_with_browser_use_agent', () => {
     }
   });
 
+  it('does not seed OPENAI_API_KEY from placeholder llm config values', () => {
+    const previousOpenAiApiKey = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+
+    try {
+      const server = new MCPServer('test-mcp', '1.0.0');
+
+      (server as any).seedOpenAiApiKeyFromConfig({
+        api_key: 'your-openai-api-key-here',
+      });
+      expect(process.env.OPENAI_API_KEY).toBeUndefined();
+
+      (server as any).seedOpenAiApiKeyFromConfig({
+        api_key: 'real-openai-key',
+      });
+      expect(process.env.OPENAI_API_KEY).toBe('real-openai-key');
+    } finally {
+      if (previousOpenAiApiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAiApiKey;
+      }
+    }
+  });
+
   it('returns explicit error when configured model credentials are missing', async () => {
     const previousOpenAiApiKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;

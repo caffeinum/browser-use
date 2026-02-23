@@ -69,9 +69,81 @@ describe('Config alignment with latest py-browser-use defaults', () => {
           const { CONFIG } = await importConfigModule();
           const llm = CONFIG.get_default_llm();
           expect(llm.model).toBe('gpt-4.1-mini');
+          expect(llm.api_key).toBeNull();
 
           const configPath = path.join(tempDir, 'config.json');
           expect(fs.existsSync(configPath)).toBe(true);
+
+          const persisted = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+          const persistedDefault = Object.values(persisted.llm)[0] as {
+            api_key: string | null;
+          };
+          expect(persistedDefault.api_key).toBeNull();
+        }
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('normalizes placeholder llm api keys from config files', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-config-')
+    );
+    try {
+      const configPath = path.join(tempDir, 'config.json');
+      const now = new Date().toISOString();
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(
+          {
+            browser_profile: {
+              'profile-1': {
+                id: 'profile-1',
+                default: true,
+                created_at: now,
+                headless: false,
+                user_data_dir: null,
+                allowed_domains: null,
+                downloads_path: null,
+              },
+            },
+            llm: {
+              'llm-1': {
+                id: 'llm-1',
+                default: true,
+                created_at: now,
+                model: 'gpt-4.1-mini',
+                api_key: 'your-openai-api-key-here',
+              },
+            },
+            agent: {
+              'agent-1': {
+                id: 'agent-1',
+                default: true,
+                created_at: now,
+                max_steps: null,
+                use_vision: null,
+                system_prompt: null,
+              },
+            },
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      );
+
+      await withEnv(
+        {
+          BROWSER_USE_CONFIG_DIR: tempDir,
+          BROWSER_USE_CONFIG_PATH: configPath,
+        },
+        async () => {
+          const { CONFIG, load_browser_use_config } =
+            await importConfigModule();
+          expect(CONFIG.get_default_llm().api_key).toBeNull();
+          expect(load_browser_use_config().llm.api_key).toBeNull();
         }
       );
     } finally {
