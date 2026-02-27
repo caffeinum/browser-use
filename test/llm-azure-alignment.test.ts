@@ -159,6 +159,33 @@ describe('ChatAzure alignment', () => {
     expect((response.completion as any).items).toEqual(['alpha']);
   });
 
+  it('removes unsupported propertyNames from chat-completions schemas', async () => {
+    chatCreateMock.mockResolvedValue(
+      buildChatResponse(JSON.stringify({ payload: { key: 'value' } }))
+    );
+    const schema = z.object({
+      payload: z.record(z.string(), z.unknown()),
+    });
+    const llm = new ChatAzure({
+      model: 'gpt-4o',
+    });
+
+    const response = await llm.ainvoke(
+      [new UserMessage('extract')],
+      schema as any
+    );
+    const request = chatCreateMock.mock.calls[0]?.[0] ?? {};
+    const schemaPayload = request.response_format?.json_schema?.schema;
+
+    expect(request.response_format?.type).toBe('json_schema');
+    expect(JSON.stringify(schemaPayload)).not.toContain('propertyNames');
+    expect(schemaPayload?.properties?.payload?.additionalProperties).toBeDefined();
+    expect(schemaPayload?.properties?.payload?.additionalProperties).not.toBe(
+      false
+    );
+    expect((response.completion as any).payload).toEqual({ key: 'value' });
+  });
+
   it('can force chat completions mode for codex models', async () => {
     const llm = new ChatAzure({
       model: 'gpt-5.1-codex',

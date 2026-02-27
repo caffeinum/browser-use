@@ -50,7 +50,9 @@ export class SchemaOptimizer {
         const optimized: Record<string, any> = {};
 
         for (const [key, value] of Object.entries(obj)) {
-          if (key === '$defs' || key === 'additionalProperties') continue;
+          if (key === '$defs') continue;
+          // Some OpenAI-compatible providers reject this JSON Schema keyword.
+          if (key === 'propertyNames') continue;
           if (key === 'title' && !inProperties) continue;
           if (removeMinItems && (key === 'minItems' || key === 'min_items')) {
             continue;
@@ -61,6 +63,19 @@ export class SchemaOptimizer {
             const refName = value.split('/').pop()!;
             if (defsLookup[refName]) {
               flattenedRef = optimize(defsLookup[refName], inProperties);
+            }
+            continue;
+          }
+
+          if (key === 'additionalProperties') {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+              const optimizedAdditional = optimize(value, inProperties);
+              optimized[key] =
+                Object.keys(optimizedAdditional).length === 0
+                  ? true
+                  : optimizedAdditional;
+            } else {
+              optimized[key] = value;
             }
             continue;
           }
@@ -81,9 +96,14 @@ export class SchemaOptimizer {
         const result = flattenedRef
           ? { ...flattenedRef, ...optimized }
           : optimized;
+        const hasExplicitProperties =
+          result.properties &&
+          typeof result.properties === 'object' &&
+          !Array.isArray(result.properties);
         if (
           result.type === 'object' &&
-          result.additionalProperties === undefined
+          result.additionalProperties === undefined &&
+          hasExplicitProperties
         ) {
           result.additionalProperties = false;
         }
@@ -101,7 +121,15 @@ export class SchemaOptimizer {
         return;
       }
       if (obj && typeof obj === 'object') {
-        if (obj.type === 'object' && obj.additionalProperties === undefined) {
+        const hasExplicitProperties =
+          obj.properties &&
+          typeof obj.properties === 'object' &&
+          !Array.isArray(obj.properties);
+        if (
+          obj.type === 'object' &&
+          obj.additionalProperties === undefined &&
+          hasExplicitProperties
+        ) {
           obj.additionalProperties = false;
         }
         Object.values(obj).forEach(ensureAdditionalProperties);

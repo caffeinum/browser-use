@@ -5277,6 +5277,94 @@ export class Agent<
     });
   }
 
+  private _getOutputActionNames(doneOnly: boolean): string[] {
+    const registryActions = this.controller.registry.get_all_actions();
+    const modelForStep: typeof ActionModel = doneOnly
+      ? this.DoneActionModel
+      : this.ActionModel;
+    const modelAvailableNames = (modelForStep as any)?.available_actions;
+
+    if (Array.isArray(modelAvailableNames) && modelAvailableNames.length > 0) {
+      const deduped = Array.from(
+        new Set(
+          modelAvailableNames.filter(
+            (name: unknown): name is string =>
+              typeof name === 'string' &&
+              name.trim().length > 0 &&
+              registryActions.has(name)
+          )
+        )
+      );
+      if (deduped.length > 0) {
+        return deduped;
+      }
+    }
+
+    if (doneOnly && registryActions.has('done')) {
+      return ['done'];
+    }
+
+    return Array.from(registryActions.keys());
+  }
+
+  private _toStrictActionParamSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
+    if (schema instanceof z.ZodObject) {
+      return schema.strict();
+    }
+    return schema;
+  }
+
+  private _buildActionOutputSchema(doneOnly: boolean): z.ZodTypeAny {
+    const registryActions = this.controller.registry.get_all_actions();
+    const actionSchemas = this._getOutputActionNames(doneOnly)
+      .map((actionName) => {
+        const actionInfo = registryActions.get(actionName);
+        if (!actionInfo) {
+          return null;
+        }
+        const paramSchema = this._toStrictActionParamSchema(
+          actionInfo.paramSchema as z.ZodTypeAny
+        );
+        return z.object({ [actionName]: paramSchema }).strict();
+      })
+      .filter((schema): schema is z.ZodTypeAny => schema != null);
+
+    if (actionSchemas.length === 0) {
+      const doneAction = registryActions.get('done');
+      if (doneAction) {
+        const doneParams = this._toStrictActionParamSchema(
+          doneAction.paramSchema as z.ZodTypeAny
+        );
+        return z.object({ done: doneParams }).strict();
+      }
+      return z.object({ done: z.object({}).strict() }).strict();
+    }
+
+    if (actionSchemas.length === 1) {
+      return actionSchemas[0];
+    }
+
+    return z.union(
+      actionSchemas as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]
+    );
+  }
+
+  private _buildLlmOutputFormat(doneOnly: boolean) {
+    const schema = z.object({
+      thinking: z.string().optional().nullable(),
+      evaluation_previous_goal: z.string().optional().nullable(),
+      memory: z.string().optional().nullable(),
+      next_goal: z.string().optional().nullable(),
+      current_plan_item: z.number().int().optional().nullable(),
+      plan_update: z.array(z.string()).optional().nullable(),
+      action: z.array(this._buildActionOutputSchema(doneOnly)).optional().nullable(),
+    });
+
+    const outputFormat = schema as typeof schema & { schema: typeof schema };
+    outputFormat.schema = schema;
+    return outputFormat;
+  }
+
   private async _get_model_output_with_retry(
     messages: any[],
     signal: AbortSignal | null = null
@@ -5286,9 +5374,9 @@ export class Agent<
 
     const invokeAndParse = async (inputMessages: any[]) => {
       this._throwIfAborted(signal);
-      const outputFormat = this._enforceDoneOnlyForCurrentStep
-        ? DoneOnlyLLMOutputFormat
-        : AgentLLMOutputFormat;
+      const outputFormat = this._buildLlmOutputFormat(
+        this._enforceDoneOnlyForCurrentStep
+      );
       const completion = await this.llm.ainvoke(
         inputMessages as any,
         outputFormat as any,

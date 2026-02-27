@@ -334,6 +334,26 @@ describe('Schema Optimizer', () => {
       expect(JSON.stringify(optimized)).not.toContain('"default"');
     });
 
+    it('strips unsupported propertyNames and keeps dynamic record objects open', () => {
+      const zodSchema = z.object({
+        action: z.array(z.record(z.string(), z.any())),
+      });
+
+      const converted = zodSchemaToJsonSchema(zodSchema as any, {
+        name: 'agent_output',
+        target: 'jsonSchema7',
+      });
+      const optimized = SchemaOptimizer.createOptimizedJsonSchema(
+        converted as any
+      ) as any;
+
+      const actionItems = optimized.properties?.action?.items;
+      expect(actionItems).toBeDefined();
+      expect(actionItems.propertyNames).toBeUndefined();
+      expect(actionItems.additionalProperties).toBeDefined();
+      expect(actionItems.additionalProperties).not.toBe(false);
+    });
+
     it('converts zod v4 schemas into non-empty JSON schema payloads', () => {
       const zodSchema = z.object({
         value: z.string(),
