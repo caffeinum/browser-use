@@ -2946,20 +2946,19 @@ Context: ${context}`;
 
       const payload = (await page.evaluate(
         async ({ code }: { code: string }) => {
-          const serialize = (value: unknown): unknown => {
-            if (value === undefined) {
-              return null;
-            }
-            try {
-              return JSON.parse(JSON.stringify(value));
-            } catch {
-              return String(value);
-            }
-          };
-
           try {
             const raw = await Promise.resolve((0, eval)(code));
-            return { ok: true, result: serialize(raw) };
+            let serializedResult: unknown;
+            if (raw === undefined) {
+              serializedResult = null;
+            } else {
+              try {
+                serializedResult = JSON.parse(JSON.stringify(raw));
+              } catch {
+                serializedResult = String(raw);
+              }
+            }
+            return { ok: true, result: serializedResult };
           } catch (error: unknown) {
             return {
               ok: false,
@@ -3308,9 +3307,8 @@ Context: ${context}`;
                   text: opt.textContent?.trim() ?? '',
                   value: (opt.value ?? '').trim(),
                 }));
-                const normalize = (value: string) => value.trim().toLowerCase();
                 const targetRaw = text.trim();
-                const targetLower = normalize(text);
+                const targetLower = text.trim().toLowerCase();
 
                 let matchedIndex = options.findIndex(
                   (opt) => opt.text === targetRaw || opt.value === targetRaw
@@ -3318,8 +3316,8 @@ Context: ${context}`;
                 if (matchedIndex < 0) {
                   matchedIndex = options.findIndex(
                     (opt) =>
-                      normalize(opt.text) === targetLower ||
-                      normalize(opt.value) === targetLower
+                      opt.text.trim().toLowerCase() === targetLower ||
+                      opt.value.trim().toLowerCase() === targetLower
                   );
                 }
                 if (matchedIndex < 0) {
@@ -3336,9 +3334,17 @@ Context: ${context}`;
                     : null;
                 const selectedText = selectedOption?.textContent?.trim() ?? '';
                 const selectedValue = (root.value ?? '').trim();
+                const selectedValueLower = selectedValue.trim().toLowerCase();
+                const selectedTextLower = selectedText.trim().toLowerCase();
+                const matchedValueLower = String(matched.value ?? '')
+                  .trim()
+                  .toLowerCase();
+                const matchedTextLower = String(matched.text ?? '')
+                  .trim()
+                  .toLowerCase();
                 const verified =
-                  normalize(selectedValue) === normalize(matched.value) ||
-                  normalize(selectedText) === normalize(matched.text);
+                  selectedValueLower === matchedValueLower ||
+                  selectedTextLower === matchedTextLower;
 
                 return {
                   found: true,
@@ -3395,9 +3401,8 @@ Context: ${context}`;
                 text: node.textContent?.trim() ?? '',
                 value: node.textContent?.trim() ?? '',
               }));
-              const normalize = (value: string) => value.trim().toLowerCase();
               const targetRaw = text.trim();
-              const targetLower = normalize(text);
+              const targetLower = text.trim().toLowerCase();
 
               let matchedIndex = options.findIndex(
                 (opt) => opt.text === targetRaw || opt.value === targetRaw
@@ -3405,8 +3410,8 @@ Context: ${context}`;
               if (matchedIndex < 0) {
                 matchedIndex = options.findIndex(
                   (opt) =>
-                    normalize(opt.text) === targetLower ||
-                    normalize(opt.value) === targetLower
+                    opt.text.trim().toLowerCase() === targetLower ||
+                    opt.value.trim().toLowerCase() === targetLower
                 );
               }
               if (matchedIndex < 0) {

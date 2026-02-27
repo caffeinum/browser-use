@@ -2385,9 +2385,8 @@ export class BrowserSession {
                   text: opt.textContent?.trim() ?? '',
                   value: (opt.value ?? '').trim(),
                 }));
-                const normalize = (value: string) => value.trim().toLowerCase();
                 const targetRaw = optionText.trim();
-                const targetLower = normalize(optionText);
+                const targetLower = optionText.trim().toLowerCase();
 
                 let matchedIndex = options.findIndex(
                   (opt) => opt.text === targetRaw || opt.value === targetRaw
@@ -2395,8 +2394,8 @@ export class BrowserSession {
                 if (matchedIndex < 0) {
                   matchedIndex = options.findIndex(
                     (opt) =>
-                      normalize(opt.text) === targetLower ||
-                      normalize(opt.value) === targetLower
+                      opt.text.trim().toLowerCase() === targetLower ||
+                      opt.value.trim().toLowerCase() === targetLower
                   );
                 }
                 if (matchedIndex < 0) {
@@ -2413,9 +2412,17 @@ export class BrowserSession {
                     : null;
                 const selectedText = selectedOption?.textContent?.trim() ?? '';
                 const selectedValue = (root.value ?? '').trim();
+                const selectedValueLower = selectedValue.trim().toLowerCase();
+                const selectedTextLower = selectedText.trim().toLowerCase();
+                const matchedValueLower = String(matched.value ?? '')
+                  .trim()
+                  .toLowerCase();
+                const matchedTextLower = String(matched.text ?? '')
+                  .trim()
+                  .toLowerCase();
                 const verified =
-                  normalize(selectedValue) === normalize(matched.value) ||
-                  normalize(selectedText) === normalize(matched.text);
+                  selectedValueLower === matchedValueLower ||
+                  selectedTextLower === matchedTextLower;
 
                 return {
                   found: true,
@@ -2477,9 +2484,8 @@ export class BrowserSession {
                 text: node.textContent?.trim() ?? '',
                 value: node.textContent?.trim() ?? '',
               }));
-              const normalize = (value: string) => value.trim().toLowerCase();
               const targetRaw = optionText.trim();
-              const targetLower = normalize(optionText);
+              const targetLower = optionText.trim().toLowerCase();
 
               let matchedIndex = options.findIndex(
                 (opt) => opt.text === targetRaw || opt.value === targetRaw
@@ -2487,8 +2493,8 @@ export class BrowserSession {
               if (matchedIndex < 0) {
                 matchedIndex = options.findIndex(
                   (opt) =>
-                    normalize(opt.text) === targetLower ||
-                    normalize(opt.value) === targetLower
+                    opt.text.trim().toLowerCase() === targetLower ||
+                    opt.value.trim().toLowerCase() === targetLower
                 );
               }
               if (matchedIndex < 0) {
