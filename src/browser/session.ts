@@ -4672,72 +4672,30 @@ export class BrowserSession {
     // Check if downloads are enabled
     const downloads_path = this.browser_profile.downloads_path;
     if (downloads_path) {
+      // Try to detect file download.
+      const download_promise = page.waitForEvent('download', {
+        timeout: 5000,
+      });
+
+      // Click failures should bubble to the caller.
       try {
-        // Try to detect file download
-        const download_promise = page.waitForEvent('download', {
-          timeout: 5000,
-        });
-
-        // Perform the click
         await element_handle.click();
-
-        // Wait for download or timeout
-        const download = await download_promise;
-
-        // Save the downloaded file
-        const suggested_filename = download.suggestedFilename();
-        const unique_filename = await BrowserSession.get_unique_filename(
-          downloads_path,
-          suggested_filename
-        );
-        const download_path = path.join(downloads_path, unique_filename);
-        const download_guid = uuid7str();
-        const download_url =
-          typeof download.url === 'function'
-            ? download.url()
-            : (this.currentUrl ?? '');
-        await this.event_bus.dispatch(
-          new DownloadStartedEvent({
-            guid: download_guid,
-            url: download_url,
-            suggested_filename,
-            auto_download: false,
-          })
-        );
-
-        await download.saveAs(download_path);
-        this.logger.info(`⬇️ Downloaded file to: ${download_path}`);
-        const stats = fs.existsSync(download_path)
-          ? fs.statSync(download_path)
-          : null;
-        await this.event_bus.dispatch(
-          new DownloadProgressEvent({
-            guid: download_guid,
-            received_bytes: stats?.size ?? 0,
-            total_bytes: stats?.size ?? 0,
-            state: 'completed',
-          })
-        );
-
-        const fileDownloadedResult = await this.event_bus.dispatch(
-          new FileDownloadedEvent({
-            guid: download_guid,
-            url: download_url,
-            path: download_path,
-            file_name: unique_filename,
-            file_size: stats?.size ?? 0,
-            file_type: path.extname(unique_filename).replace('.', '') || null,
-            mime_type: null,
-            auto_download: false,
-          })
-        );
-        if (fileDownloadedResult.handler_results.length === 0) {
-          this.add_downloaded_file(download_path);
-        }
-
-        return download_path;
       } catch (error) {
-        // No download triggered, treat as normal click
+        void download_promise.catch(() => undefined);
+        throw error;
+      }
+
+      let download: any;
+      try {
+        download = await download_promise;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const isDownloadTimeout =
+          error instanceof Error &&
+          (error.name === 'TimeoutError' || message.toLowerCase().includes('timeout'));
+        if (!isDownloadTimeout) {
+          throw error;
+        }
         this.logger.debug(
           'No download triggered within timeout. Checking navigation...'
         );
@@ -4748,7 +4706,59 @@ export class BrowserSession {
             `Navigation check failed: ${(e as Error).message}`
           );
         }
+        return null;
       }
+
+      // Save the downloaded file.
+      const suggested_filename = download.suggestedFilename();
+      const unique_filename = await BrowserSession.get_unique_filename(
+        downloads_path,
+        suggested_filename
+      );
+      const download_path = path.join(downloads_path, unique_filename);
+      const download_guid = uuid7str();
+      const download_url =
+        typeof download.url === 'function' ? download.url() : (this.currentUrl ?? '');
+      await this.event_bus.dispatch(
+        new DownloadStartedEvent({
+          guid: download_guid,
+          url: download_url,
+          suggested_filename,
+          auto_download: false,
+        })
+      );
+
+      await download.saveAs(download_path);
+      this.logger.info(`⬇️ Downloaded file to: ${download_path}`);
+      const stats = fs.existsSync(download_path)
+        ? fs.statSync(download_path)
+        : null;
+      await this.event_bus.dispatch(
+        new DownloadProgressEvent({
+          guid: download_guid,
+          received_bytes: stats?.size ?? 0,
+          total_bytes: stats?.size ?? 0,
+          state: 'completed',
+        })
+      );
+
+      const fileDownloadedResult = await this.event_bus.dispatch(
+        new FileDownloadedEvent({
+          guid: download_guid,
+          url: download_url,
+          path: download_path,
+          file_name: unique_filename,
+          file_size: stats?.size ?? 0,
+          file_type: path.extname(unique_filename).replace('.', '') || null,
+          mime_type: null,
+          auto_download: false,
+        })
+      );
+      if (fileDownloadedResult.handler_results.length === 0) {
+        this.add_downloaded_file(download_path);
+      }
+
+      return download_path;
     } else {
       // No downloads path configured, just click
       await element_handle.click();

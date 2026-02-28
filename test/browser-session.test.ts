@@ -274,6 +274,57 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('perform_click rethrows element click failures', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    const elementHandle = {
+      click: vi.fn(async () => {
+        throw new Error('element is not clickable');
+      }),
+    };
+    const fakePage = {
+      waitForEvent: vi.fn(() => new Promise(() => {})),
+    } as any;
+
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(elementHandle as any);
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+
+    await expect(
+      session.perform_click({ xpath: '/html/body/button[1]' } as any)
+    ).rejects.toThrow('element is not clickable');
+  });
+
+  it('perform_click treats only download timeouts as non-download clicks', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    const timeoutError = new Error('Timeout 5000ms exceeded');
+    timeoutError.name = 'TimeoutError';
+
+    const elementHandle = {
+      click: vi.fn(async () => {}),
+    };
+    const fakePage = {
+      waitForEvent: vi.fn(async () => {
+        throw timeoutError;
+      }),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(elementHandle as any);
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+
+    const result = await session.perform_click({
+      xpath: '/html/body/button[1]',
+    } as any);
+
+    expect(result).toBeNull();
+    expect(fakePage.waitForLoadState).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts navigation when signal is triggered', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
