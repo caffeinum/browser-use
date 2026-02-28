@@ -416,6 +416,79 @@ describe('BrowserSession Basic Operations', () => {
     expect(pageB.bringToFront).toHaveBeenCalledTimes(1);
   });
 
+  it('surfaces externally opened tabs in state and allows switching to them', async () => {
+    const minimalDom = new DOMState(
+      new DOMElementNode(true, null, 'body', '/html/body', {}, []),
+      {}
+    );
+    const clickableSpy = vi
+      .spyOn(DomService.prototype, 'get_clickable_elements')
+      .mockResolvedValue(minimalDom);
+
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({}),
+      });
+
+      const evaluateA = vi.fn(async (script: unknown) => {
+        const source =
+          typeof script === 'function' ? script.toString() : String(script);
+        if (source.includes('getEntriesByType')) {
+          return [];
+        }
+        if (source.includes('viewportWidth') && source.includes('pageHeight')) {
+          return {
+            viewportWidth: 1280,
+            viewportHeight: 720,
+            scrollX: 0,
+            scrollY: 0,
+            pageWidth: 1280,
+            pageHeight: 720,
+          };
+        }
+        return null;
+      });
+
+      const pageA = {
+        url: vi.fn(() => 'https://tab-a.test'),
+        title: vi.fn(async () => 'Tab A'),
+        evaluate: evaluateA,
+        on: vi.fn(),
+        off: vi.fn(),
+        waitForLoadState: vi.fn(async () => {}),
+        bringToFront: vi.fn(async () => {}),
+      } as any;
+      const pageB = {
+        url: vi.fn(() => 'https://tab-b.test'),
+        title: vi.fn(async () => 'Tab B'),
+        on: vi.fn(),
+        off: vi.fn(),
+        waitForLoadState: vi.fn(async () => {}),
+        bringToFront: vi.fn(async () => {}),
+      } as any;
+
+      session.update_current_page(pageA, 'Tab A', 'https://tab-a.test');
+      (session as any).browser_context = {
+        pages: vi.fn(() => [pageA, pageB]),
+      } as any;
+      (session as any).initialized = true;
+
+      const summary = await session.get_browser_state_with_recovery({
+        include_screenshot: false,
+      });
+
+      expect(summary.tabs.some((tab) => tab.url === 'https://tab-b.test')).toBe(
+        true
+      );
+
+      await session.switch_to_tab(-1);
+      expect(session.active_tab?.url).toBe('https://tab-b.test');
+      expect(pageB.bringToFront).toHaveBeenCalledTimes(1);
+    } finally {
+      clickableSpy.mockRestore();
+    }
+  });
+
   it('aborts browser state capture when signal is already aborted', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),

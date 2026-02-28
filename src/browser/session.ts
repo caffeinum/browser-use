@@ -627,6 +627,92 @@ export class BrowserSession {
     }
   }
 
+  private _syncTabsWithBrowserPages() {
+    const pages = this.browser_context?.pages?.() ?? [];
+    if (!pages.length) {
+      return;
+    }
+
+    const nextTabs: TabInfo[] = [];
+    const nextTabPages = new Map<number, Page | null>();
+    const usedPageIds = new Set<number>();
+    const knownPageMappings = Array.from(this.tabPages.entries());
+
+    for (const page of pages) {
+      this._attachDialogHandler(page ?? null);
+
+      let pageId: number | null = null;
+      for (const [candidateId, candidatePage] of knownPageMappings) {
+        if (candidatePage === page && !usedPageIds.has(candidateId)) {
+          pageId = candidateId;
+          break;
+        }
+      }
+
+      if (pageId === null) {
+        pageId = this._tabCounter++;
+      }
+      usedPageIds.add(pageId);
+
+      const existingTab = this._tabs.find((tab) => tab.page_id === pageId);
+      const tab = existingTab
+        ? { ...existingTab }
+        : this._createTabInfo({
+            page_id: pageId,
+            url: 'about:blank',
+            title: 'about:blank',
+          });
+
+      try {
+        const rawUrl = page.url();
+        if (typeof rawUrl === 'string' && rawUrl.trim()) {
+          tab.url = normalize_url(rawUrl);
+        }
+      } catch {
+        // Keep existing tab url when page url is not readable.
+      }
+      if (!existingTab || !tab.title || tab.title === 'about:blank') {
+        tab.title = tab.url;
+      }
+
+      nextTabs.push(tab);
+      nextTabPages.set(pageId, page);
+    }
+
+    if (!nextTabs.length) {
+      return;
+    }
+
+    this._tabs = nextTabs;
+    this.tabPages = nextTabPages;
+
+    const activePage =
+      this.agent_current_page && pages.includes(this.agent_current_page)
+        ? this.agent_current_page
+        : pages[0] ?? null;
+    if (activePage) {
+      const activeIndex = this._tabs.findIndex(
+        (tab) => this.tabPages.get(tab.page_id) === activePage
+      );
+      if (activeIndex !== -1) {
+        this.currentTabIndex = activeIndex;
+      }
+    }
+
+    if (this.currentTabIndex < 0 || this.currentTabIndex >= this._tabs.length) {
+      this.currentTabIndex = Math.max(0, this._tabs.length - 1);
+    }
+
+    const activeTab = this._tabs[this.currentTabIndex] ?? null;
+    if (activeTab) {
+      this.currentUrl = activeTab.url;
+      this.currentTitle = activeTab.title || activeTab.url;
+      this.agent_current_page = this.tabPages.get(activeTab.page_id) ?? null;
+      this.human_current_page = this.human_current_page ?? this.agent_current_page;
+    }
+    this._syncSessionManagerFromTabs();
+  }
+
   private _captureClosedPopupMessage(dialogType: string, message: string) {
     const normalizedType = String(dialogType || 'alert').trim() || 'alert';
     const normalizedMessage = String(message || '').trim();
@@ -1723,6 +1809,7 @@ export class BrowserSession {
   }
 
   async get_current_page() {
+    this._syncTabsWithBrowserPages();
     if (this.agent_current_page) {
       return this.agent_current_page;
     }
@@ -1972,6 +2059,7 @@ export class BrowserSession {
   ) {
     const signal = options.signal ?? null;
     this._throwIfAborted(signal);
+    this._syncTabsWithBrowserPages();
     const index = this._resolveTabIndex(identifier);
     const tab = index >= 0 ? (this._tabs[index] ?? null) : null;
     if (!tab) {
@@ -2013,6 +2101,7 @@ export class BrowserSession {
   }
 
   async close_tab(identifier: number | string) {
+    this._syncTabsWithBrowserPages();
     const index = this._resolveTabIndex(identifier);
     if (index < 0 || index >= this._tabs.length) {
       throw new Error(`Tab '${identifier}' does not exist`);
@@ -3465,6 +3554,7 @@ export class BrowserSession {
     if (!this.browser_context) {
       return [];
     }
+    this._syncTabsWithBrowserPages();
 
     const tabs_info: Array<{
       page_id: number;
@@ -3472,33 +3562,41 @@ export class BrowserSession {
       url: string;
       title: string;
     }> = [];
-    const pages = this.browser_context.pages();
+    for (const tab of this._tabs) {
+      const page_id = tab.page_id;
+      const page = this.tabPages.get(page_id) ?? null;
+      const tab_id = tab.tab_id || this._formatTabId(page_id);
+      if (!tab.tab_id) {
+        tab.tab_id = tab_id;
+      }
+      this._attachDialogHandler(page);
 
-    for (let page_id = 0; page_id < pages.length; page_id++) {
-      const page = pages[page_id];
-      const tab_id =
-        this._tabs.find((tab) => tab.page_id === page_id)?.tab_id ??
-        this._formatTabId(page_id);
-      this._attachDialogHandler(page ?? null);
+      let currentUrl = tab.url;
+      if (page?.url) {
+        try {
+          currentUrl = normalize_url(page.url());
+        } catch {
+          // Keep tab url fallback when page url is unavailable.
+        }
+      }
 
       // Skip chrome:// pages and new tab pages
       const isNewTab =
-        page.url() === 'about:blank' ||
-        page.url().startsWith('chrome://newtab');
-      if (isNewTab || page.url().startsWith('chrome://')) {
+        currentUrl === 'about:blank' || currentUrl.startsWith('chrome://newtab');
+      if (isNewTab || currentUrl.startsWith('chrome://')) {
         if (isNewTab) {
           tabs_info.push({
             page_id,
             tab_id,
-            url: page.url(),
+            url: currentUrl,
             title: 'ignore this tab and do not use it',
           });
         } else {
           tabs_info.push({
             page_id,
             tab_id,
-            url: page.url(),
-            title: page.url(),
+            url: currentUrl,
+            title: currentUrl,
           });
         }
         continue;
@@ -3506,31 +3604,34 @@ export class BrowserSession {
 
       // Normal pages - try to get title with timeout
       try {
+        if (!page?.title) {
+          throw new Error('page_title_unavailable');
+        }
         const titlePromise = page.title();
         const timeoutPromise = new Promise<string>((_, reject) => {
           setTimeout(() => reject(new Error('timeout')), 2000);
         });
 
         const title = await Promise.race([titlePromise, timeoutPromise]);
-        tabs_info.push({ page_id, tab_id, url: page.url(), title });
+        tabs_info.push({ page_id, tab_id, url: currentUrl, title });
       } catch (error) {
         this.logger.debug(
-          `⚠️ Failed to get tab info for tab #${page_id}: ${page.url()} (using fallback title)`
+          `⚠️ Failed to get tab info for tab #${page_id}: ${currentUrl} (using fallback title)`
         );
 
         if (isNewTab) {
           tabs_info.push({
             page_id,
             tab_id,
-            url: page.url(),
+            url: currentUrl,
             title: 'ignore this tab and do not use it',
           });
         } else {
           tabs_info.push({
             page_id,
             tab_id,
-            url: page.url(),
-            title: page.url(), // Use URL as fallback title
+            url: currentUrl,
+            title: tab.title || currentUrl,
           });
         }
       }
