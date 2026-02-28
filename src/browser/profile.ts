@@ -502,10 +502,18 @@ const DEFAULT_BROWSER_PROFILE_OPTIONS: BrowserProfileOptions = {
   cookies_file: null,
 };
 
+const splitArgOnce = (arg: string): [string, string] => {
+  const separatorIndex = arg.indexOf('=');
+  if (separatorIndex === -1) {
+    return [arg, ''];
+  }
+  return [arg.slice(0, separatorIndex), arg.slice(separatorIndex + 1)];
+};
+
 const argsAsDict = (args: string[]) => {
   const result: Record<string, string> = {};
   for (const arg of args) {
-    const [keyPart, valuePart = ''] = arg.split('=', 1);
+    const [keyPart, valuePart = ''] = splitArgOnce(arg);
     const key = keyPart.trim().replace(/^-+/, '');
     result[key] = valuePart.trim();
   }

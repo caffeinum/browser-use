@@ -84,4 +84,17 @@ describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
     expect(downloadsPath).toContain('browser-use-downloads-');
     expect(fs.existsSync(downloadsPath!)).toBe(true);
   });
+
+  it('preserves arg values containing equals signs', async () => {
+    const { BrowserProfile } = await importProfileModule();
+    const profile = new BrowserProfile({
+      enable_default_extensions: false,
+      args: ['--custom-size=1280,720', '--custom=bar=baz', '--custom-flag'],
+    });
+
+    const args = await profile.getArgs();
+    expect(args).toContain('--custom-size=1280,720');
+    expect(args).toContain('--custom=bar=baz');
+    expect(args).toContain('--custom-flag');
+  });
 });
