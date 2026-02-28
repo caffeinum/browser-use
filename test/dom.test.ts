@@ -687,7 +687,6 @@ describe('DomService', () => {
       expect(state.element_tree).toBeDefined();
       expect(state.selector_map).toBeDefined();
     });
-
   });
 
   describe('Special URL Handling', () => {

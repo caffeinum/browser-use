@@ -59,7 +59,10 @@ vi.mock('../src/telemetry/service.js', () => ({
 // Import after mocks
 import { BrowserSession } from '../src/browser/session.js';
 import { BrowserProfile } from '../src/browser/profile.js';
-import { DownloadProgressEvent, TabCreatedEvent } from '../src/browser/events.js';
+import {
+  DownloadProgressEvent,
+  TabCreatedEvent,
+} from '../src/browser/events.js';
 import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
@@ -288,7 +291,9 @@ describe('BrowserSession Basic Operations', () => {
       waitForEvent: vi.fn(() => new Promise(() => {})),
     } as any;
 
-    vi.spyOn(session, 'get_locate_element').mockResolvedValue(elementHandle as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
     vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
 
     await expect(
@@ -314,7 +319,9 @@ describe('BrowserSession Basic Operations', () => {
       waitForLoadState: vi.fn(async () => {}),
     } as any;
 
-    vi.spyOn(session, 'get_locate_element').mockResolvedValue(elementHandle as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
     vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
 
     const result = await session.perform_click({
@@ -349,7 +356,9 @@ describe('BrowserSession Basic Operations', () => {
       click: vi.fn(async () => {}),
     };
 
-    vi.spyOn(session, 'get_locate_element').mockResolvedValue(elementHandle as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
     vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
 
     try {
@@ -429,10 +438,16 @@ describe('BrowserSession Basic Operations', () => {
         return null;
       }),
       url: vi.fn(() => pageUrl),
-      title: vi.fn(async () => (pageUrl.endsWith('page-1') ? 'Page 1' : 'Page 2')),
+      title: vi.fn(async () =>
+        pageUrl.endsWith('page-1') ? 'Page 1' : 'Page 2'
+      ),
     } as any;
 
-    session.update_current_page(fakePage, 'Page 2', 'https://example.com/page-2');
+    session.update_current_page(
+      fakePage,
+      'Page 2',
+      'https://example.com/page-2'
+    );
     (session as any).initialized = true;
     (session as any).historyStack = ['https://example.com/page-2'];
 
@@ -462,11 +477,7 @@ describe('BrowserSession Basic Operations', () => {
       }),
     };
 
-    session.update_current_page(
-      fakePage,
-      'Start',
-      'https://example.com/start'
-    );
+    session.update_current_page(fakePage, 'Start', 'https://example.com/start');
     (session as any).initialized = true;
     vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
 
@@ -601,7 +612,11 @@ describe('BrowserSession Basic Operations', () => {
       url: vi.fn(() => 'about:blank'),
     } as any;
 
-    session.update_current_page(existingPage, 'Current', 'https://current.test');
+    session.update_current_page(
+      existingPage,
+      'Current',
+      'https://current.test'
+    );
     (session as any).browser_context = {
       newPage: vi.fn(async () => failingPage),
       pages: vi.fn(() => [existingPage]),
@@ -647,13 +662,19 @@ describe('BrowserSession Basic Operations', () => {
       { handler_id: 'test.tab.created.redirected' }
     );
 
-    session.update_current_page(existingPage, 'Current', 'https://current.test');
+    session.update_current_page(
+      existingPage,
+      'Current',
+      'https://current.test'
+    );
     (session as any).browser_context = {
       newPage: vi.fn(async () => newPage),
       pages: vi.fn(() => [existingPage, newPage]),
     } as any;
     (session as any).initialized = true;
-    vi.spyOn(session as any, '_waitForStableNetwork').mockResolvedValue(undefined);
+    vi.spyOn(session as any, '_waitForStableNetwork').mockResolvedValue(
+      undefined
+    );
 
     await session.create_new_tab('https://redirected.test/start');
 
@@ -872,7 +893,11 @@ describe('BrowserSession Basic Operations', () => {
         off: vi.fn(),
       } as any;
 
-      session.update_current_page(fakePage, 'Stale title', 'https://stale.example');
+      session.update_current_page(
+        fakePage,
+        'Stale title',
+        'https://stale.example'
+      );
       (session as any).initialized = true;
 
       const summary = await session.get_browser_state_with_recovery({
@@ -1020,7 +1045,9 @@ describe('BrowserSession Basic Operations', () => {
 
     (session as any).browser_context = {} as any;
     vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
-    vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue(cdpSession);
+    vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue(
+      cdpSession
+    );
 
     const screenshot = await session.take_screenshot(true);
 
