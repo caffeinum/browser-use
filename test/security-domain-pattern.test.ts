@@ -112,4 +112,42 @@ describe('Allowed Domains Security', () => {
       true
     );
   });
+
+  it('keeps wildcard allowlist patterns functional for large lists', () => {
+    const domains = Array.from({ length: 120 }, (_, idx) => {
+      return `site-${idx}.example.com`;
+    });
+    domains[0] = '*.example.com';
+
+    const profile = new BrowserProfile({
+      allowed_domains: domains,
+    });
+    const session = new BrowserSession({
+      browser_profile: profile,
+    });
+
+    expect(Array.isArray(profile.config.allowed_domains)).toBe(true);
+    expect((session as any)._is_url_allowed('https://sub.example.com')).toBe(
+      true
+    );
+  });
+
+  it('keeps wildcard blocklist patterns functional for large lists', () => {
+    const domains = Array.from({ length: 120 }, (_, idx) => {
+      return `blocked-${idx}.example.com`;
+    });
+    domains[0] = '*.evil.test';
+
+    const profile = new BrowserProfile({
+      prohibited_domains: domains,
+    });
+    const session = new BrowserSession({
+      browser_profile: profile,
+    });
+
+    expect(Array.isArray(profile.config.prohibited_domains)).toBe(true);
+    expect((session as any)._is_url_allowed('https://sub.evil.test')).toBe(
+      false
+    );
+  });
 });

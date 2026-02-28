@@ -535,9 +535,24 @@ const normalizeDomainEntry = (entry: unknown) =>
     .trim()
     .toLowerCase();
 
+const isExactHostDomainEntry = (entry: string) => {
+  if (!entry) {
+    return false;
+  }
+  if (entry.includes('*') || entry.includes('://') || entry.includes('/')) {
+    return false;
+  }
+  // Keep set optimization for plain hostnames only. Entries with ports/pattern-like
+  // delimiters must stay as arrays to preserve wildcard/scheme matching semantics.
+  return !entry.includes(':');
+};
+
 const optimizeDomainList = (value: unknown[]): string[] | Set<string> => {
   const cleaned = value.map(normalizeDomainEntry).filter(Boolean);
-  if (cleaned.length >= DOMAIN_OPTIMIZATION_THRESHOLD) {
+  const canOptimizeToSet =
+    cleaned.length >= DOMAIN_OPTIMIZATION_THRESHOLD &&
+    cleaned.every(isExactHostDomainEntry);
+  if (canOptimizeToSet) {
     logger.warning(
       `Optimizing domain list with ${cleaned.length} entries to a Set for O(1) matching`
     );
@@ -570,20 +585,12 @@ export class BrowserProfile {
       allowed_domains: Array.isArray(init.allowed_domains)
         ? optimizeDomainList(init.allowed_domains)
         : init.allowed_domains instanceof Set
-          ? new Set(
-              Array.from(init.allowed_domains)
-                .map(normalizeDomainEntry)
-                .filter(Boolean)
-            )
+          ? optimizeDomainList(Array.from(init.allowed_domains))
           : defaults.allowed_domains,
       prohibited_domains: Array.isArray(init.prohibited_domains)
         ? optimizeDomainList(init.prohibited_domains)
         : init.prohibited_domains instanceof Set
-          ? new Set(
-              Array.from(init.prohibited_domains)
-                .map(normalizeDomainEntry)
-                .filter(Boolean)
-            )
+          ? optimizeDomainList(Array.from(init.prohibited_domains))
           : defaults.prohibited_domains,
       window_position: init.window_position ?? defaults.window_position,
     };
