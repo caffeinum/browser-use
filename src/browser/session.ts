@@ -1938,6 +1938,7 @@ export class BrowserSession {
     this._throwIfAborted(signal);
     this._assert_url_allowed(url);
     const normalized = normalize_url(url);
+    let completedUrl = normalized;
     const waitUntil = options.wait_until ?? 'domcontentloaded';
     const timeoutMs =
       typeof options.timeout_ms === 'number' &&
@@ -1977,6 +1978,7 @@ export class BrowserSession {
         );
         const finalUrl = page.url();
         this._assert_url_allowed(finalUrl);
+        completedUrl = normalize_url(finalUrl);
         await this._waitForStableNetwork(page, signal);
       }
     } catch (error) {
@@ -2034,24 +2036,33 @@ export class BrowserSession {
     this.tabPages.set(newTab.page_id, page);
     this._syncSessionManagerFromTabs();
     this._setActivePage(page);
+    if (page) {
+      await this._syncCurrentTabFromPage(page);
+      completedUrl = this.currentUrl || completedUrl;
+    }
+    if (this.historyStack[this.historyStack.length - 1] === normalized) {
+      this.historyStack[this.historyStack.length - 1] = completedUrl;
+    } else if (this.historyStack[this.historyStack.length - 1] !== completedUrl) {
+      this.historyStack.push(completedUrl);
+    }
     this.currentPageLoadingStatus = null;
     if (!this.human_current_page) {
       this.human_current_page = page;
     }
     this._recordRecentEvent('tab_created', {
-      url: normalized,
+      url: completedUrl,
       page_id: newTab.page_id,
       tab_id: newTab.tab_id,
     });
     this._recordRecentEvent('tab_ready', {
-      url: normalized,
+      url: completedUrl,
       page_id: newTab.page_id,
       tab_id: newTab.tab_id,
     });
     await this.event_bus.dispatch(
       new TabCreatedEvent({
         target_id: newTab.target_id ?? newTab.tab_id ?? 'unknown_target',
-        url: normalized,
+        url: completedUrl,
       })
     );
     this.cachedBrowserState = null;
@@ -4170,6 +4181,21 @@ export class BrowserSession {
     return [host, `www.${host}`];
   }
 
+  private _setEntryMatchesUrl(
+    domains: Set<string>,
+    hostVariant: string,
+    hostAlt: string,
+    protocol: string
+  ) {
+    const matchedHost = domains.has(hostVariant) || domains.has(hostAlt);
+    if (!matchedHost) {
+      return false;
+    }
+    // Set-optimized entries are exact hostnames without explicit schemes,
+    // so keep parity with pattern matching default: https-only.
+    return protocol.toLowerCase() === 'https:';
+  }
+
   /**
    * Check if page is displaying a PDF
    */
@@ -4533,7 +4559,14 @@ export class BrowserSession {
         (allowedDomains instanceof Set && allowedDomains.size > 0))
     ) {
       if (allowedDomains instanceof Set) {
-        if (allowedDomains.has(hostVariant) || allowedDomains.has(hostAlt)) {
+        if (
+          this._setEntryMatchesUrl(
+            allowedDomains,
+            hostVariant,
+            hostAlt,
+            parsed.protocol
+          )
+        ) {
           return null;
         }
       } else {
@@ -4558,8 +4591,12 @@ export class BrowserSession {
     ) {
       if (prohibitedDomains instanceof Set) {
         if (
-          prohibitedDomains.has(hostVariant) ||
-          prohibitedDomains.has(hostAlt)
+          this._setEntryMatchesUrl(
+            prohibitedDomains,
+            hostVariant,
+            hostAlt,
+            parsed.protocol
+          )
         ) {
           return 'in_prohibited_domains';
         }

@@ -88,6 +88,9 @@ describe('Allowed Domains Security', () => {
     expect((session as any)._is_url_allowed('https://www.example.com')).toBe(
       true
     );
+    expect((session as any)._is_url_allowed('http://www.example.com')).toBe(
+      false
+    );
     expect((session as any)._is_url_allowed('https://unknown.example')).toBe(
       false
     );

@@ -59,7 +59,7 @@ vi.mock('../src/telemetry/service.js', () => ({
 // Import after mocks
 import { BrowserSession } from '../src/browser/session.js';
 import { BrowserProfile } from '../src/browser/profile.js';
-import { DownloadProgressEvent } from '../src/browser/events.js';
+import { DownloadProgressEvent, TabCreatedEvent } from '../src/browser/events.js';
 import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
@@ -615,6 +615,54 @@ describe('BrowserSession Basic Operations', () => {
     expect(session.tabs).toHaveLength(1);
     expect(session.active_tab?.url).toBe('https://current.test');
     expect(failingPage.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('create_new_tab records redirected final URL in tab state and events', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    let redirectedUrl = 'about:blank';
+    const existingPage = {
+      url: vi.fn(() => 'https://current.test'),
+      title: vi.fn(async () => 'Current'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const newPage = {
+      goto: vi.fn(async () => {
+        redirectedUrl = 'https://redirected.test/final';
+      }),
+      url: vi.fn(() => redirectedUrl),
+      title: vi.fn(async () => 'Redirected'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const createdEvents: TabCreatedEvent[] = [];
+    session.event_bus.on(
+      'TabCreatedEvent',
+      (event) => {
+        createdEvents.push(event as TabCreatedEvent);
+      },
+      { handler_id: 'test.tab.created.redirected' }
+    );
+
+    session.update_current_page(existingPage, 'Current', 'https://current.test');
+    (session as any).browser_context = {
+      newPage: vi.fn(async () => newPage),
+      pages: vi.fn(() => [existingPage, newPage]),
+    } as any;
+    (session as any).initialized = true;
+    vi.spyOn(session as any, '_waitForStableNetwork').mockResolvedValue(undefined);
+
+    await session.create_new_tab('https://redirected.test/start');
+
+    expect(session.active_tab?.url).toBe('https://redirected.test/final');
+    expect((session as any).historyStack.at(-1)).toBe(
+      'https://redirected.test/final'
+    );
+    expect(createdEvents).toHaveLength(1);
+    expect(createdEvents[0].url).toBe('https://redirected.test/final');
   });
 
   it('aborts browser state capture when signal is already aborted', async () => {
