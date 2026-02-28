@@ -804,6 +804,63 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('passes profile highlight and viewport settings to recovery DOM extraction', async () => {
+    const minimalDom = new DOMState(
+      new DOMElementNode(true, null, 'body', '/html/body', {}, []),
+      {}
+    );
+    const clickableSpy = vi
+      .spyOn(DomService.prototype, 'get_clickable_elements')
+      .mockResolvedValue(minimalDom);
+
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          highlight_elements: false,
+          viewport_expansion: 321,
+        }),
+      });
+
+      const evaluate = vi.fn(async (script: unknown) => {
+        const source =
+          typeof script === 'function' ? script.toString() : String(script);
+        if (source.includes('getEntriesByType')) {
+          return [];
+        }
+        if (source.includes('viewportWidth') && source.includes('pageHeight')) {
+          return {
+            viewportWidth: 1280,
+            viewportHeight: 720,
+            scrollX: 0,
+            scrollY: 0,
+            pageWidth: 1280,
+            pageHeight: 720,
+          };
+        }
+        return null;
+      });
+
+      const fakePage = {
+        url: () => 'https://example.com',
+        title: vi.fn(async () => 'Example'),
+        evaluate,
+        on: vi.fn(),
+        off: vi.fn(),
+      } as any;
+
+      session.update_current_page(fakePage, 'Example', 'https://example.com');
+      (session as any).initialized = true;
+
+      await session.get_browser_state_with_recovery({
+        include_screenshot: false,
+      });
+
+      expect(clickableSpy).toHaveBeenCalledWith(false, -1, 321);
+    } finally {
+      clickableSpy.mockRestore();
+    }
+  });
+
   it('removes playwright highlight containers and cleanup callbacks', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),

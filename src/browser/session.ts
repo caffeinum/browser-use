@@ -1638,7 +1638,11 @@ export class BrowserSession {
       try {
         const domService = new DomService(page, this.logger);
         domState = await this._withAbort(
-          domService.get_clickable_elements(),
+          domService.get_clickable_elements(
+            this.browser_profile.highlight_elements,
+            -1,
+            this.browser_profile.viewport_expansion
+          ),
           signal
         );
       } catch (error) {
