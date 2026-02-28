@@ -865,6 +865,35 @@ describe('BrowserSession Basic Operations', () => {
     expect(legacyStyled.style.border).toBe('');
   });
 
+  it('forwards full_page screenshots to CDP captureBeyondViewport', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+    const fakePage = {
+      url: () => 'https://example.com',
+      bringToFront: vi.fn(async () => {}),
+    } as any;
+    const cdpSession = {
+      send: vi.fn(async () => ({ data: 'ZmFrZS1pbWFnZS1iNjQ=' })),
+      detach: vi.fn(async () => {}),
+    } as any;
+
+    (session as any).browser_context = {} as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue(cdpSession);
+
+    const screenshot = await session.take_screenshot(true);
+
+    expect(screenshot).toBe('ZmFrZS1pbWFnZS1iNjQ=');
+    expect(cdpSession.send).toHaveBeenCalledWith(
+      'Page.captureScreenshot',
+      expect.objectContaining({
+        captureBeyondViewport: true,
+      })
+    );
+    expect(cdpSession.detach).toHaveBeenCalledTimes(1);
+  });
+
   it('starts and stops browser session', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

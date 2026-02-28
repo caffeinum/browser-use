@@ -3459,7 +3459,7 @@ export class BrowserSession {
       const screenshot_response = await cdp_session.send(
         'Page.captureScreenshot',
         {
-          captureBeyondViewport: false,
+          captureBeyondViewport: full_page,
           fromSurface: true,
           format: 'png',
         }
