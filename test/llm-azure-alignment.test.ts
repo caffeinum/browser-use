@@ -179,7 +179,9 @@ describe('ChatAzure alignment', () => {
 
     expect(request.response_format?.type).toBe('json_schema');
     expect(JSON.stringify(schemaPayload)).not.toContain('propertyNames');
-    expect(schemaPayload?.properties?.payload?.additionalProperties).toBeDefined();
+    expect(
+      schemaPayload?.properties?.payload?.additionalProperties
+    ).toBeDefined();
     expect(schemaPayload?.properties?.payload?.additionalProperties).not.toBe(
       false
     );

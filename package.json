@@ -304,7 +304,7 @@
     "googleapis": "^171.4.0",
     "gpt-tokenizer": "^3.4.0",
     "groq-sdk": "^0.37.0",
-    "minimatch": "^10.2.2",
+    "minimatch": "^10.2.3",
     "ollama": "^0.6.3",
     "openai": "^6.18.0",
     "pdf-parse": "^2.4.5",
@@ -350,7 +350,8 @@
     ],
     "overrides": {
       "fast-xml-parser": "5.3.6",
-      "minimatch": "10.2.2"
+      "minimatch": "10.2.3",
+      "rollup": "4.59.0"
     }
   }
 }

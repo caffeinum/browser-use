@@ -5317,7 +5317,7 @@ export class Agent<
   private _buildActionOutputSchema(doneOnly: boolean): z.ZodTypeAny {
     const registryActions = this.controller.registry.get_all_actions();
     const actionSchemas = this._getOutputActionNames(doneOnly)
-      .map((actionName) => {
+      .map<z.ZodTypeAny | null>((actionName) => {
         const actionInfo = registryActions.get(actionName);
         if (!actionInfo) {
           return null;
@@ -5344,9 +5344,13 @@ export class Agent<
       return actionSchemas[0];
     }
 
-    return z.union(
-      actionSchemas as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]
-    );
+    const [firstActionSchema, secondActionSchema, ...remainingActionSchemas] =
+      actionSchemas;
+    return z.union([
+      firstActionSchema,
+      secondActionSchema,
+      ...remainingActionSchemas,
+    ]);
   }
 
   private _buildLlmOutputFormat(doneOnly: boolean) {
@@ -5357,7 +5361,10 @@ export class Agent<
       next_goal: z.string().optional().nullable(),
       current_plan_item: z.number().int().optional().nullable(),
       plan_update: z.array(z.string()).optional().nullable(),
-      action: z.array(this._buildActionOutputSchema(doneOnly)).optional().nullable(),
+      action: z
+        .array(this._buildActionOutputSchema(doneOnly))
+        .optional()
+        .nullable(),
     });
 
     const outputFormat = schema as typeof schema & { schema: typeof schema };
