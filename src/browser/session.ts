@@ -4601,16 +4601,43 @@ export class BrowserSession {
 
     try {
       await page.evaluate(() => {
-        // Remove all elements with browser-use highlight class
-        const highlights = document.querySelectorAll('.browser-use-highlight');
-        highlights.forEach((el) => el.remove());
+        const pageWindow = window as Window & {
+          _highlightCleanupFunctions?: Array<() => void>;
+        };
 
-        // Remove inline highlight styles
+        const cleanupFunctions = Array.isArray(
+          pageWindow._highlightCleanupFunctions
+        )
+          ? pageWindow._highlightCleanupFunctions
+          : [];
+
+        for (const cleanupFn of cleanupFunctions) {
+          try {
+            if (typeof cleanupFn === 'function') {
+              cleanupFn();
+            }
+          } catch {
+            // Ignore callback cleanup failures.
+          }
+        }
+        pageWindow._highlightCleanupFunctions = [];
+
+        const containers = document.querySelectorAll(
+          '#playwright-highlight-container'
+        );
+        containers.forEach((element) => element.remove());
+
+        const labels = document.querySelectorAll('.playwright-highlight-label');
+        labels.forEach((element) => element.remove());
+
+        // Backward compatibility with legacy selectors.
+        const highlights = document.querySelectorAll('.browser-use-highlight');
+        highlights.forEach((element) => element.remove());
         const styled = document.querySelectorAll('[style*="browser-use"]');
-        styled.forEach((el: any) => {
-          if (el.style) {
-            el.style.outline = '';
-            el.style.border = '';
+        styled.forEach((element: any) => {
+          if (element.style) {
+            element.style.outline = '';
+            element.style.border = '';
           }
         });
       });

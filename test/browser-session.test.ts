@@ -495,6 +495,67 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('removes playwright highlight containers and cleanup callbacks', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    const cleanupFn = vi.fn();
+    const container = { remove: vi.fn() };
+    const label = { remove: vi.fn() };
+    const legacyHighlight = { remove: vi.fn() };
+    const legacyStyled = { style: { outline: '1px solid red', border: '1px' } };
+
+    const previousWindow = (globalThis as any).window;
+    const previousDocument = (globalThis as any).document;
+
+    const fakeWindow = {
+      _highlightCleanupFunctions: [cleanupFn],
+    } as any;
+    const fakeDocument = {
+      querySelectorAll: vi.fn((selector: string) => {
+        if (selector === '#playwright-highlight-container') {
+          return [container];
+        }
+        if (selector === '.playwright-highlight-label') {
+          return [label];
+        }
+        if (selector === '.browser-use-highlight') {
+          return [legacyHighlight];
+        }
+        if (selector === '[style*="browser-use"]') {
+          return [legacyStyled];
+        }
+        return [];
+      }),
+    } as any;
+
+    const fakePage = {
+      on: vi.fn(),
+      evaluate: vi.fn(async (callback: () => void) => {
+        (globalThis as any).window = fakeWindow;
+        (globalThis as any).document = fakeDocument;
+        try {
+          callback();
+        } finally {
+          (globalThis as any).window = previousWindow;
+          (globalThis as any).document = previousDocument;
+        }
+      }),
+    } as any;
+
+    session.update_current_page(fakePage);
+    await session.remove_highlights();
+
+    expect(cleanupFn).toHaveBeenCalledTimes(1);
+    expect(fakeWindow._highlightCleanupFunctions).toEqual([]);
+    expect(container.remove).toHaveBeenCalledTimes(1);
+    expect(label.remove).toHaveBeenCalledTimes(1);
+    expect(legacyHighlight.remove).toHaveBeenCalledTimes(1);
+    expect(legacyStyled.style.outline).toBe('');
+    expect(legacyStyled.style.border).toBe('');
+  });
+
   it('starts and stops browser session', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

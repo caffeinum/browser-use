@@ -343,17 +343,29 @@
     }
   }
 
-  // // Add this function to perform cleanup when needed
-  // function cleanupHighlights() {
-  //   if (window._highlightCleanupFunctions && window._highlightCleanupFunctions.length) {
-  //     window._highlightCleanupFunctions.forEach(fn => fn());
-  //     window._highlightCleanupFunctions = [];
-  //   }
-
-  //   // Also remove the container
-  //   const container = document.getElementById(HIGHLIGHT_CONTAINER_ID);
-  //   if (container) container.remove();
-  // }
+  function cleanupHighlights() {
+    try {
+      const cleanupFns = Array.isArray(window._highlightCleanupFunctions)
+        ? window._highlightCleanupFunctions
+        : [];
+      for (const fn of cleanupFns) {
+        try {
+          if (typeof fn === 'function') {
+            fn();
+          }
+        } catch (error) {
+          // Ignore cleanup callback failures to keep extraction resilient.
+        }
+      }
+      window._highlightCleanupFunctions = [];
+      const container = document.getElementById(HIGHLIGHT_CONTAINER_ID);
+      if (container) {
+        container.remove();
+      }
+    } catch (error) {
+      // Ignore cleanup failures and continue with DOM extraction.
+    }
+  }
 
   /**
    * Gets the position of an element in its parent.
@@ -1391,6 +1403,7 @@
     return id;
   }
 
+  cleanupHighlights();
   const rootId = buildDomTree(document.body);
 
   // Clear the cache before starting

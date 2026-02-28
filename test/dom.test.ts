@@ -48,6 +48,15 @@ import {
 import { HistoryTreeProcessor } from '../src/dom/history-tree-processor/service.js';
 import { DomService } from '../src/dom/service.js';
 
+describe('DomService script safeguards', () => {
+  it('injects highlight cleanup before DOM rebuild', () => {
+    const domService = new DomService({} as any);
+    const script = (domService as any).jsCode as string;
+    expect(script).toContain('function cleanupHighlights()');
+    expect(script).toContain('cleanupHighlights();');
+  });
+});
+
 describe('DOM Element Classes', () => {
   describe('DOMElementNode', () => {
     it('creates element node with basic properties', () => {
@@ -678,6 +687,7 @@ describe('DomService', () => {
       expect(state.element_tree).toBeDefined();
       expect(state.selector_map).toBeDefined();
     });
+
   });
 
   describe('Special URL Handling', () => {
