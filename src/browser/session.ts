@@ -4672,6 +4672,8 @@ export class BrowserSession {
     // Check if downloads are enabled
     const downloads_path = this.browser_profile.downloads_path;
     if (downloads_path) {
+      fs.mkdirSync(downloads_path, { recursive: true });
+
       // Try to detect file download.
       const download_promise = page.waitForEvent('download', {
         timeout: 5000,

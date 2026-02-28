@@ -325,6 +325,48 @@ describe('BrowserSession Basic Operations', () => {
     expect(fakePage.waitForLoadState).toHaveBeenCalledTimes(1);
   });
 
+  it('perform_click creates download directory before saving files', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'perform-click-'));
+    const downloadsPath = path.join(tempRoot, 'downloads');
+    const profile = new BrowserProfile({
+      downloads_path: downloadsPath,
+    });
+    const session = new BrowserSession({
+      browser_profile: profile,
+    });
+
+    const fakeDownload = {
+      suggestedFilename: () => 'report.csv',
+      url: () => 'https://example.com/report.csv',
+      saveAs: vi.fn(async (targetPath: string) => {
+        fs.writeFileSync(targetPath, 'csv');
+      }),
+    };
+    const fakePage = {
+      waitForEvent: vi.fn(async () => fakeDownload),
+    } as any;
+    const elementHandle = {
+      click: vi.fn(async () => {}),
+    };
+
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(elementHandle as any);
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+
+    try {
+      expect(fs.existsSync(downloadsPath)).toBe(false);
+      const savedPath = await session.perform_click({
+        xpath: '/html/body/a[1]',
+      } as any);
+
+      expect(typeof savedPath).toBe('string');
+      expect(savedPath).toContain(downloadsPath);
+      expect(fs.existsSync(downloadsPath)).toBe(true);
+      expect(fs.existsSync(savedPath as string)).toBe(true);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('aborts navigation when signal is triggered', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
