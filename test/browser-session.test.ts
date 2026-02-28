@@ -298,6 +298,93 @@ describe('BrowserSession Basic Operations', () => {
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('tracks final URL and title after navigation redirects', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    let pageUrl = 'about:blank';
+    const fakePage = {
+      goto: vi.fn(async () => {
+        pageUrl = 'https://example.com/final';
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Final Page'),
+    } as any;
+
+    session.update_current_page(fakePage, 'about:blank', 'about:blank');
+    (session as any).initialized = true;
+
+    await session.navigate_to('http://example.com/start');
+
+    expect(session.active_tab?.url).toBe('https://example.com/final');
+    expect(session.active_tab?.title).toBe('Final Page');
+    expect((session as any).historyStack.at(-1)).toBe(
+      'https://example.com/final'
+    );
+  });
+
+  it('go_back uses live browser history even with a minimal internal stack', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    let pageUrl = 'https://example.com/page-2';
+    const fakePage = {
+      goBack: vi.fn(async () => {
+        pageUrl = 'https://example.com/page-1';
+        return null;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => (pageUrl.endsWith('page-1') ? 'Page 1' : 'Page 2')),
+    } as any;
+
+    session.update_current_page(fakePage, 'Page 2', 'https://example.com/page-2');
+    (session as any).initialized = true;
+    (session as any).historyStack = ['https://example.com/page-2'];
+
+    await session.go_back();
+
+    expect(fakePage.goBack).toHaveBeenCalledTimes(1);
+    expect(session.active_tab?.url).toBe('https://example.com/page-1');
+    expect(session.active_tab?.title).toBe('Page 1');
+  });
+
+  it('syncs current URL after click-triggered navigation', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    let pageUrl = 'https://example.com/start';
+    const fakePage = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const locator = {
+      click: vi.fn(async () => {
+        pageUrl = 'https://example.com/after-click';
+      }),
+    };
+
+    session.update_current_page(
+      fakePage,
+      'Start',
+      'https://example.com/start'
+    );
+    (session as any).initialized = true;
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+
+    await session._click_element_node({ xpath: '/html/body/a[1]' } as any);
+
+    expect(session.active_tab?.url).toBe('https://example.com/after-click');
+    expect((session as any).historyStack.at(-1)).toBe(
+      'https://example.com/after-click'
+    );
+  });
+
   it('switches tabs by 4-char tab_id aliases', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
@@ -490,6 +577,62 @@ describe('BrowserSession Basic Operations', () => {
       expect(summary.pagination_buttons).toHaveLength(1);
       expect(summary.pagination_buttons[0]?.button_type).toBe('next');
       expect((session as any)._original_viewport_size).toEqual([1280, 720]);
+    } finally {
+      clickableSpy.mockRestore();
+    }
+  });
+
+  it('refreshes stale url/title from the live page in recovery state', async () => {
+    const minimalDom = new DOMState(
+      new DOMElementNode(true, null, 'body', '/html/body', {}, []),
+      {}
+    );
+    const clickableSpy = vi
+      .spyOn(DomService.prototype, 'get_clickable_elements')
+      .mockResolvedValue(minimalDom);
+
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({}),
+      });
+
+      const evaluate = vi.fn(async (script: unknown) => {
+        const source =
+          typeof script === 'function' ? script.toString() : String(script);
+        if (source.includes('getEntriesByType')) {
+          return [];
+        }
+        if (source.includes('viewportWidth') && source.includes('pageHeight')) {
+          return {
+            viewportWidth: 1280,
+            viewportHeight: 720,
+            scrollX: 0,
+            scrollY: 0,
+            pageWidth: 1280,
+            pageHeight: 720,
+          };
+        }
+        return null;
+      });
+
+      const fakePage = {
+        url: () => 'https://live.example/final',
+        title: vi.fn(async () => 'Live title'),
+        evaluate,
+        on: vi.fn(),
+        off: vi.fn(),
+      } as any;
+
+      session.update_current_page(fakePage, 'Stale title', 'https://stale.example');
+      (session as any).initialized = true;
+
+      const summary = await session.get_browser_state_with_recovery({
+        include_screenshot: false,
+      });
+
+      expect(summary.url).toBe('https://live.example/final');
+      expect(summary.title).toBe('Live title');
+      expect(session.active_tab?.url).toBe('https://live.example/final');
     } finally {
       clickableSpy.mockRestore();
     }

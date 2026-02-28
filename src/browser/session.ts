@@ -585,6 +585,48 @@ export class BrowserSession {
     this.agent_current_page = page ?? null;
   }
 
+  private async _syncCurrentTabFromPage(page: Page | null) {
+    if (!page) {
+      return;
+    }
+
+    let resolvedUrl: string | null = null;
+    try {
+      const rawUrl = page.url();
+      if (typeof rawUrl === 'string' && rawUrl.trim()) {
+        resolvedUrl = normalize_url(rawUrl);
+        this.currentUrl = resolvedUrl;
+      }
+    } catch {
+      // Ignore transient URL read failures.
+    }
+
+    let resolvedTitle: string | null = null;
+    if (typeof page.title === 'function') {
+      try {
+        const title = await page.title();
+        if (typeof title === 'string' && title.trim()) {
+          resolvedTitle = title;
+        }
+      } catch {
+        // Ignore transient title read failures.
+      }
+    }
+    if (!resolvedTitle) {
+      resolvedTitle = resolvedUrl ?? this.currentTitle ?? this.currentUrl;
+    }
+    this.currentTitle = resolvedTitle;
+
+    const currentTab = this._tabs[this.currentTabIndex];
+    if (currentTab) {
+      if (resolvedUrl) {
+        currentTab.url = resolvedUrl;
+      }
+      currentTab.title = resolvedTitle;
+      this._syncSessionManagerFromTabs();
+    }
+  }
+
   private _captureClosedPopupMessage(dialogType: string, message: string) {
     const normalizedType = String(dialogType || 'alert').trim() || 'alert';
     const normalizedMessage = String(message || '').trim();
@@ -1613,6 +1655,9 @@ export class BrowserSession {
     }
 
     const pendingNetworkRequests = await this._getPendingNetworkRequests(page);
+    if (page) {
+      await this._syncCurrentTabFromPage(page);
+    }
     if (
       pageInfo &&
       Number.isFinite(pageInfo.viewport_width) &&
@@ -1637,7 +1682,9 @@ export class BrowserSession {
       browser_errors: this.currentPageLoadingStatus
         ? [this.currentPageLoadingStatus]
         : [],
-      is_pdf_viewer: Boolean(this.currentUrl?.toLowerCase().endsWith('.pdf')),
+      is_pdf_viewer: Boolean(
+        this.currentUrl?.toLowerCase().endsWith('.pdf')
+      ),
       loading_status: this.currentPageLoadingStatus,
       recent_events: includeRecentEvents
         ? this._getRecentEventsSummary()
@@ -1734,6 +1781,7 @@ export class BrowserSession {
     this._throwIfAborted(signal);
     this._assert_url_allowed(url);
     const normalized = normalize_url(url);
+    let completedUrl = normalized;
     const waitUntil = options.wait_until ?? 'domcontentloaded';
     const timeoutMs =
       typeof options.timeout_ms === 'number' &&
@@ -1757,6 +1805,7 @@ export class BrowserSession {
         );
         const finalUrl = page.url();
         this._assert_url_allowed(finalUrl);
+        completedUrl = normalize_url(finalUrl);
         await this._waitForStableNetwork(page, signal);
       } catch (error) {
         if (this._isAbortError(error)) {
@@ -1771,16 +1820,24 @@ export class BrowserSession {
       }
     }
     this._throwIfAborted(signal);
-    this.currentUrl = normalized;
-    this.currentTitle = normalized;
-    this.historyStack.push(normalized);
-    if (this._tabs[this.currentTabIndex]) {
-      this._tabs[this.currentTabIndex].url = normalized;
-      this._tabs[this.currentTabIndex].title = normalized;
+    if (page) {
+      await this._syncCurrentTabFromPage(page);
+      completedUrl = this.currentUrl || completedUrl;
+    } else {
+      this.currentUrl = normalized;
+      this.currentTitle = normalized;
+      if (this._tabs[this.currentTabIndex]) {
+        this._tabs[this.currentTabIndex].url = normalized;
+        this._tabs[this.currentTabIndex].title = normalized;
+      }
+      this._syncSessionManagerFromTabs();
     }
-    this._syncSessionManagerFromTabs();
+
+    if (this.historyStack[this.historyStack.length - 1] !== completedUrl) {
+      this.historyStack.push(completedUrl);
+    }
     this._setActivePage(page ?? null);
-    this._recordRecentEvent('navigation_completed', { url: normalized });
+    this._recordRecentEvent('navigation_completed', { url: completedUrl });
     this.cachedBrowserState = null;
     return this.agent_current_page;
   }
@@ -2582,32 +2639,34 @@ export class BrowserSession {
   async go_back(options: BrowserActionOptions = {}) {
     const signal = options.signal ?? null;
     this._throwIfAborted(signal);
-    if (this.historyStack.length <= 1) {
+    const page = await this._withAbort(this.get_current_page(), signal);
+    if (!page?.goBack) {
       return;
     }
-    const page = await this._withAbort(this.get_current_page(), signal);
-    if (page?.goBack) {
-      try {
-        await this._withAbort(page.goBack(), signal);
-      } catch (error) {
-        if (this._isAbortError(error)) {
-          throw error;
-        }
-        this.logger.debug(
-          `Failed to navigate back: ${(error as Error).message}`
-        );
+
+    const previousUrl = this.currentUrl;
+    try {
+      await this._withAbort(page.goBack(), signal);
+    } catch (error) {
+      if (this._isAbortError(error)) {
+        throw error;
       }
+      this.logger.debug(`Failed to navigate back: ${(error as Error).message}`);
     }
     this._throwIfAborted(signal);
-    this.historyStack.pop();
-    const previous = this.historyStack[this.historyStack.length - 1];
-    this.currentUrl = previous;
-    this.currentTitle = previous;
-    if (this._tabs[this.currentTabIndex]) {
-      this._tabs[this.currentTabIndex].url = previous;
-      this._tabs[this.currentTabIndex].title = previous;
+    await this._syncCurrentTabFromPage(page);
+    const currentUrl = this.currentUrl;
+
+    if (currentUrl && currentUrl !== previousUrl) {
+      const existingIndex = this.historyStack.lastIndexOf(currentUrl);
+      if (existingIndex !== -1) {
+        this.historyStack = this.historyStack.slice(0, existingIndex + 1);
+      } else if (this.historyStack[this.historyStack.length - 1] !== currentUrl) {
+        this.historyStack.push(currentUrl);
+      }
     }
-    this._recordRecentEvent('navigation_back', { url: previous });
+    this.cachedBrowserState = null;
+    this._recordRecentEvent('navigation_back', { url: currentUrl });
   }
 
   async get_dom_element_by_index(
@@ -2877,6 +2936,13 @@ export class BrowserSession {
     }
 
     await this._waitForLoad(page, 5000, signal);
+    if (page) {
+      await this._syncCurrentTabFromPage(page);
+      if (this.historyStack[this.historyStack.length - 1] !== this.currentUrl) {
+        this.historyStack.push(this.currentUrl);
+      }
+    }
+    this.cachedBrowserState = null;
     return null;
   }
 
