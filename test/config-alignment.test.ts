@@ -15,6 +15,7 @@ const ENV_KEYS = [
   'BROWSER_USE_ALLOWED_DOMAINS',
   'BROWSER_USE_LLM_MODEL',
   'DEFAULT_LLM',
+  'OPENAI_API_KEY',
   'GROQ_API_KEY',
   'GROK_API_KEY',
 ] as const;
@@ -140,6 +141,9 @@ describe('Config alignment with latest py-browser-use defaults', () => {
         {
           BROWSER_USE_CONFIG_DIR: tempDir,
           BROWSER_USE_CONFIG_PATH: configPath,
+          // Keep key defined-but-empty so dotenv won't repopulate it from .env
+          // when the config module is imported during the test.
+          OPENAI_API_KEY: '',
         },
         async () => {
           const { CONFIG, load_browser_use_config } =
