@@ -95,13 +95,13 @@ npx browser-use --mcp
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Browser-Use                       │
+│                    Browser-Use                      │
 ├─────────────────────────────────────────────────────┤
-│  Agent ← MessageManager ← LLM Providers            │
-│    ↓                                                 │
+│  Agent ← MessageManager ← LLM Providers             │
+│    ↓                                                │
 │  Controller → Action Registry → BrowserSession      │
-│                                      ↓               │
-│                                  DomService          │
+│                                      ↓              │
+│                                  DomService         │
 └─────────────────────────────────────────────────────┘
 ```
 
