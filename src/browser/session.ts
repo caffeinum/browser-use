@@ -1944,6 +1944,8 @@ export class BrowserSession {
       Number.isFinite(options.timeout_ms)
         ? Math.max(0, options.timeout_ms)
         : null;
+    const previousTabIndex = this.currentTabIndex;
+    const previousTab = this._tabs[this.currentTabIndex] ?? null;
     const newTab: TabInfo = this._createTabInfo({
       page_id: this._tabCounter++,
       url: normalized,
@@ -1954,11 +1956,6 @@ export class BrowserSession {
     this.currentUrl = normalized;
     this.currentTitle = normalized;
     this.historyStack.push(normalized);
-    this._recordRecentEvent('tab_created', {
-      url: normalized,
-      page_id: newTab.page_id,
-      tab_id: newTab.tab_id,
-    });
     let page: Page | null = null;
     try {
       page =
@@ -1986,15 +1983,53 @@ export class BrowserSession {
       if (this._isAbortError(error)) {
         throw error;
       }
+      const message = (error as Error).message ?? 'Failed to open new tab';
       this._recordRecentEvent('tab_navigation_failed', {
         url: normalized,
         page_id: newTab.page_id,
         tab_id: newTab.tab_id,
-        error_message: (error as Error).message ?? 'Failed to open new tab',
+        error_message: message,
       });
       this.logger.debug(
-        `Failed to open new tab via Playwright: ${(error as Error).message}`
+        `Failed to open new tab via Playwright: ${message}`
       );
+      if (page?.close) {
+        try {
+          await page.close();
+        } catch {
+          // Ignore best-effort tab close failures during rollback.
+        }
+      }
+
+      this._tabs = this._tabs.filter((tab) => tab.page_id !== newTab.page_id);
+      this.tabPages.delete(newTab.page_id);
+      if (this.historyStack[this.historyStack.length - 1] === normalized) {
+        this.historyStack.pop();
+      }
+
+      if (this._tabs.length > 0) {
+        let restoredIndex = previousTab
+          ? this._tabs.findIndex((tab) => tab.page_id === previousTab.page_id)
+          : -1;
+        if (restoredIndex === -1) {
+          restoredIndex = Math.min(previousTabIndex, this._tabs.length - 1);
+        }
+        this.currentTabIndex = Math.max(0, restoredIndex);
+        const restoredTab = this._tabs[this.currentTabIndex];
+        this.currentUrl = restoredTab.url;
+        this.currentTitle = restoredTab.title;
+        const restoredPage = this.tabPages.get(restoredTab.page_id) ?? null;
+        this._setActivePage(restoredPage);
+        await this._syncCurrentTabFromPage(restoredPage);
+      } else {
+        this.currentTabIndex = 0;
+        this.currentUrl = 'about:blank';
+        this.currentTitle = 'about:blank';
+        this._setActivePage(null);
+      }
+      this._syncSessionManagerFromTabs();
+      this.cachedBrowserState = null;
+      throw new BrowserError(message);
     }
     this.tabPages.set(newTab.page_id, page);
     this._syncSessionManagerFromTabs();
@@ -2003,6 +2038,11 @@ export class BrowserSession {
     if (!this.human_current_page) {
       this.human_current_page = page;
     }
+    this._recordRecentEvent('tab_created', {
+      url: normalized,
+      page_id: newTab.page_id,
+      tab_id: newTab.tab_id,
+    });
     this._recordRecentEvent('tab_ready', {
       url: normalized,
       page_id: newTab.page_id,

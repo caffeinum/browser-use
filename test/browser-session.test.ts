@@ -582,6 +582,41 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('create_new_tab throws on navigation failure and restores previous tab', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    const existingPage = {
+      url: vi.fn(() => 'https://current.test'),
+      title: vi.fn(async () => 'Current'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const failingPage = {
+      goto: vi.fn(async () => {
+        throw new Error('navigation failed');
+      }),
+      close: vi.fn(async () => {}),
+      url: vi.fn(() => 'about:blank'),
+    } as any;
+
+    session.update_current_page(existingPage, 'Current', 'https://current.test');
+    (session as any).browser_context = {
+      newPage: vi.fn(async () => failingPage),
+      pages: vi.fn(() => [existingPage]),
+    } as any;
+    (session as any).initialized = true;
+
+    await expect(session.create_new_tab('https://broken.test')).rejects.toThrow(
+      'navigation failed'
+    );
+
+    expect(session.tabs).toHaveLength(1);
+    expect(session.active_tab?.url).toBe('https://current.test');
+    expect(failingPage.close).toHaveBeenCalledTimes(1);
+  });
+
   it('aborts browser state capture when signal is already aborted', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
