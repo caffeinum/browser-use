@@ -100,8 +100,8 @@ describe('BrowserSession Basic Operations', () => {
       );
 
       expect(systemChrome.listProfiles(userDataDir)).toEqual([
-        { directory: 'Default', name: 'Personal' },
-        { directory: 'Profile 2', name: 'Work' },
+        { directory: 'Default', name: 'Personal', email: '' },
+        { directory: 'Profile 2', name: 'Work', email: '' },
       ]);
     } finally {
       fs.rmSync(userDataDir, { recursive: true, force: true });
