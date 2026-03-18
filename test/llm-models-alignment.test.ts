@@ -10,6 +10,8 @@ describe('LLM models factory alignment', () => {
   const originalCerebrasApiKey = process.env.CEREBRAS_API_KEY;
   const originalVercelApiKey = process.env.VERCEL_API_KEY;
   const originalGoogleApiKey = process.env.GOOGLE_API_KEY;
+  const originalLiteLlmApiKey = process.env.LITELLM_API_KEY;
+  const originalLiteLlmApiBase = process.env.LITELLM_API_BASE;
 
   beforeEach(() => {
     process.env.BROWSER_USE_API_KEY = 'test-bu-key';
@@ -20,6 +22,8 @@ describe('LLM models factory alignment', () => {
     process.env.CEREBRAS_API_KEY = 'test-cerebras-key';
     process.env.VERCEL_API_KEY = 'test-vercel-key';
     process.env.GOOGLE_API_KEY = 'test-google-key';
+    process.env.LITELLM_API_KEY = 'test-litellm-key';
+    process.env.LITELLM_API_BASE = 'https://litellm.example.com';
   });
 
   afterEach(() => {
@@ -62,6 +66,16 @@ describe('LLM models factory alignment', () => {
       delete process.env.GOOGLE_API_KEY;
     } else {
       process.env.GOOGLE_API_KEY = originalGoogleApiKey;
+    }
+    if (originalLiteLlmApiKey === undefined) {
+      delete process.env.LITELLM_API_KEY;
+    } else {
+      process.env.LITELLM_API_KEY = originalLiteLlmApiKey;
+    }
+    if (originalLiteLlmApiBase === undefined) {
+      delete process.env.LITELLM_API_BASE;
+    } else {
+      process.env.LITELLM_API_BASE = originalLiteLlmApiBase;
     }
   });
 
@@ -117,6 +131,12 @@ describe('LLM models factory alignment', () => {
     const llm = getLlmByName('vercel:openai/gpt-5-mini');
     expect(llm.provider).toBe('vercel');
     expect(llm.model).toBe('openai/gpt-5-mini');
+  });
+
+  it('parses python-style LiteLLM model names', () => {
+    const llm = getLlmByName('litellm_gpt_4_1_mini');
+    expect(llm.provider).toBe('litellm');
+    expect(llm.model).toBe('gpt-4.1-mini');
   });
 
   it('throws for unrecognized model names', () => {

@@ -21,6 +21,7 @@ vi.mock('openai', () => {
 
 import { UserMessage } from '../src/llm/messages.js';
 import { ChatDeepSeek } from '../src/llm/deepseek/chat.js';
+import { ChatLiteLLM } from '../src/llm/litellm/chat.js';
 import { ChatOpenAI } from '../src/llm/openai/chat.js';
 import { ChatOpenAILike } from '../src/llm/openai/like.js';
 import { ChatOpenRouter } from '../src/llm/openrouter/chat.js';
@@ -78,6 +79,26 @@ describe('OpenAI-compatible providers alignment', () => {
     expect(request.service_tier).toBe('priority');
     expect(openaiCtorMock.mock.calls[0]?.[0]).toMatchObject({
       maxRetries: 7,
+    });
+  });
+
+  it('configures LiteLLM as an OpenAI-compatible proxy client', async () => {
+    const llm = new ChatLiteLLM({
+      model: 'gpt-4.1-mini',
+      apiKey: 'litellm-key',
+      baseURL: 'https://litellm.example.com',
+      maxRetries: 4,
+    });
+
+    await llm.ainvoke([new UserMessage('hello')]);
+
+    const request = openaiCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.model).toBe('gpt-4.1-mini');
+    expect(llm.provider).toBe('litellm');
+    expect(openaiCtorMock.mock.calls[0]?.[0]).toMatchObject({
+      apiKey: 'litellm-key',
+      baseURL: 'https://litellm.example.com',
+      maxRetries: 4,
     });
   });
 

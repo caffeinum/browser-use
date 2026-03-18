@@ -7,6 +7,7 @@ import { ChatCerebras } from './cerebras/chat.js';
 import { ChatDeepSeek } from './deepseek/chat.js';
 import { ChatGoogle } from './google/chat.js';
 import { ChatGroq } from './groq/chat.js';
+import { ChatLiteLLM } from './litellm/chat.js';
 import { ChatMistral } from './mistral/chat.js';
 import { ChatOllama } from './ollama/chat.js';
 import { ChatOpenAI } from './openai/chat.js';
@@ -26,7 +27,8 @@ type ResolvedProvider =
   | 'browser-use'
   | 'mistral'
   | 'cerebras'
-  | 'vercel';
+  | 'vercel'
+  | 'litellm';
 
 const AVAILABLE_PROVIDERS = [
   'openai',
@@ -42,6 +44,7 @@ const AVAILABLE_PROVIDERS = [
   'mistral',
   'cerebras',
   'vercel',
+  'litellm',
 ] as const;
 
 const MISTRAL_ALIAS_MAP: Record<string, string> = {
@@ -167,6 +170,9 @@ const inferProviderFromModel = (model: string): ResolvedProvider | null => {
   if (lower.startsWith('vercel:')) {
     return 'vercel';
   }
+  if (lower.startsWith('litellm:')) {
+    return 'litellm';
+  }
   if (
     lower.startsWith('mistral-') ||
     lower.startsWith('codestral') ||
@@ -226,6 +232,9 @@ const normalizeModelForProvider = (
   }
   if (provider === 'vercel' && lower.startsWith('vercel:')) {
     return model.slice('vercel:'.length);
+  }
+  if (provider === 'litellm' && lower.startsWith('litellm:')) {
+    return model.slice('litellm:'.length);
   }
   if (provider === 'aws' && lower.startsWith('bedrock:')) {
     return model.slice('bedrock:'.length);
@@ -297,6 +306,13 @@ const buildProviderModel = (
         model,
         apiKey: process.env.VERCEL_API_KEY,
         baseURL: process.env.VERCEL_BASE_URL,
+      });
+    case 'litellm':
+      return new ChatLiteLLM({
+        model,
+        apiKey: process.env.LITELLM_API_KEY,
+        baseURL:
+          process.env.LITELLM_API_BASE ?? process.env.LITELLM_BASE_URL,
       });
     case 'aws':
       return new ChatBedrockConverse({
