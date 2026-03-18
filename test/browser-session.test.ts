@@ -159,6 +159,60 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('maps extra_http_headers to Playwright extraHTTPHeaders', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        extra_http_headers: {
+          'X-Test-Header': 'value',
+        },
+      }),
+    });
+
+    const playwrightOptions = (session as any)._toPlaywrightOptions(
+      session.browser_profile.kwargs_for_new_context()
+    );
+
+    expect(playwrightOptions).toMatchObject({
+      extraHTTPHeaders: {
+        'X-Test-Header': 'value',
+      },
+    });
+    expect(playwrightOptions.extraHttpHeaders).toBeUndefined();
+  });
+
+  it('applies configured extra_http_headers to existing contexts on start', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        extra_http_headers: {
+          'X-Test-Header': 'value',
+        },
+      }),
+      browser: {
+        contexts: () => [
+          {
+            pages: () => [
+              {
+                isClosed: () => false,
+                on: vi.fn(),
+                url: () => 'https://example.com',
+                title: vi.fn(async () => 'Example'),
+              },
+            ],
+            setExtraHTTPHeaders: vi.fn(async () => {}),
+          },
+        ],
+      } as any,
+    });
+
+    await session.start();
+
+    expect(
+      (session.browser_context as any).setExtraHTTPHeaders
+    ).toHaveBeenCalledWith({
+      'X-Test-Header': 'value',
+    });
+  });
+
   it('clones provided browser_profile to avoid shared mutable state', () => {
     const profile = new BrowserProfile({
       keep_alive: null,

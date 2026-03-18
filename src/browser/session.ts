@@ -77,6 +77,9 @@ import { StorageStateWatchdog } from './watchdogs/storage-state-watchdog.js';
 import type { BaseWatchdog } from './watchdogs/base.js';
 
 const execFileAsync = promisify(execFile);
+const PLAYWRIGHT_OPTION_KEY_OVERRIDES: Record<string, string> = {
+  extra_http_headers: 'extraHTTPHeaders',
+};
 
 export interface BrowserSessionInit {
   id?: string;
@@ -1412,12 +1415,41 @@ export class BrowserSession {
       if (convertedValue === undefined) {
         continue;
       }
-      const normalizedKey = rawKey.replace(/_([a-z])/g, (_, letter: string) =>
-        letter.toUpperCase()
-      );
+      const normalizedKey =
+        PLAYWRIGHT_OPTION_KEY_OVERRIDES[rawKey] ??
+        rawKey.replace(/_([a-z])/g, (_, letter: string) =>
+          letter.toUpperCase()
+        );
       result[normalizedKey] = convertedValue;
     }
     return result;
+  }
+
+  async set_extra_headers(headers: Record<string, string>): Promise<void> {
+    const normalizedHeaders = Object.fromEntries(
+      Object.entries(headers)
+        .map(([key, value]) => [String(key).trim(), String(value)])
+        .filter(([key]) => key.length > 0)
+    );
+
+    if (
+      !this.browser_context ||
+      Object.keys(normalizedHeaders).length === 0 ||
+      typeof (this.browser_context as any).setExtraHTTPHeaders !== 'function'
+    ) {
+      return;
+    }
+
+    await (this.browser_context as any).setExtraHTTPHeaders(normalizedHeaders);
+  }
+
+  private async _applyConfiguredExtraHttpHeaders(): Promise<void> {
+    const configuredHeaders = this.browser_profile.config.extra_http_headers;
+    if (!configuredHeaders || Object.keys(configuredHeaders).length === 0) {
+      return;
+    }
+
+    await this.set_extra_headers(configuredHeaders);
   }
 
   private _isSandboxLaunchError(error: unknown): boolean {
@@ -1594,6 +1626,7 @@ export class BrowserSession {
       }
     }
 
+    await this._applyConfiguredExtraHttpHeaders();
     await ensurePage();
     if (
       !this.human_current_page ||
@@ -1674,6 +1707,8 @@ export class BrowserSession {
       } else {
         this.browser_context = (await browser.newContext()) as any;
       }
+
+      await this._applyConfiguredExtraHttpHeaders();
 
       // Get or create page
       if (!this.browser_context) {
