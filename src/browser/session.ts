@@ -121,6 +121,7 @@ export interface BrowserSessionInit {
 export interface ChromeProfileInfo {
   directory: string;
   name: string;
+  email?: string;
 }
 
 const cloneBrowserProfileConfig = (profile: BrowserProfile) =>
@@ -227,13 +228,16 @@ export const systemChrome = {
     try {
       const raw = fs.readFileSync(localStatePath, 'utf8');
       const localState = JSON.parse(raw) as {
-        profile?: { info_cache?: Record<string, { name?: string }> };
+        profile?: {
+          info_cache?: Record<string, { name?: string; user_name?: string }>;
+        };
       };
       const infoCache = localState.profile?.info_cache ?? {};
       return Object.entries(infoCache)
         .map(([directory, info]) => ({
           directory,
           name: info?.name || directory,
+          email: info?.user_name || '',
         }))
         .sort((left, right) => left.directory.localeCompare(right.directory));
     } catch {

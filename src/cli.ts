@@ -13,6 +13,7 @@ import {
 } from './browser/profile.js';
 import { BrowserSession, systemChrome } from './browser/session.js';
 import { CONFIG } from './config.js';
+import { CloudBrowserClient } from './browser/cloud/cloud.js';
 import { CloudManagementClient, type CloudTaskView } from './browser/cloud/management.js';
 import { ChatOpenAI } from './llm/openai/chat.js';
 import { ChatAnthropic } from './llm/anthropic/chat.js';
@@ -972,7 +973,7 @@ export const getCliUsage = () => `Usage:
   browser-use tunnel <port>
   browser-use task <list|status|stop|logs>
   browser-use session <list|get|stop|create|share>
-  browser-use profile <list|get|create|delete>
+  browser-use profile <list|get|create|update|delete|cookies|sync>
   browser-use run --remote <task>
   browser-use <task>
   browser-use -p "<task>"
@@ -1067,7 +1068,27 @@ export interface RunProfileCommandOptions {
     | 'update_profile'
     | 'delete_profile'
   >;
-  profile_lister?: () => Array<{ directory: string; name: string }>;
+  profile_lister?: () => Array<{
+    directory: string;
+    name: string;
+    email?: string;
+  }>;
+  local_session_factory?: (profile_directory: string) => {
+    start: () => Promise<unknown>;
+    stop?: () => Promise<void>;
+    get_cookies?: () => Promise<Array<Record<string, any>>>;
+  };
+  remote_session_factory?: (init: { cdp_url: string }) => {
+    start: () => Promise<unknown>;
+    stop?: () => Promise<void>;
+    browser_context?: {
+      addCookies?: (cookies: Array<Record<string, any>>) => Promise<unknown>;
+    } | null;
+  };
+  cloud_browser_client_factory?: () => Pick<
+    CloudBrowserClient,
+    'create_browser' | 'stop_browser'
+  >;
   stdout?: WritableLike;
   stderr?: WritableLike;
 }
@@ -1939,6 +1960,8 @@ const parseProfileCommandFlags = (argv: string[]) => {
     remote: false,
     limit: 20,
     name: null as string | null,
+    domain: null as string | null,
+    from_profile: null as string | null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1951,15 +1974,24 @@ const parseProfileCommandFlags = (argv: string[]) => {
       flags.remote = true;
       continue;
     }
-    if (arg === '--limit' || arg === '--name') {
+    if (
+      arg === '--limit' ||
+      arg === '--name' ||
+      arg === '--domain' ||
+      arg === '--from'
+    ) {
       const next = argv[index + 1]?.trim();
       if (!next) {
         throw new Error(`Missing value for ${arg}`);
       }
       if (arg === '--limit') {
         flags.limit = parsePositiveInt('--limit', next);
-      } else {
+      } else if (arg === '--name') {
         flags.name = next;
+      } else if (arg === '--domain') {
+        flags.domain = next;
+      } else {
+        flags.from_profile = next;
       }
       index += 1;
     }
@@ -1968,12 +2000,45 @@ const parseProfileCommandFlags = (argv: string[]) => {
   return flags;
 };
 
+const normalizeProfileCookieDomain = (value: string | null | undefined) =>
+  String(value ?? '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase();
+
+const cookieMatchesDomainFilter = (
+  cookie: Record<string, any>,
+  domainFilter: string | null
+) => {
+  if (!domainFilter) {
+    return true;
+  }
+  const cookieDomain = normalizeProfileCookieDomain(cookie.domain);
+  const normalizedFilter = normalizeProfileCookieDomain(domainFilter);
+  return Boolean(cookieDomain && normalizedFilter && cookieDomain.includes(normalizedFilter));
+};
+
 export const runProfileCommand = async (
   argv: string[],
   options: RunProfileCommandOptions = {}
 ) => {
   const client = options.client ?? new CloudManagementClient();
   const profileLister = options.profile_lister ?? (() => systemChrome.listProfiles());
+  const localSessionFactory =
+    options.local_session_factory ??
+    ((profile_directory: string) =>
+      BrowserSession.from_system_chrome({
+        profile_directory,
+        profile: { headless: true },
+      }));
+  const remoteSessionFactory =
+    options.remote_session_factory ??
+    ((init: { cdp_url: string }) =>
+      new BrowserSession({
+        cdp_url: init.cdp_url,
+      }));
+  const cloudBrowserClientFactory =
+    options.cloud_browser_client_factory ?? (() => new CloudBrowserClient());
   const output = options.stdout ?? process.stdout;
   const errorOutput = options.stderr ?? process.stderr;
   const subcommand = argv[0] ?? '';
@@ -2009,7 +2074,8 @@ export const runProfileCommand = async (
       } else {
         writeLine(output, 'Local Chrome profiles:');
         profiles.forEach((profile) => {
-          writeLine(output, `  ${profile.directory}: ${profile.name}`);
+          const emailSuffix = profile.email ? ` (${profile.email})` : '';
+          writeLine(output, `  ${profile.directory}: ${profile.name}${emailSuffix}`);
         });
       }
       return 0;
@@ -2046,6 +2112,9 @@ export const runProfileCommand = async (
       } else {
         writeLine(output, `Profile: ${profile.directory}`);
         writeLine(output, `  Name: ${profile.name}`);
+        if (profile.email) {
+          writeLine(output, `  Email: ${profile.email}`);
+        }
       }
       return 0;
     }
@@ -2082,6 +2151,206 @@ export const runProfileCommand = async (
       return 0;
     }
 
+    if (subcommand === 'cookies') {
+      const profileId = argv[1]?.trim();
+      if (!profileId) {
+        throw new Error('Usage: browser-use profile cookies <profile-id>');
+      }
+      const flags = parseProfileCommandFlags(argv.slice(2));
+      if (flags.remote) {
+        throw new Error('Profile cookies is only supported for local Chrome profiles');
+      }
+      const profile = profileLister().find(
+        (entry) => entry.directory === profileId || entry.name === profileId
+      );
+      if (!profile) {
+        throw new Error(`Profile "${profileId}" not found`);
+      }
+
+      const session = localSessionFactory(profile.directory);
+      await session.start();
+      try {
+        const cookies = (await session.get_cookies?.()) ?? [];
+        const domains = new Map<string, number>();
+        for (const cookie of cookies) {
+          const domain = normalizeProfileCookieDomain(cookie.domain) || 'unknown';
+          domains.set(domain, (domains.get(domain) ?? 0) + 1);
+        }
+        const sortedDomains = Array.from(domains.entries()).sort(
+          (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
+        );
+
+        if (flags.json) {
+          writeLine(
+            output,
+            JSON.stringify(
+              {
+                domains: Object.fromEntries(sortedDomains),
+                total_cookies: cookies.length,
+              },
+              null,
+              2
+            )
+          );
+        } else {
+          const emailSuffix = profile.email ? ` (${profile.email})` : '';
+          writeLine(
+            output,
+            `Loading cookies from: ${profile.name}${emailSuffix}`
+          );
+          writeLine(output, '');
+          writeLine(output, `Cookies by domain (${cookies.length} total):`);
+          sortedDomains.slice(0, 20).forEach(([domain, count]) => {
+            writeLine(output, `  ${domain}: ${count}`);
+          });
+          if (sortedDomains.length > 20) {
+            writeLine(
+              output,
+              `  ... and ${sortedDomains.length - 20} more domains`
+            );
+          }
+          writeLine(output, '');
+          writeLine(output, 'To sync cookies to cloud:');
+          writeLine(
+            output,
+            `  browser-use profile sync --from "${profile.directory}" --domain <domain>`
+          );
+        }
+      } finally {
+        await session.stop?.();
+      }
+      return 0;
+    }
+
+    if (subcommand === 'sync') {
+      const flags = parseProfileCommandFlags(argv.slice(1));
+      const profiles = profileLister();
+      const fromProfile = flags.from_profile?.trim();
+      if (!fromProfile) {
+        writeLine(errorOutput, 'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]');
+        if (profiles.length > 0) {
+          writeLine(errorOutput, 'Available local profiles:');
+          profiles.forEach((profile) => {
+            const emailSuffix = profile.email ? ` (${profile.email})` : '';
+            writeLine(
+              errorOutput,
+              `  ${profile.directory}: ${profile.name}${emailSuffix}`
+            );
+          });
+        }
+        return 1;
+      }
+
+      const profile = profiles.find(
+        (entry) => entry.directory === fromProfile || entry.name === fromProfile
+      );
+      if (!profile) {
+        throw new Error(`Profile "${fromProfile}" not found`);
+      }
+
+      const progress = flags.json ? errorOutput : output;
+      const logProgress = (message: string) => writeLine(progress, message);
+      const cloudName =
+        flags.name ??
+        (flags.domain
+          ? `Chrome - ${profile.name} (${flags.domain})`
+          : `Chrome - ${profile.name}`);
+
+      let cloudProfileId: string | null = null;
+      let cloudBrowserSessionId: string | null = null;
+      const cloudBrowserClient = cloudBrowserClientFactory();
+
+      try {
+        logProgress(
+          `Syncing: ${profile.name}${profile.email ? ` (${profile.email})` : ''}`
+        );
+        logProgress('  Creating cloud profile...');
+        const cloudProfile = await client.create_profile({ name: cloudName });
+        cloudProfileId = cloudProfile.id;
+        logProgress(`  Created: ${cloudProfileId}`);
+
+        logProgress('  Exporting cookies from local profile...');
+        const localSession = localSessionFactory(profile.directory);
+        let filteredCookies: Array<Record<string, any>> = [];
+        await localSession.start();
+        try {
+          const cookies = (await localSession.get_cookies?.()) ?? [];
+          filteredCookies = cookies.filter((cookie) =>
+            cookieMatchesDomainFilter(cookie, flags.domain)
+          );
+        } finally {
+          await localSession.stop?.();
+        }
+
+        if (filteredCookies.length === 0) {
+          throw new Error(
+            flags.domain
+              ? `No cookies found for domain: ${flags.domain}`
+              : 'No cookies found in local profile'
+          );
+        }
+        logProgress(`  Found ${filteredCookies.length} cookies`);
+
+        logProgress('  Importing cookies to cloud profile...');
+        const cloudBrowser = await cloudBrowserClient.create_browser({
+          profile_id: cloudProfileId,
+        });
+        cloudBrowserSessionId = cloudBrowser.id;
+        if (!cloudBrowser.cdpUrl) {
+          throw new Error('Cloud browser did not return a CDP URL');
+        }
+        const remoteSession = remoteSessionFactory({
+          cdp_url: cloudBrowser.cdpUrl,
+        });
+        await remoteSession.start();
+        try {
+          if (!remoteSession.browser_context?.addCookies) {
+            throw new Error('Remote browser context does not support addCookies');
+          }
+          await remoteSession.browser_context.addCookies(filteredCookies);
+        } finally {
+          await remoteSession.stop?.();
+        }
+        await cloudBrowserClient.stop_browser(cloudBrowserSessionId);
+        cloudBrowserSessionId = null;
+
+        if (flags.json) {
+          writeLine(
+            output,
+            JSON.stringify(
+              {
+                success: true,
+                profile_id: cloudProfileId,
+                cookies_synced: filteredCookies.length,
+              },
+              null,
+              2
+            )
+          );
+        } else {
+          logProgress('Profile synced successfully!');
+          logProgress(`  Cloud profile ID: ${cloudProfileId}`);
+        }
+        return 0;
+      } catch (error) {
+        if (cloudBrowserSessionId) {
+          try {
+            await cloudBrowserClient.stop_browser(cloudBrowserSessionId);
+          } catch {
+            // Ignore cleanup failures.
+          }
+        }
+        if (cloudProfileId) {
+          try {
+            await client.delete_profile(cloudProfileId);
+          } catch {
+            // Ignore cleanup failures.
+          }
+        }
+        throw error;
+      }
+    }
+
     if (subcommand === 'update') {
       const profileId = argv[1]?.trim();
       if (!profileId) {
@@ -2111,7 +2380,7 @@ export const runProfileCommand = async (
 
     writeLine(
       errorOutput,
-      'Usage: browser-use profile <list|get|create|update|delete> [--remote] [options]'
+      'Usage: browser-use profile <list|get|create|update|delete|cookies|sync> [--remote] [options]'
     );
     return 1;
   } catch (error) {
