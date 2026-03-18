@@ -157,6 +157,7 @@ Commands:
   hover <index>           Hover element by DOM index
   dblclick <index>        Double-click element by DOM index
   rightclick <index>      Right-click element by DOM index
+  cookies <subcommand>    Manage cookies (get/set/clear/export/import)
   get title               Get page title
   get html [selector]     Get page HTML or a CSS selector
   get text <index>        Get element text
@@ -356,6 +357,52 @@ const readDirectNodeData = async (
     },
     { xpath: node.xpath, dataKind: kind }
   );
+};
+
+const parseDirectCookieOptions = (args: string[]) => {
+  const positional: string[] = [];
+  let url: string | null = null;
+  let domain: string | null = null;
+  let cookiePath = '/';
+  let secure = false;
+  let httpOnly = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? '';
+    if (arg === '--url' || arg === '--domain' || arg === '--path') {
+      const next = args[index + 1]?.trim();
+      if (!next) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      if (arg === '--url') {
+        url = next;
+      } else if (arg === '--domain') {
+        domain = next;
+      } else {
+        cookiePath = next;
+      }
+      index += 1;
+      continue;
+    }
+    if (arg === '--secure') {
+      secure = true;
+      continue;
+    }
+    if (arg === '--http-only') {
+      httpOnly = true;
+      continue;
+    }
+    positional.push(arg);
+  }
+
+  return {
+    positional,
+    url,
+    domain,
+    path: cookiePath,
+    secure,
+    httpOnly,
+  };
 };
 
 const restoreActiveTab = async (
@@ -738,6 +785,87 @@ export const run_direct_command = async (
       }
       await locator.click({ button: 'right', timeout: 5000 });
       writeLine(environment.stdout, `Right-clicked element [${index}]`);
+    } else if (command === 'cookies') {
+      const cookieCommand = args[1] ?? '';
+      if (cookieCommand === 'get') {
+        const url = args[2]?.trim();
+        const cookies =
+          url && session.browser_context?.cookies
+            ? await session.browser_context.cookies([url])
+            : ((await session.get_cookies?.()) ?? []);
+        writeLine(
+          environment.stdout,
+          JSON.stringify({ cookies, count: cookies.length }, null, 2)
+        );
+      } else if (cookieCommand === 'set') {
+        if (!session.browser_context?.addCookies) {
+          throw new Error('Browser context does not support setting cookies');
+        }
+        const parsed = parseDirectCookieOptions(args.slice(2));
+        const name = parsed.positional[0]?.trim();
+        const value = parsed.positional[1] ?? '';
+        if (!name || parsed.positional.length < 2) {
+          throw new Error(
+            'Usage: cookies set <name> <value> [--url <url>] [--domain <domain>] [--path <path>] [--secure] [--http-only]'
+          );
+        }
+        const currentPage = await session.get_current_page?.();
+        const currentUrl =
+          typeof currentPage?.url === 'function' ? currentPage.url() : '';
+        const cookie: Record<string, unknown> = {
+          name,
+          value,
+          path: parsed.path,
+          secure: parsed.secure,
+          httpOnly: parsed.httpOnly,
+        };
+        if (parsed.url) {
+          cookie.url = parsed.url;
+        } else if (parsed.domain) {
+          cookie.domain = parsed.domain;
+        } else if (currentUrl) {
+          cookie.url = currentUrl;
+        } else {
+          throw new Error('Provide cookie url/domain or open a page first');
+        }
+        await session.browser_context.addCookies([cookie]);
+        writeLine(environment.stdout, `Set cookie ${name}`);
+      } else if (cookieCommand === 'clear') {
+        if (!session.browser_context?.clearCookies) {
+          throw new Error('Browser context does not support clearing cookies');
+        }
+        await session.browser_context.clearCookies();
+        writeLine(environment.stdout, 'Cleared cookies');
+      } else if (cookieCommand === 'export') {
+        const file = args[2]?.trim();
+        if (!file) {
+          throw new Error('Usage: cookies export <file>');
+        }
+        const cookies = (await session.get_cookies?.()) ?? [];
+        const outputPath = path.resolve(file);
+        fs.writeFileSync(outputPath, JSON.stringify(cookies, null, 2), 'utf8');
+        writeLine(environment.stdout, `Exported ${cookies.length} cookies to ${outputPath}`);
+      } else if (cookieCommand === 'import') {
+        if (!session.browser_context?.addCookies) {
+          throw new Error('Browser context does not support importing cookies');
+        }
+        const file = args[2]?.trim();
+        if (!file) {
+          throw new Error('Usage: cookies import <file>');
+        }
+        const inputPath = path.resolve(file);
+        const raw = fs.readFileSync(inputPath, 'utf8');
+        const cookies = JSON.parse(raw) as unknown;
+        if (!Array.isArray(cookies)) {
+          throw new Error('Cookie import file must contain a JSON array');
+        }
+        await session.browser_context.addCookies(cookies);
+        writeLine(environment.stdout, `Imported ${cookies.length} cookies from ${inputPath}`);
+      } else {
+        throw new Error(
+          'Usage: cookies get [url] | cookies set <name> <value> | cookies clear | cookies export <file> | cookies import <file>'
+        );
+      }
     } else if (command === 'get') {
       const subcommand = args[1] ?? '';
       if (subcommand === 'title') {

@@ -416,4 +416,90 @@ describe('skill-cli direct alignment', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('supports direct-mode cookie commands', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const cookieFile = path.join(tempDir, 'cookies.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const browserContext = {
+      cookies: vi.fn(async () => [{ name: 'sid', value: '123' }]),
+      addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
+    };
+    const session = {
+      start: vi.fn(async () => {}),
+      tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
+      switch_to_tab: vi.fn(async () => {}),
+      get_cookies: vi.fn(async () => [{ name: 'sid', value: '123' }]),
+      browser_context: browserContext,
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      expect(
+        await run_direct_command(['cookies', 'get'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['cookies', 'set', 'sid', '456'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['cookies', 'export', cookieFile], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['cookies', 'import', cookieFile], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['cookies', 'clear'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+
+      expect(browserContext.addCookies).toHaveBeenCalled();
+      expect(browserContext.clearCookies).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(cookieFile)).toBe(true);
+      expect(stdout.read()).toContain('"count": 1');
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
