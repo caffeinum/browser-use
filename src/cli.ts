@@ -13,6 +13,7 @@ import {
 } from './browser/profile.js';
 import { BrowserSession, systemChrome } from './browser/session.js';
 import { CONFIG } from './config.js';
+import { CloudManagementClient, type CloudTaskView } from './browser/cloud/management.js';
 import { ChatOpenAI } from './llm/openai/chat.js';
 import { ChatAnthropic } from './llm/anthropic/chat.js';
 import { ChatGoogle } from './llm/google/chat.js';
@@ -969,6 +970,7 @@ export const getCliUsage = () => `Usage:
   browser-use install
   browser-use setup [--mode <local|remote|full>]
   browser-use tunnel <port>
+  browser-use task <list|status|stop|logs>
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -1028,6 +1030,15 @@ export interface RunSetupCommandOptions {
   stdout?: WritableLike;
   stderr?: WritableLike;
   json_output?: boolean;
+}
+
+export interface RunTaskCommandOptions {
+  client?: Pick<
+    CloudManagementClient,
+    'list_tasks' | 'get_task' | 'update_task' | 'get_task_logs'
+  >;
+  stdout?: WritableLike;
+  stderr?: WritableLike;
 }
 
 export const runInstallCommand = (
@@ -1404,6 +1415,269 @@ export const runSetupCommand = async (
   return 0;
 };
 
+const formatDuration = (
+  startedAt?: string | null,
+  finishedAt?: string | null
+) => {
+  if (!startedAt) {
+    return '';
+  }
+
+  const start = new Date(startedAt).getTime();
+  const end = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+    return '';
+  }
+
+  const totalSeconds = Math.floor((end - start) / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  if (totalSeconds < 3600) {
+    return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
+  }
+  return `${Math.floor(totalSeconds / 3600)}h ${Math.floor((totalSeconds % 3600) / 60)}m`;
+};
+
+const printTaskStep = (
+  stream: WritableLike,
+  step: Record<string, unknown>,
+  verbose: boolean
+) => {
+  const stepNumber = step.number ?? '?';
+  const memory = String(step.memory ?? '');
+  if (verbose) {
+    const url = String(step.url ?? '');
+    const shortUrl = url.length > 60 ? `${url.slice(0, 57)}...` : url;
+    writeLine(stream, `  [${stepNumber}] ${shortUrl}`);
+    if (memory) {
+      const shortMemory =
+        memory.length > 100 ? `${memory.slice(0, 97)}...` : memory;
+      writeLine(stream, `      Reasoning: ${shortMemory}`);
+    }
+    const actions = Array.isArray(step.actions) ? step.actions : [];
+    actions.slice(0, 2).forEach((action) => {
+      const text = String(action);
+      const shortAction = text.length > 70 ? `${text.slice(0, 67)}...` : text;
+      writeLine(stream, `      Action: ${shortAction}`);
+    });
+    if (actions.length > 2) {
+      writeLine(stream, `      ... and ${actions.length - 2} more actions`);
+    }
+    return;
+  }
+
+  const shortMemory = memory
+    ? memory.length > 80
+      ? `${memory.slice(0, 77)}...`
+      : memory
+    : '(no reasoning)';
+  writeLine(stream, `  ${stepNumber}. ${shortMemory}`);
+};
+
+const parseTaskCommandFlags = (argv: string[]) => {
+  const flags = {
+    json: false,
+    limit: 10,
+    status: null as string | null,
+    session: null as string | null,
+    compact: false,
+    verbose: false,
+    last: null as number | null,
+    reverse: false,
+    step: null as number | null,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? '';
+    if (arg === '--json') {
+      flags.json = true;
+      continue;
+    }
+    if (arg === '--compact' || arg === '-c') {
+      flags.compact = true;
+      continue;
+    }
+    if (arg === '--verbose' || arg === '-v') {
+      flags.verbose = true;
+      continue;
+    }
+    if (arg === '--reverse' || arg === '-r') {
+      flags.reverse = true;
+      continue;
+    }
+    if (arg === '--limit' || arg === '--status' || arg === '--session') {
+      const next = argv[index + 1]?.trim();
+      if (!next) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      if (arg === '--limit') {
+        flags.limit = parsePositiveInt('--limit', next);
+      } else if (arg === '--status') {
+        flags.status = next;
+      } else {
+        flags.session = next;
+      }
+      index += 1;
+      continue;
+    }
+    if (arg === '--last' || arg === '-n' || arg === '--step' || arg === '-s') {
+      const next = argv[index + 1]?.trim();
+      if (!next) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      const value = parsePositiveInt(arg, next);
+      if (arg === '--last' || arg === '-n') {
+        flags.last = value;
+      } else {
+        flags.step = value;
+      }
+      index += 1;
+    }
+  }
+
+  return flags;
+};
+
+export const runTaskCommand = async (
+  argv: string[],
+  options: RunTaskCommandOptions = {}
+) => {
+  const client = options.client ?? new CloudManagementClient();
+  const output = options.stdout ?? process.stdout;
+  const errorOutput = options.stderr ?? process.stderr;
+  const subcommand = argv[0] ?? '';
+
+  try {
+    if (subcommand === 'list') {
+      const flags = parseTaskCommandFlags(argv.slice(1));
+      const result = await client.list_tasks({
+        pageSize: flags.limit,
+        filterBy: flags.status,
+        sessionId: flags.session,
+      });
+      if (flags.json) {
+        writeLine(output, JSON.stringify(result.items, null, 2));
+        return 0;
+      }
+      if (result.items.length === 0) {
+        writeLine(output, 'No tasks found');
+        return 0;
+      }
+      writeLine(output, `Tasks (${result.items.length}):`);
+      for (const task of result.items) {
+        const emoji =
+          {
+            created: '🕒',
+            started: '🔄',
+            running: '🔄',
+            finished: '✅',
+            stopped: '⏹️',
+            failed: '❌',
+          }[task.status] ?? '❓';
+        const text =
+          task.task.length > 50 ? `${task.task.slice(0, 47)}...` : task.task;
+        writeLine(output, `  ${emoji} ${task.id.slice(0, 8)}... [${task.status}] ${text}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'status') {
+      const taskId = argv[1]?.trim();
+      if (!taskId) {
+        throw new Error('Usage: browser-use task status <task-id>');
+      }
+      const flags = parseTaskCommandFlags(argv.slice(2));
+      const task = await client.get_task(taskId);
+      if (flags.json) {
+        writeLine(output, JSON.stringify(task, null, 2));
+        return 0;
+      }
+
+      const parts = [
+        `${
+          {
+            created: '🕒',
+            started: '🔄',
+            running: '🔄',
+            finished: '✅',
+            stopped: '⏹️',
+            failed: '❌',
+          }[task.status] ?? '❓'
+        } ${task.id.slice(0, 8)}... [${task.status}]`,
+      ];
+      const duration = formatDuration(task.startedAt, task.finishedAt);
+      if (duration) {
+        parts.push(duration);
+      }
+      writeLine(output, parts.join(' '));
+
+      let steps = [...(task.steps ?? [])];
+      const showAllSteps = flags.compact || flags.verbose;
+      if (flags.step !== null) {
+        steps = steps.filter((step) => Number(step.number) === flags.step);
+      } else if (!showAllSteps && steps.length > 1) {
+        writeLine(output, `  ... ${steps.length - 1} earlier steps`);
+        steps = [steps[steps.length - 1]!];
+      } else if (flags.last !== null && flags.last < steps.length) {
+        writeLine(output, `  ... ${steps.length - flags.last} earlier steps`);
+        steps = steps.slice(-flags.last);
+      }
+      if (flags.reverse) {
+        steps.reverse();
+      }
+      steps.forEach((step) => printTaskStep(output, step, flags.verbose));
+
+      if (task.output) {
+        writeLine(output, '');
+        writeLine(output, `Output: ${task.output}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'stop') {
+      const taskId = argv[1]?.trim();
+      if (!taskId) {
+        throw new Error('Usage: browser-use task stop <task-id>');
+      }
+      const flags = parseTaskCommandFlags(argv.slice(2));
+      await client.update_task(taskId, 'stop');
+      if (flags.json) {
+        writeLine(output, JSON.stringify({ stopped: taskId }, null, 2));
+      } else {
+        writeLine(output, `Stopped task: ${taskId}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'logs') {
+      const taskId = argv[1]?.trim();
+      if (!taskId) {
+        throw new Error('Usage: browser-use task logs <task-id>');
+      }
+      const flags = parseTaskCommandFlags(argv.slice(2));
+      const result = await client.get_task_logs(taskId);
+      if (flags.json) {
+        writeLine(output, JSON.stringify(result, null, 2));
+      } else if (result.downloadUrl) {
+        writeLine(output, `Download logs: ${result.downloadUrl}`);
+      } else {
+        writeLine(output, 'No logs available for this task');
+      }
+      return 0;
+    }
+
+    writeLine(
+      errorOutput,
+      'Usage: browser-use task <list|status|stop|logs> [options]'
+    );
+    return 1;
+  } catch (error) {
+    writeLine(errorOutput, `Error: ${(error as Error).message}`);
+    return 1;
+  }
+};
+
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
   message: string;
@@ -1612,6 +1886,14 @@ async function runMcpServer() {
 }
 
 export async function main(argv: string[] = process.argv.slice(2)) {
+  if (argv[0] === 'task') {
+    const exitCode = await runTaskCommand(argv.slice(1));
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+    return;
+  }
+
   let args: ParsedCliArgs;
   try {
     args = parseCliArgs(argv);
