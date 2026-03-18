@@ -50,7 +50,10 @@ const parseCookieUrl = (url: string | null | undefined) => {
   }
 };
 
-const cookiePathMatches = (cookiePath: string | null | undefined, urlPath: string) => {
+const cookiePathMatches = (
+  cookiePath: string | null | undefined,
+  urlPath: string
+) => {
   const normalizedCookiePath =
     typeof cookiePath === 'string' && cookiePath.length > 0 ? cookiePath : '/';
   if (normalizedCookiePath === '/') {
@@ -97,7 +100,9 @@ const cookieMatchesUrl = (
 const normalizeSameSite = (
   value: unknown
 ): BrowserCookieInit['sameSite'] | undefined => {
-  const normalized = String(value ?? '').trim().toLowerCase();
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
   if (normalized === 'strict') {
     return 'Strict';
   }
@@ -125,10 +130,7 @@ export class SkillCliServer {
     this.registry = options.registry ?? new SessionRegistry();
   }
 
-  private async _require_node_by_index(
-    browser_session: any,
-    index: unknown
-  ) {
+  private async _require_node_by_index(browser_session: any, index: unknown) {
     const parsedIndex = Number(index);
     if (!Number.isFinite(parsedIndex)) {
       throw new Error('Missing index');
@@ -301,8 +303,7 @@ export class SkillCliServer {
         return node;
       }
       const text = String(params.text ?? '');
-      const clear =
-        typeof params.clear === 'boolean' ? params.clear : true;
+      const clear = typeof params.clear === 'boolean' ? params.clear : true;
       await browser_session._input_text_element_node(node, text, { clear });
       return { input: Number(params.index), text, clear };
     }
@@ -363,8 +364,7 @@ export class SkillCliServer {
         throw new Error('No active page available for wait_text');
       }
       await page.waitForFunction(
-        (needle: string) =>
-          document.body?.innerText?.includes(needle) ?? false,
+        (needle: string) => document.body?.innerText?.includes(needle) ?? false,
         text,
         { timeout }
       );
@@ -396,10 +396,7 @@ export class SkillCliServer {
 
     if (action === 'switch') {
       const identifier = params.tab ?? params.target_id;
-      if (
-        typeof identifier !== 'string' &&
-        typeof identifier !== 'number'
-      ) {
+      if (typeof identifier !== 'string' && typeof identifier !== 'number') {
         throw new Error('Missing tab');
       }
       await browser_session.switch_to_tab(identifier);
@@ -419,10 +416,7 @@ export class SkillCliServer {
         browser_session.active_tab?.target_id ??
         browser_session.active_tab?.page_id ??
         browser_session.active_tab_index;
-      if (
-        typeof identifier !== 'string' &&
-        typeof identifier !== 'number'
-      ) {
+      if (typeof identifier !== 'string' && typeof identifier !== 'number') {
         throw new Error('Missing tab');
       }
       await browser_session.close_tab(identifier);
@@ -499,7 +493,8 @@ export class SkillCliServer {
       }
       return {
         query,
-        error: 'extract requires agent mode - use: browser-use run "extract ..."',
+        error:
+          'extract requires agent mode - use: browser-use run "extract ..."',
       };
     }
 
@@ -553,7 +548,8 @@ export class SkillCliServer {
 
     if (action === 'cookies_get') {
       const url = typeof params.url === 'string' ? params.url.trim() : '';
-      const allCookies = await browser_session.get_cookies();
+      const allCookies =
+        (await browser_session.get_cookies()) as BrowserCookieInit[];
       const cookies = url
         ? allCookies.filter((cookie: BrowserCookieInit) =>
             cookieMatchesUrl(cookie, url)
@@ -612,7 +608,8 @@ export class SkillCliServer {
         return { cleared: true };
       }
 
-      const allCookies = await browser_session.get_cookies();
+      const allCookies =
+        (await browser_session.get_cookies()) as BrowserCookieInit[];
       const remainingCookies = allCookies.filter(
         (cookie: BrowserCookieInit) => !cookieMatchesUrl(cookie, url)
       );
@@ -633,7 +630,8 @@ export class SkillCliServer {
         throw new Error('Missing file');
       }
       const url = typeof params.url === 'string' ? params.url.trim() : '';
-      const allCookies = await browser_session.get_cookies();
+      const allCookies =
+        (await browser_session.get_cookies()) as BrowserCookieInit[];
       const cookies = url
         ? allCookies.filter((cookie: BrowserCookieInit) =>
             cookieMatchesUrl(cookie, url)
@@ -667,7 +665,9 @@ export class SkillCliServer {
           typeof typedCookie.name !== 'string' ||
           typeof typedCookie.value !== 'string'
         ) {
-          throw new Error('Each imported cookie must include string name/value');
+          throw new Error(
+            'Each imported cookie must include string name/value'
+          );
         }
         return typedCookie as BrowserCookieInit;
       });

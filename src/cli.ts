@@ -14,7 +14,10 @@ import {
 import { BrowserSession, systemChrome } from './browser/session.js';
 import { CONFIG } from './config.js';
 import { CloudBrowserClient } from './browser/cloud/cloud.js';
-import { CloudManagementClient, type CloudTaskView } from './browser/cloud/management.js';
+import {
+  CloudManagementClient,
+  type CloudTaskView,
+} from './browser/cloud/management.js';
 import { ChatOpenAI } from './llm/openai/chat.js';
 import { ChatAnthropic } from './llm/anthropic/chat.js';
 import { ChatGoogle } from './llm/google/chat.js';
@@ -1077,13 +1080,13 @@ export interface RunProfileCommandOptions {
   local_session_factory?: (profile_directory: string) => {
     start: () => Promise<unknown>;
     stop?: () => Promise<void>;
-    get_cookies?: () => Promise<Array<Record<string, any>>>;
+    get_cookies?: () => Promise<BrowserCookieInit[]>;
   };
   remote_session_factory?: (init: { cdp_url: string }) => {
     start: () => Promise<unknown>;
     stop?: () => Promise<void>;
     browser_context?: {
-      addCookies?: (cookies: Array<Record<string, any>>) => Promise<unknown>;
+      addCookies?: (cookies: BrowserCookieInit[]) => Promise<unknown>;
     } | null;
   };
   cloud_browser_client_factory?: () => Pick<
@@ -1104,9 +1107,20 @@ export interface RunCloudTaskCommandOptions {
   sleep_impl?: (ms: number) => Promise<void>;
 }
 
-export const runInstallCommand = (
-  options: RunInstallCommandOptions = {}
-) => {
+type BrowserCookieInit = {
+  name: string;
+  value: string;
+  url?: string;
+  domain?: string;
+  path?: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+  partitionKey?: string;
+};
+
+export const runInstallCommand = (options: RunInstallCommandOptions = {}) => {
   const playwrightCliPath =
     options.playwright_cli_path ?? resolvePlaywrightCliPath();
   const spawnImpl = options.spawn_impl ?? spawnSync;
@@ -1250,7 +1264,11 @@ type PlannedSetupAction =
 
 const validateSetupMode = (mode: string | null | undefined): CliSetupMode => {
   const normalized = (mode ?? 'local').trim().toLowerCase();
-  if (normalized === 'local' || normalized === 'remote' || normalized === 'full') {
+  if (
+    normalized === 'local' ||
+    normalized === 'remote' ||
+    normalized === 'full'
+  ) {
     return normalized;
   }
   throw new Error(
@@ -1294,7 +1312,10 @@ const planSetupActions = (
     });
   }
 
-  if ((mode === 'remote' || mode === 'full') && checks.api_key?.status !== 'ok') {
+  if (
+    (mode === 'remote' || mode === 'full') &&
+    checks.api_key?.status !== 'ok'
+  ) {
     if (api_key?.trim()) {
       actions.push({
         type: 'configure_api_key',
@@ -1335,15 +1356,15 @@ const logSetupChecks = (
   for (const [name, check] of Object.entries(checks)) {
     const icon =
       check.status === 'ok' ? '✓' : check.status === 'missing' ? '⚠' : '✗';
-    writeLine(
-      stream,
-      `  ${icon} ${name.replace(/_/g, ' ')}: ${check.message}`
-    );
+    writeLine(stream, `  ${icon} ${name.replace(/_/g, ' ')}: ${check.message}`);
   }
   writeLine(stream, '');
 };
 
-const logSetupActions = (stream: WritableLike, actions: PlannedSetupAction[]) => {
+const logSetupActions = (
+  stream: WritableLike,
+  actions: PlannedSetupAction[]
+) => {
   if (actions.length === 0) {
     writeLine(stream, 'No additional setup needed.');
     writeLine(stream, '');
@@ -1393,7 +1414,8 @@ export const runSetupCommand = async (
   const api_key = params.api_key?.trim() || null;
   const runDoctor =
     options.run_doctor_checks ??
-    ((doctorOptions?: RunDoctorChecksOptions) => runDoctorChecks(doctorOptions));
+    ((doctorOptions?: RunDoctorChecksOptions) =>
+      runDoctorChecks(doctorOptions));
   const installCommand = options.install_command ?? runInstallCommand;
   const saveApiKey = options.save_api_key ?? save_cloud_api_token;
   const output = options.stdout ?? process.stdout;
@@ -1549,10 +1571,7 @@ const requireCommandTarget = (
   return target;
 };
 
-const rejectUnexpectedPositionals = (
-  positionals: string[],
-  usage: string
-) => {
+const rejectUnexpectedPositionals = (positionals: string[], usage: string) => {
   if (positionals.length > 0) {
     throw new Error(usage);
   }
@@ -1704,7 +1723,10 @@ export const runTaskCommand = async (
           }[task.status] ?? '❓';
         const text =
           task.task.length > 50 ? `${task.task.slice(0, 47)}...` : task.task;
-        writeLine(output, `  ${emoji} ${task.id.slice(0, 8)}... [${task.status}] ${text}`);
+        writeLine(
+          output,
+          `  ${emoji} ${task.id.slice(0, 8)}... [${task.status}] ${text}`
+        );
       }
       return 0;
     }
@@ -1953,7 +1975,10 @@ export const runSessionCommand = async (
         const emoji = session.status === 'active' ? '🟢' : '⏹️';
         const duration = formatDuration(session.startedAt, session.finishedAt);
         const details = duration ? ` ${duration}` : '';
-        writeLine(output, `  ${emoji} ${session.id.slice(0, 8)}... [${session.status}]${details}`);
+        writeLine(
+          output,
+          `  ${emoji} ${session.id.slice(0, 8)}... [${session.status}]${details}`
+        );
       }
       return 0;
     }
@@ -2013,7 +2038,10 @@ export const runSessionCommand = async (
         if (flags.json) {
           writeLine(output, JSON.stringify({ stopped }, null, 2));
         } else if (stopped.length > 0) {
-          writeLine(output, `Stopped ${stopped.length} session(s): ${stopped.join(', ')}`);
+          writeLine(
+            output,
+            `Stopped ${stopped.length} session(s): ${stopped.join(', ')}`
+          );
         } else {
           writeLine(output, 'No sessions to stop');
         }
@@ -2045,7 +2073,13 @@ export const runSessionCommand = async (
       );
       rejectUnsupportedFlags(
         flags.used_options,
-        ['--json', '--profile', '--proxy-country', '--start-url', '--screen-size'],
+        [
+          '--json',
+          '--profile',
+          '--proxy-country',
+          '--start-url',
+          '--screen-size',
+        ],
         'Usage: browser-use session create [options]'
       );
       let browserScreenWidth: number | null = null;
@@ -2198,10 +2232,10 @@ const cookieMatchesDomainFilter = (
   const normalizedFilter = normalizeProfileCookieDomain(domainFilter);
   return Boolean(
     cookieDomain &&
-      normalizedFilter &&
-      (cookieDomain === normalizedFilter ||
-        cookieDomain.endsWith(`.${normalizedFilter}`) ||
-        normalizedFilter.endsWith(`.${cookieDomain}`))
+    normalizedFilter &&
+    (cookieDomain === normalizedFilter ||
+      cookieDomain.endsWith(`.${normalizedFilter}`) ||
+      normalizedFilter.endsWith(`.${cookieDomain}`))
   );
 };
 
@@ -2210,7 +2244,8 @@ export const runProfileCommand = async (
   options: RunProfileCommandOptions = {}
 ) => {
   const client = options.client ?? new CloudManagementClient();
-  const profileLister = options.profile_lister ?? (() => systemChrome.listProfiles());
+  const profileLister =
+    options.profile_lister ?? (() => systemChrome.listProfiles());
   const localSessionFactory =
     options.local_session_factory ??
     ((profile_directory: string) =>
@@ -2253,10 +2288,7 @@ export const runProfileCommand = async (
         } else {
           writeLine(output, `Cloud profiles (${result.items.length}):`);
           result.items.forEach((profile) => {
-            writeLine(
-              output,
-              `  ${profile.id}: ${profile.name || 'Unnamed'}`
-            );
+            writeLine(output, `  ${profile.id}: ${profile.name || 'Unnamed'}`);
           });
         }
         return 0;
@@ -2271,7 +2303,10 @@ export const runProfileCommand = async (
         writeLine(output, 'Local Chrome profiles:');
         profiles.forEach((profile) => {
           const emailSuffix = profile.email ? ` (${profile.email})` : '';
-          writeLine(output, `  ${profile.directory}: ${profile.name}${emailSuffix}`);
+          writeLine(
+            output,
+            `  ${profile.directory}: ${profile.name}${emailSuffix}`
+          );
         });
       }
       return 0;
@@ -2390,7 +2425,9 @@ export const runProfileCommand = async (
         'Usage: browser-use profile cookies <profile-id>'
       );
       if (flags.remote) {
-        throw new Error('Profile cookies is only supported for local Chrome profiles');
+        throw new Error(
+          'Profile cookies is only supported for local Chrome profiles'
+        );
       }
       const profile = profileLister().find(
         (entry) => entry.directory === profileId || entry.name === profileId
@@ -2405,7 +2442,8 @@ export const runProfileCommand = async (
         const cookies = (await session.get_cookies?.()) ?? [];
         const domains = new Map<string, number>();
         for (const cookie of cookies) {
-          const domain = normalizeProfileCookieDomain(cookie.domain) || 'unknown';
+          const domain =
+            normalizeProfileCookieDomain(cookie.domain) || 'unknown';
           domains.set(domain, (domains.get(domain) ?? 0) + 1);
         }
         const sortedDomains = Array.from(domains.entries()).sort(
@@ -2468,7 +2506,10 @@ export const runProfileCommand = async (
       const profiles = profileLister();
       const fromProfile = flags.from_profile?.trim();
       if (!fromProfile) {
-        writeLine(errorOutput, 'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]');
+        writeLine(
+          errorOutput,
+          'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]'
+        );
         if (profiles.length > 0) {
           writeLine(errorOutput, 'Available local profiles:');
           profiles.forEach((profile) => {
@@ -2512,10 +2553,11 @@ export const runProfileCommand = async (
 
         logProgress('  Exporting cookies from local profile...');
         const localSession = localSessionFactory(profile.directory);
-        let filteredCookies: Array<Record<string, any>> = [];
+        let filteredCookies: BrowserCookieInit[] = [];
         await localSession.start();
         try {
-          const cookies = (await localSession.get_cookies?.()) ?? [];
+          const cookies = ((await localSession.get_cookies?.()) ??
+            []) as BrowserCookieInit[];
           filteredCookies = cookies.filter((cookie) =>
             cookieMatchesDomainFilter(cookie, flags.domain)
           );
@@ -2546,7 +2588,9 @@ export const runProfileCommand = async (
         await remoteSession.start();
         try {
           if (!remoteSession.browser_context?.addCookies) {
-            throw new Error('Remote browser context does not support addCookies');
+            throw new Error(
+              'Remote browser context does not support addCookies'
+            );
           }
           await remoteSession.browser_context.addCookies(filteredCookies);
         } finally {
@@ -2836,7 +2880,9 @@ const parseCloudRunArgs = (argv: string[]) => {
     const separator = rawArg.indexOf('=');
     const hasInlineValue = separator > 0;
     const arg = hasInlineValue ? rawArg.slice(0, separator) : rawArg;
-    const inlineValue = hasInlineValue ? rawArg.slice(separator + 1).trim() : '';
+    const inlineValue = hasInlineValue
+      ? rawArg.slice(separator + 1).trim()
+      : '';
     if (arg === '--remote') {
       flags.remote = true;
       continue;
@@ -2929,7 +2975,8 @@ export const runCloudTaskCommand = async (
   const output = options.stdout ?? process.stdout;
   const errorOutput = options.stderr ?? process.stderr;
   const sleepImpl =
-    options.sleep_impl ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    options.sleep_impl ??
+    ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   let autoCreatedSessionId: string | null = null;
   let taskCreated = false;
 
@@ -3090,9 +3137,9 @@ export const runDoctorChecks = async (
   const configuredApiKey =
     options.api_key !== undefined
       ? options.api_key?.trim() || null
-      : (process.env.BROWSER_USE_API_KEY?.trim() ||
-          new DeviceAuthClient().api_token?.trim() ||
-          null);
+      : process.env.BROWSER_USE_API_KEY?.trim() ||
+        new DeviceAuthClient().api_token?.trim() ||
+        null;
   const apiKeySource =
     options.api_key !== undefined
       ? 'argument'
@@ -3244,7 +3291,10 @@ export async function main(argv: string[] = process.argv.slice(2)) {
         !hasCloudRunFlags(prefixedSubcommand.argv) ||
         !hasExplicitRemoteRunFlag(prefixedSubcommand.argv)
       ) {
-        await main([...prefixedSubcommand.forwardedArgs, ...prefixedSubcommand.argv]);
+        await main([
+          ...prefixedSubcommand.forwardedArgs,
+          ...prefixedSubcommand.argv,
+        ]);
         return;
       }
       const exitCode = await runCloudTaskCommand(prefixedSubcommand.argv);
@@ -3254,7 +3304,10 @@ export async function main(argv: string[] = process.argv.slice(2)) {
       return;
     }
 
-    const subcommandArgv = [...prefixedSubcommand.argv, ...prefixedSubcommand.forwardedArgs];
+    const subcommandArgv = [
+      ...prefixedSubcommand.argv,
+      ...prefixedSubcommand.forwardedArgs,
+    ];
     if (prefixedSubcommand.command === 'task') {
       const exitCode = await runTaskCommand(subcommandArgv);
       if (exitCode !== 0) {
