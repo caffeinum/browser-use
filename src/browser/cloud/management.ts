@@ -296,6 +296,19 @@ export class CloudManagementClient {
     );
   }
 
+  async update_profile(
+    profile_id: string,
+    request: { name?: string | null } = {}
+  ) {
+    return await this.request_json<CloudProfileView>(
+      `/api/v2/profiles/${encodeURIComponent(profile_id)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(request),
+      }
+    );
+  }
+
   async delete_profile(profile_id: string) {
     await this.request_json<unknown>(
       `/api/v2/profiles/${encodeURIComponent(profile_id)}`,

@@ -54,6 +54,12 @@ describe('browser cloud management alignment', () => {
         updatedAt: '2026-03-18T10:00:00Z',
         name: 'Primary',
       },
+      {
+        id: 'profile-1',
+        createdAt: '2026-03-18T10:00:00Z',
+        updatedAt: '2026-03-18T10:05:00Z',
+        name: 'Renamed',
+      },
       {},
     ];
     let index = 0;
@@ -77,10 +83,14 @@ describe('browser cloud management alignment', () => {
       proxyCountryCode: 'us',
     });
     const profile = await client.get_profile('profile-1');
+    const updated = await client.update_profile('profile-1', {
+      name: 'Renamed',
+    });
     await client.delete_profile('profile-1');
 
     expect(session.id).toBe('session-1');
     expect(profile.name).toBe('Primary');
+    expect(updated.name).toBe('Renamed');
     expect(requests[0]!.url).toBe('https://api.browser-use.test/api/v2/sessions');
     expect(requests[0]!.init.method).toBe('POST');
     expect(requests[1]!.url).toBe(
@@ -90,6 +100,11 @@ describe('browser cloud management alignment', () => {
     expect(requests[2]!.url).toBe(
       'https://api.browser-use.test/api/v2/profiles/profile-1'
     );
-    expect(requests[2]!.init.method).toBe('DELETE');
+    expect(requests[2]!.init.method).toBe('PATCH');
+    expect(requests[2]!.init.body).toBe(JSON.stringify({ name: 'Renamed' }));
+    expect(requests[3]!.url).toBe(
+      'https://api.browser-use.test/api/v2/profiles/profile-1'
+    );
+    expect(requests[3]!.init.method).toBe('DELETE');
   });
 });

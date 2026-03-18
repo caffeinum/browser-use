@@ -1061,7 +1061,11 @@ export interface RunSessionCommandOptions {
 export interface RunProfileCommandOptions {
   client?: Pick<
     CloudManagementClient,
-    'list_profiles' | 'get_profile' | 'create_profile' | 'delete_profile'
+    | 'list_profiles'
+    | 'get_profile'
+    | 'create_profile'
+    | 'update_profile'
+    | 'delete_profile'
   >;
   profile_lister?: () => Array<{ directory: string; name: string }>;
   stdout?: WritableLike;
@@ -2078,9 +2082,36 @@ export const runProfileCommand = async (
       return 0;
     }
 
+    if (subcommand === 'update') {
+      const profileId = argv[1]?.trim();
+      if (!profileId) {
+        throw new Error(
+          'Usage: browser-use profile update <profile-id> --remote --name <name>'
+        );
+      }
+      const flags = parseProfileCommandFlags(argv.slice(2));
+      if (!flags.remote) {
+        throw new Error('Profile update is only supported with --remote');
+      }
+      if (!flags.name) {
+        throw new Error(
+          'Usage: browser-use profile update <profile-id> --remote --name <name>'
+        );
+      }
+      const profile = await client.update_profile(profileId, {
+        name: flags.name,
+      });
+      if (flags.json) {
+        writeLine(output, JSON.stringify(profile, null, 2));
+      } else {
+        writeLine(output, `Updated cloud profile: ${profile.id}`);
+      }
+      return 0;
+    }
+
     writeLine(
       errorOutput,
-      'Usage: browser-use profile <list|get|create|delete> [--remote] [options]'
+      'Usage: browser-use profile <list|get|create|update|delete> [--remote] [options]'
     );
     return 1;
   } catch (error) {

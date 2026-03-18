@@ -70,6 +70,12 @@ describe('cli cloud profile alignment', () => {
         createdAt: '2026-03-18T10:00:00Z',
         updatedAt: '2026-03-18T10:00:00Z',
       })),
+      update_profile: vi.fn(async () => ({
+        id: 'profile-2',
+        name: 'Renamed',
+        createdAt: '2026-03-18T10:00:00Z',
+        updatedAt: '2026-03-18T10:05:00Z',
+      })),
       delete_profile: vi.fn(async () => {}),
     };
 
@@ -95,6 +101,16 @@ describe('cli cloud profile alignment', () => {
       })
     ).toBe(0);
     expect(
+      await runProfileCommand(
+        ['update', 'profile-2', '--remote', '--name', 'Renamed'],
+        {
+          client: client as any,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+        }
+      )
+    ).toBe(0);
+    expect(
       await runProfileCommand(['delete', 'profile-2', '--remote'], {
         client: client as any,
         stdout: stdout.stream,
@@ -104,9 +120,13 @@ describe('cli cloud profile alignment', () => {
 
     expect(client.list_profiles).toHaveBeenCalledWith({ pageSize: 20 });
     expect(client.create_profile).toHaveBeenCalledWith({ name: 'Secondary' });
+    expect(client.update_profile).toHaveBeenCalledWith('profile-2', {
+      name: 'Renamed',
+    });
     expect(client.delete_profile).toHaveBeenCalledWith('profile-2');
     expect(stdout.read()).toContain('Cloud profiles (1):');
     expect(stdout.read()).toContain('Created cloud profile: profile-2');
+    expect(stdout.read()).toContain('Updated cloud profile: profile-2');
     expect(stdout.read()).toContain('Deleted cloud profile: profile-2');
     expect(stderr.read()).toBe('');
   });
