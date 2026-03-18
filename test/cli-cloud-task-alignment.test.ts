@@ -131,4 +131,39 @@ describe('cli cloud task alignment', () => {
     expect(stdout.read()).toContain('"id": "task-1"');
     expect(stderr.read()).toBe('');
   });
+
+  it('supports inline task flags and rejects unknown options', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_tasks: vi.fn(async () => ({
+        items: [],
+      })),
+      get_task: vi.fn(),
+      update_task: vi.fn(),
+      get_task_logs: vi.fn(),
+    };
+
+    expect(
+      await runTaskCommand(['list', '--limit=7', '--status=finished'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(0);
+    expect(client.list_tasks).toHaveBeenCalledWith({
+      pageSize: 7,
+      filterBy: 'finished',
+      sessionId: null,
+    });
+
+    expect(
+      await runTaskCommand(['list', '--statuss', 'finished'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(stderr.read()).toContain('Unknown option: --statuss');
+  });
 });

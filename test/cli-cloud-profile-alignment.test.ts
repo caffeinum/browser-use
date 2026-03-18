@@ -219,4 +219,78 @@ describe('cli cloud profile alignment', () => {
       expect.arrayContaining([expect.objectContaining({ name: 'trap' })])
     );
   });
+
+  it('supports inline profile flags and rejects unknown options', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const profiles = [
+      { directory: 'Default', name: 'Personal', email: 'person@example.com' },
+    ];
+    const localSessionFactory = vi.fn(() => ({
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      get_cookies: vi.fn(async () => [
+        { name: 'sid', value: '1', domain: '.youtube.com', path: '/' },
+      ]),
+    }));
+    const remoteAddCookies = vi.fn(async () => {});
+    const remoteSessionFactory = vi.fn(() => ({
+      start: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      browser_context: {
+        addCookies: remoteAddCookies,
+      },
+    }));
+    const cloudClient = {
+      create_browser: vi.fn(async () => ({
+        id: 'browser-inline',
+        cdpUrl: 'wss://cloud.example/devtools/browser/inline',
+      })),
+      stop_browser: vi.fn(async () => {}),
+    };
+    const client = {
+      create_profile: vi.fn(async () => ({
+        id: 'profile-inline',
+        name: 'Chrome - Personal (youtube.com)',
+        createdAt: '2026-03-18T10:00:00Z',
+        updatedAt: '2026-03-18T10:00:00Z',
+      })),
+      delete_profile: vi.fn(async () => {}),
+      list_profiles: vi.fn(),
+      get_profile: vi.fn(),
+      update_profile: vi.fn(),
+    };
+
+    expect(
+      await runProfileCommand(
+        ['sync', '--from=Default', '--domain=youtube.com', '--json'],
+        {
+          profile_lister: () => profiles,
+          local_session_factory: localSessionFactory as any,
+          remote_session_factory: remoteSessionFactory as any,
+          cloud_browser_client_factory: () => cloudClient as any,
+          client: client as any,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+        }
+      )
+    ).toBe(0);
+    expect(client.create_profile).toHaveBeenCalledWith({
+      name: 'Chrome - Personal (youtube.com)',
+    });
+    expect(stdout.read()).toContain('"profile_id": "profile-inline"');
+
+    expect(
+      await runProfileCommand(['sync', '--fromm', 'Default'], {
+        profile_lister: () => profiles,
+        local_session_factory: localSessionFactory as any,
+        remote_session_factory: remoteSessionFactory as any,
+        cloud_browser_client_factory: () => cloudClient as any,
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(stderr.read()).toContain('Unknown option: --fromm');
+  });
 });

@@ -1569,33 +1569,38 @@ const parseTaskCommandFlags = (argv: string[]) => {
       flags.reverse = true;
       continue;
     }
-    if (arg === '--limit' || arg === '--status' || arg === '--session') {
-      const next = argv[index + 1]?.trim();
-      if (!next) {
-        throw new Error(`Missing value for ${arg}`);
-      }
-      if (arg === '--limit') {
-        flags.limit = parsePositiveInt('--limit', next);
-      } else if (arg === '--status') {
-        flags.status = next;
-      } else {
-        flags.session = next;
-      }
-      index += 1;
+    if (arg === '--limit' || arg.startsWith('--limit=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.limit = parsePositiveInt('--limit', value);
+      index = nextIndex;
       continue;
     }
-    if (arg === '--last' || arg === '-n' || arg === '--step' || arg === '-s') {
-      const next = argv[index + 1]?.trim();
-      if (!next) {
-        throw new Error(`Missing value for ${arg}`);
-      }
-      const value = parsePositiveInt(arg, next);
-      if (arg === '--last' || arg === '-n') {
-        flags.last = value;
-      } else {
-        flags.step = value;
-      }
-      index += 1;
+    if (arg === '--status' || arg.startsWith('--status=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.status = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--session' || arg.startsWith('--session=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.session = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--last' || arg === '-n' || arg.startsWith('--last=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.last = parsePositiveInt('--last', value);
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--step' || arg === '-s' || arg.startsWith('--step=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.step = parsePositiveInt('--step', value);
+      index = nextIndex;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      throw new Error(`Unknown option: ${arg}`);
     }
   }
 
@@ -1768,32 +1773,44 @@ const parseSessionCommandFlags = (argv: string[]) => {
       flags.delete = true;
       continue;
     }
-    if (
-      arg === '--limit' ||
-      arg === '--status' ||
-      arg === '--profile' ||
-      arg === '--proxy-country' ||
-      arg === '--start-url' ||
-      arg === '--screen-size'
-    ) {
-      const next = argv[index + 1]?.trim();
-      if (!next) {
-        throw new Error(`Missing value for ${arg}`);
-      }
-      if (arg === '--limit') {
-        flags.limit = parsePositiveInt('--limit', next);
-      } else if (arg === '--status') {
-        flags.status = next;
-      } else if (arg === '--profile') {
-        flags.profile = next;
-      } else if (arg === '--proxy-country') {
-        flags.proxy_country = next;
-      } else if (arg === '--start-url') {
-        flags.start_url = next;
-      } else {
-        flags.screen_size = next;
-      }
-      index += 1;
+    if (arg === '--limit' || arg.startsWith('--limit=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.limit = parsePositiveInt('--limit', value);
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--status' || arg.startsWith('--status=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.status = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--profile' || arg.startsWith('--profile=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.profile = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--proxy-country' || arg.startsWith('--proxy-country=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.proxy_country = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--start-url' || arg.startsWith('--start-url=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.start_url = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--screen-size' || arg.startsWith('--screen-size=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.screen_size = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      throw new Error(`Unknown option: ${arg}`);
     }
   }
 
@@ -1975,26 +1992,32 @@ const parseProfileCommandFlags = (argv: string[]) => {
       flags.remote = true;
       continue;
     }
-    if (
-      arg === '--limit' ||
-      arg === '--name' ||
-      arg === '--domain' ||
-      arg === '--from'
-    ) {
-      const next = argv[index + 1]?.trim();
-      if (!next) {
-        throw new Error(`Missing value for ${arg}`);
-      }
-      if (arg === '--limit') {
-        flags.limit = parsePositiveInt('--limit', next);
-      } else if (arg === '--name') {
-        flags.name = next;
-      } else if (arg === '--domain') {
-        flags.domain = next;
-      } else {
-        flags.from_profile = next;
-      }
-      index += 1;
+    if (arg === '--limit' || arg.startsWith('--limit=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.limit = parsePositiveInt('--limit', value);
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--name' || arg.startsWith('--name=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.name = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--domain' || arg.startsWith('--domain=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.domain = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg === '--from' || arg.startsWith('--from=')) {
+      const { value, nextIndex } = takeOptionValue(arg, index, argv);
+      flags.from_profile = value;
+      index = nextIndex;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      throw new Error(`Unknown option: ${arg}`);
     }
   }
 

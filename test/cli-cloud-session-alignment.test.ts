@@ -145,4 +145,54 @@ describe('cli cloud session alignment', () => {
     expect(stdout.read()).toContain('Deleted public share for session: session-new');
     expect(stderr.read()).toBe('');
   });
+
+  it('supports inline session flags and rejects unknown options', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_sessions: vi.fn(),
+      get_session: vi.fn(),
+      update_session: vi.fn(),
+      create_session: vi.fn(async () => ({
+        id: 'session-inline',
+        status: 'active',
+        startedAt: '2026-03-18T10:00:00Z',
+      })),
+      create_session_public_share: vi.fn(),
+      delete_session_public_share: vi.fn(),
+    };
+
+    expect(
+      await runSessionCommand(
+        [
+          'create',
+          '--profile=profile-1',
+          '--proxy-country=us',
+          '--start-url=https://example.com',
+          '--screen-size=1280x720',
+        ],
+        {
+          client: client as any,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+        }
+      )
+    ).toBe(0);
+    expect(client.create_session).toHaveBeenCalledWith({
+      profileId: 'profile-1',
+      proxyCountryCode: 'us',
+      startUrl: 'https://example.com',
+      browserScreenWidth: 1280,
+      browserScreenHeight: 720,
+    });
+
+    expect(
+      await runSessionCommand(['create', '--screen-sizee', '1280x720'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(stderr.read()).toContain('Unknown option: --screen-sizee');
+  });
 });
