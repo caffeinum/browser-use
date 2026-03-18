@@ -270,6 +270,30 @@ describe('cli cloud run alignment', () => {
     expect(stderr.read()).toContain('Usage: browser-use run --remote <task>');
   });
 
+  it('rejects missing values instead of consuming the next cloud flag', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(),
+      create_task: vi.fn(),
+      get_task: vi.fn(),
+      update_session: vi.fn(),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      ['--remote', '--llm', '--wait', 'Finish', 'task'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(client.create_task).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain('Missing value for option: --llm');
+  });
+
   it('allows task text that starts with dashes after --', async () => {
     const stdout = createWritable();
     const stderr = createWritable();

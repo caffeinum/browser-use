@@ -2842,10 +2842,7 @@ const parseCloudRunArgs = (argv: string[]) => {
       arg === '--allowed-domain' ||
       arg === '--skill-id'
     ) {
-      const next = hasInlineValue ? inlineValue : argv[index + 1]?.trim();
-      if (!next) {
-        throw new Error(`Missing value for ${arg}`);
-      }
+      const { value: next, nextIndex } = takeOptionValue(rawArg, index, argv);
       if (arg === '--llm') {
         flags.llm = next;
       } else if (arg === '--session-id') {
@@ -2871,9 +2868,7 @@ const parseCloudRunArgs = (argv: string[]) => {
       } else {
         flags.skill_id.push(next);
       }
-      if (!hasInlineValue) {
-        index += 1;
-      }
+      index = nextIndex;
       continue;
     }
     if (rawArg.startsWith('-')) {
