@@ -387,6 +387,25 @@ describe('AgentMessagePrompt browser state enrichment', () => {
 });
 
 describe('SystemPrompt template selection parity', () => {
+  it('keeps the default thinking prompt aligned with grounding and shadow DOM guidance', () => {
+    const prompt = new SystemPrompt();
+    const text = prompt.get_system_message().text;
+
+    expect(text).toContain('tree-style XML format');
+    expect(text).toContain('`|SHADOW(open)|` or `|SHADOW(closed)|`');
+    expect(text).toContain('Blocking error check:');
+    expect(text).toContain('Elements inside shadow DOM');
+  });
+
+  it('keeps the no-thinking prompt aligned with automatic captcha handling', () => {
+    const prompt = new SystemPrompt(3, null, null, false);
+    const text = prompt.get_system_message().text;
+
+    expect(text).toContain('CAPTCHAs are automatically solved by the browser.');
+    expect(text).toContain('Verify data grounding:');
+    expect(text).toContain('Blocking error check:');
+  });
+
   it('uses browser-use thinking template for browser-use models', () => {
     const prompt = new SystemPrompt(
       5,
@@ -449,5 +468,31 @@ describe('SystemPrompt template selection parity', () => {
     expect(prompt.get_system_message().text).toContain(
       'Operating effectively in an agent loop with persistent state'
     );
+  });
+
+  it('keeps the generic flash prompt aligned with blocking-error and grounding checks', () => {
+    const prompt = new SystemPrompt(3, null, null, true, true);
+    const text = prompt.get_system_message().text;
+
+    expect(text).toContain('BLOCKING ERROR CHECK:');
+    expect(text).toContain('DATA GROUNDING:');
+  });
+
+  it('keeps the anthropic 4.5 flash prompt aligned with automatic captcha handling', () => {
+    const prompt = new SystemPrompt(
+      3,
+      null,
+      null,
+      true,
+      true,
+      true,
+      false,
+      'claude-opus-4.5'
+    );
+    const text = prompt.get_system_message().text;
+
+    expect(text).toContain('CAPTCHAs are automatically solved by the browser.');
+    expect(text).toContain('Are there any obstacles (popups, login walls)?');
+    expect(text).toContain('Blocking error check:');
   });
 });
