@@ -208,4 +208,25 @@ describe('cli cloud task alignment', () => {
     expect(client.get_task).not.toHaveBeenCalled();
     expect(stderr.read()).toContain('Usage: browser-use task status <task-id>');
   });
+
+  it('rejects known task flags that do not apply to the selected subcommand', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_tasks: vi.fn(),
+      get_task: vi.fn(),
+      update_task: vi.fn(),
+      get_task_logs: vi.fn(),
+    };
+
+    expect(
+      await runTaskCommand(['logs', 'task-123', '--verbose'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(client.get_task_logs).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain('Usage: browser-use task logs <task-id>');
+  });
 });

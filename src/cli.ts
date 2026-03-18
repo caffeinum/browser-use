@@ -1558,6 +1558,24 @@ const rejectUnexpectedPositionals = (
   }
 };
 
+const markUsedOption = (used_options: string[], option: string) => {
+  if (!used_options.includes(option)) {
+    used_options.push(option);
+  }
+};
+
+const rejectUnsupportedFlags = (
+  used_options: string[],
+  allowed_options: string[],
+  usage: string
+) => {
+  const allowed = new Set(allowed_options);
+  const unsupported = used_options.find((option) => !allowed.has(option));
+  if (unsupported) {
+    throw new Error(usage);
+  }
+};
+
 const parseTaskCommandFlags = (argv: string[]) => {
   const flags = {
     json: false,
@@ -1570,53 +1588,63 @@ const parseTaskCommandFlags = (argv: string[]) => {
     reverse: false,
     step: null as number | null,
     positionals: [] as string[],
+    used_options: [] as string[],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
     if (arg === '--json') {
       flags.json = true;
+      markUsedOption(flags.used_options, '--json');
       continue;
     }
     if (arg === '--compact' || arg === '-c') {
       flags.compact = true;
+      markUsedOption(flags.used_options, '--compact');
       continue;
     }
     if (arg === '--verbose' || arg === '-v') {
       flags.verbose = true;
+      markUsedOption(flags.used_options, '--verbose');
       continue;
     }
     if (arg === '--reverse' || arg === '-r') {
       flags.reverse = true;
+      markUsedOption(flags.used_options, '--reverse');
       continue;
     }
     if (arg === '--limit' || arg.startsWith('--limit=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.limit = parsePositiveInt('--limit', value);
+      markUsedOption(flags.used_options, '--limit');
       index = nextIndex;
       continue;
     }
     if (arg === '--status' || arg.startsWith('--status=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.status = value;
+      markUsedOption(flags.used_options, '--status');
       index = nextIndex;
       continue;
     }
     if (arg === '--session' || arg.startsWith('--session=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.session = value;
+      markUsedOption(flags.used_options, '--session');
       index = nextIndex;
       continue;
     }
     if (arg === '--last' || arg === '-n' || arg.startsWith('--last=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.last = parsePositiveInt('--last', value);
+      markUsedOption(flags.used_options, '--last');
       index = nextIndex;
       continue;
     }
     if (arg === '--step' || arg === '-s' || arg.startsWith('--step=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.step = parsePositiveInt('--step', value);
+      markUsedOption(flags.used_options, '--step');
       index = nextIndex;
       continue;
     }
@@ -1643,6 +1671,11 @@ export const runTaskCommand = async (
       const flags = parseTaskCommandFlags(argv.slice(1));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use task list [options]'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--limit', '--status', '--session'],
         'Usage: browser-use task list [options]'
       );
       const result = await client.list_tasks({
@@ -1684,6 +1717,11 @@ export const runTaskCommand = async (
       const flags = parseTaskCommandFlags(argv.slice(2));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use task status <task-id>'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--compact', '--verbose', '--reverse', '--last', '--step'],
         'Usage: browser-use task status <task-id>'
       );
       const task = await client.get_task(taskId);
@@ -1743,6 +1781,11 @@ export const runTaskCommand = async (
         flags.positionals,
         'Usage: browser-use task stop <task-id>'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json'],
+        'Usage: browser-use task stop <task-id>'
+      );
       await client.update_task(taskId, 'stop');
       if (flags.json) {
         writeLine(output, JSON.stringify({ stopped: taskId }, null, 2));
@@ -1760,6 +1803,11 @@ export const runTaskCommand = async (
       const flags = parseTaskCommandFlags(argv.slice(2));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use task logs <task-id>'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json'],
         'Usage: browser-use task logs <task-id>'
       );
       const result = await client.get_task_logs(taskId);
@@ -1796,55 +1844,65 @@ const parseSessionCommandFlags = (argv: string[]) => {
     start_url: null as string | null,
     screen_size: null as string | null,
     positionals: [] as string[],
+    used_options: [] as string[],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
     if (arg === '--json') {
       flags.json = true;
+      markUsedOption(flags.used_options, '--json');
       continue;
     }
     if (arg === '--all') {
       flags.all = true;
+      markUsedOption(flags.used_options, '--all');
       continue;
     }
     if (arg === '--delete') {
       flags.delete = true;
+      markUsedOption(flags.used_options, '--delete');
       continue;
     }
     if (arg === '--limit' || arg.startsWith('--limit=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.limit = parsePositiveInt('--limit', value);
+      markUsedOption(flags.used_options, '--limit');
       index = nextIndex;
       continue;
     }
     if (arg === '--status' || arg.startsWith('--status=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.status = value;
+      markUsedOption(flags.used_options, '--status');
       index = nextIndex;
       continue;
     }
     if (arg === '--profile' || arg.startsWith('--profile=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.profile = value;
+      markUsedOption(flags.used_options, '--profile');
       index = nextIndex;
       continue;
     }
     if (arg === '--proxy-country' || arg.startsWith('--proxy-country=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.proxy_country = value;
+      markUsedOption(flags.used_options, '--proxy-country');
       index = nextIndex;
       continue;
     }
     if (arg === '--start-url' || arg.startsWith('--start-url=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.start_url = value;
+      markUsedOption(flags.used_options, '--start-url');
       index = nextIndex;
       continue;
     }
     if (arg === '--screen-size' || arg.startsWith('--screen-size=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.screen_size = value;
+      markUsedOption(flags.used_options, '--screen-size');
       index = nextIndex;
       continue;
     }
@@ -1871,6 +1929,11 @@ export const runSessionCommand = async (
       const flags = parseSessionCommandFlags(argv.slice(1));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use session list [options]'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--limit', '--status'],
         'Usage: browser-use session list [options]'
       );
       const result = await client.list_sessions({
@@ -1905,6 +1968,11 @@ export const runSessionCommand = async (
         flags.positionals,
         'Usage: browser-use session get <session-id>'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json'],
+        'Usage: browser-use session get <session-id>'
+      );
       const session = await client.get_session(sessionId);
       if (flags.json) {
         writeLine(output, JSON.stringify(session, null, 2));
@@ -1923,6 +1991,11 @@ export const runSessionCommand = async (
 
     if (subcommand === 'stop') {
       const flags = parseSessionCommandFlags(argv.slice(1));
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--all'],
+        'Usage: browser-use session stop <session-id> | --all'
+      );
       if (flags.all) {
         rejectUnexpectedPositionals(
           flags.positionals,
@@ -1970,6 +2043,11 @@ export const runSessionCommand = async (
         flags.positionals,
         'Usage: browser-use session create [options]'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--profile', '--proxy-country', '--start-url', '--screen-size'],
+        'Usage: browser-use session create [options]'
+      );
       let browserScreenWidth: number | null = null;
       let browserScreenHeight: number | null = null;
       if (flags.screen_size) {
@@ -2006,6 +2084,11 @@ export const runSessionCommand = async (
       const flags = parseSessionCommandFlags(argv.slice(2));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use session share <session-id> [--delete]'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--delete'],
         'Usage: browser-use session share <session-id> [--delete]'
       );
       if (flags.delete) {
@@ -2046,39 +2129,46 @@ const parseProfileCommandFlags = (argv: string[]) => {
     domain: null as string | null,
     from_profile: null as string | null,
     positionals: [] as string[],
+    used_options: [] as string[],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? '';
     if (arg === '--json') {
       flags.json = true;
+      markUsedOption(flags.used_options, '--json');
       continue;
     }
     if (arg === '--remote') {
       flags.remote = true;
+      markUsedOption(flags.used_options, '--remote');
       continue;
     }
     if (arg === '--limit' || arg.startsWith('--limit=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.limit = parsePositiveInt('--limit', value);
+      markUsedOption(flags.used_options, '--limit');
       index = nextIndex;
       continue;
     }
     if (arg === '--name' || arg.startsWith('--name=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.name = value;
+      markUsedOption(flags.used_options, '--name');
       index = nextIndex;
       continue;
     }
     if (arg === '--domain' || arg.startsWith('--domain=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.domain = value;
+      markUsedOption(flags.used_options, '--domain');
       index = nextIndex;
       continue;
     }
     if (arg === '--from' || arg.startsWith('--from=')) {
       const { value, nextIndex } = takeOptionValue(arg, index, argv);
       flags.from_profile = value;
+      markUsedOption(flags.used_options, '--from');
       index = nextIndex;
       continue;
     }
@@ -2147,6 +2237,11 @@ export const runProfileCommand = async (
         flags.positionals,
         'Usage: browser-use profile list [--remote] [options]'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--remote', '--limit'],
+        'Usage: browser-use profile list [--remote] [options]'
+      );
       if (flags.remote) {
         const result = await client.list_profiles({
           pageSize: flags.limit,
@@ -2192,6 +2287,11 @@ export const runProfileCommand = async (
         flags.positionals,
         'Usage: browser-use profile get <profile-id> [--remote]'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--remote'],
+        'Usage: browser-use profile get <profile-id> [--remote]'
+      );
       if (flags.remote) {
         const profile = await client.get_profile(profileId);
         if (flags.json) {
@@ -2230,6 +2330,11 @@ export const runProfileCommand = async (
         flags.positionals,
         'Usage: browser-use profile create --remote [--name <name>] [--json]'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--remote', '--name'],
+        'Usage: browser-use profile create --remote [--name <name>] [--json]'
+      );
       if (!flags.remote) {
         throw new Error('Profile create is only supported with --remote');
       }
@@ -2252,6 +2357,11 @@ export const runProfileCommand = async (
         flags.positionals,
         'Usage: browser-use profile delete <profile-id> --remote'
       );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--remote'],
+        'Usage: browser-use profile delete <profile-id> --remote'
+      );
       if (!flags.remote) {
         throw new Error('Profile delete is only supported with --remote');
       }
@@ -2272,6 +2382,11 @@ export const runProfileCommand = async (
       const flags = parseProfileCommandFlags(argv.slice(2));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use profile cookies <profile-id>'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json'],
         'Usage: browser-use profile cookies <profile-id>'
       );
       if (flags.remote) {
@@ -2343,6 +2458,11 @@ export const runProfileCommand = async (
       const flags = parseProfileCommandFlags(argv.slice(1));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--from', '--name', '--domain'],
         'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]'
       );
       const profiles = profileLister();
@@ -2480,6 +2600,11 @@ export const runProfileCommand = async (
       const flags = parseProfileCommandFlags(argv.slice(2));
       rejectUnexpectedPositionals(
         flags.positionals,
+        'Usage: browser-use profile update <profile-id> --remote --name <name>'
+      );
+      rejectUnsupportedFlags(
+        flags.used_options,
+        ['--json', '--remote', '--name'],
         'Usage: browser-use profile update <profile-id> --remote --name <name>'
       );
       if (!flags.remote) {

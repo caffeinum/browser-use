@@ -345,4 +345,28 @@ describe('cli cloud profile alignment', () => {
       'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]'
     );
   });
+
+  it('rejects known profile flags that do not apply to the selected subcommand', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_profiles: vi.fn(),
+      get_profile: vi.fn(),
+      create_profile: vi.fn(),
+      update_profile: vi.fn(),
+      delete_profile: vi.fn(),
+    };
+
+    expect(
+      await runProfileCommand(['get', 'profile-1', '--name', 'Renamed'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(client.get_profile).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain(
+      'Usage: browser-use profile get <profile-id> [--remote]'
+    );
+  });
 });
