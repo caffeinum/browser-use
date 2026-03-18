@@ -78,6 +78,56 @@ interface DirectSessionLike {
   get_cookies?: () => Promise<any[]>;
 }
 
+const normalizeCookieDomain = (value: string | null | undefined) =>
+  String(value ?? '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase();
+
+const parseCookieHostname = (url: string | null | undefined) => {
+  const value = String(url ?? '').trim();
+  if (!value) {
+    return '';
+  }
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const cookieMatchesUrl = (
+  cookie: { domain?: string | null },
+  url: string | null | undefined
+) => {
+  const hostname = parseCookieHostname(url);
+  const domain = normalizeCookieDomain(cookie.domain);
+  if (!hostname || !domain) {
+    return false;
+  }
+  return (
+    hostname === domain ||
+    hostname.endsWith(`.${domain}`) ||
+    domain.endsWith(`.${hostname}`)
+  );
+};
+
+const normalizeSameSite = (value: string | null | undefined) => {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (normalized === 'strict') {
+    return 'Strict';
+  }
+  if (normalized === 'lax') {
+    return 'Lax';
+  }
+  if (normalized === 'none') {
+    return 'None';
+  }
+  return undefined;
+};
+
 export interface DirectCliEnvironment {
   state_file?: string;
   stdout?: StreamLike;
@@ -366,10 +416,18 @@ const parseDirectCookieOptions = (args: string[]) => {
   let cookiePath = '/';
   let secure = false;
   let httpOnly = false;
+  let sameSite: 'Strict' | 'Lax' | 'None' | undefined;
+  let expires: number | undefined;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] ?? '';
-    if (arg === '--url' || arg === '--domain' || arg === '--path') {
+    if (
+      arg === '--url' ||
+      arg === '--domain' ||
+      arg === '--path' ||
+      arg === '--same-site' ||
+      arg === '--expires'
+    ) {
       const next = args[index + 1]?.trim();
       if (!next) {
         throw new Error(`Missing value for ${arg}`);
@@ -378,8 +436,21 @@ const parseDirectCookieOptions = (args: string[]) => {
         url = next;
       } else if (arg === '--domain') {
         domain = next;
-      } else {
+      } else if (arg === '--path') {
         cookiePath = next;
+      } else if (arg === '--same-site') {
+        sameSite = normalizeSameSite(next);
+        if (!sameSite) {
+          throw new Error(
+            'Invalid --same-site value. Expected Strict, Lax, or None'
+          );
+        }
+      } else {
+        const parsed = Number(next);
+        if (!Number.isFinite(parsed)) {
+          throw new Error(`Invalid --expires value: ${next}`);
+        }
+        expires = parsed;
       }
       index += 1;
       continue;
@@ -402,6 +473,8 @@ const parseDirectCookieOptions = (args: string[]) => {
     path: cookiePath,
     secure,
     httpOnly,
+    sameSite,
+    expires,
   };
 };
 
@@ -788,11 +861,12 @@ export const run_direct_command = async (
     } else if (command === 'cookies') {
       const cookieCommand = args[1] ?? '';
       if (cookieCommand === 'get') {
-        const url = args[2]?.trim();
-        const cookies =
-          url && session.browser_context?.cookies
-            ? await session.browser_context.cookies([url])
-            : ((await session.get_cookies?.()) ?? []);
+        const parsed = parseDirectCookieOptions(args.slice(2));
+        const url = parsed.url ?? parsed.positional[0] ?? null;
+        const allCookies = (await session.get_cookies?.()) ?? [];
+        const cookies = url
+          ? allCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
+          : allCookies;
         writeLine(
           environment.stdout,
           JSON.stringify({ cookies, count: cookies.length }, null, 2)
@@ -806,7 +880,7 @@ export const run_direct_command = async (
         const value = parsed.positional[1] ?? '';
         if (!name || parsed.positional.length < 2) {
           throw new Error(
-            'Usage: cookies set <name> <value> [--url <url>] [--domain <domain>] [--path <path>] [--secure] [--http-only]'
+            'Usage: cookies set <name> <value> [--url <url>] [--domain <domain>] [--path <path>] [--secure] [--http-only] [--same-site <Strict|Lax|None>] [--expires <unix-seconds>]'
           );
         }
         const currentPage = await session.get_current_page?.();
@@ -818,6 +892,8 @@ export const run_direct_command = async (
           path: parsed.path,
           secure: parsed.secure,
           httpOnly: parsed.httpOnly,
+          sameSite: parsed.sameSite,
+          expires: parsed.expires,
         };
         if (parsed.url) {
           cookie.url = parsed.url;
@@ -834,14 +910,37 @@ export const run_direct_command = async (
         if (!session.browser_context?.clearCookies) {
           throw new Error('Browser context does not support clearing cookies');
         }
-        await session.browser_context.clearCookies();
-        writeLine(environment.stdout, 'Cleared cookies');
+        const parsed = parseDirectCookieOptions(args.slice(2));
+        const url = parsed.url ?? parsed.positional[0] ?? null;
+        if (!url) {
+          await session.browser_context.clearCookies();
+          writeLine(environment.stdout, 'Cleared cookies');
+        } else {
+          const allCookies = (await session.get_cookies?.()) ?? [];
+          const remaining = allCookies.filter(
+            (cookie) => !cookieMatchesUrl(cookie, url)
+          );
+          const removedCount = allCookies.length - remaining.length;
+          await session.browser_context.clearCookies();
+          if (remaining.length > 0 && session.browser_context.addCookies) {
+            await session.browser_context.addCookies(remaining);
+          }
+          writeLine(
+            environment.stdout,
+            `Cleared ${removedCount} cookies matching ${url}`
+          );
+        }
       } else if (cookieCommand === 'export') {
         const file = args[2]?.trim();
         if (!file) {
-          throw new Error('Usage: cookies export <file>');
+          throw new Error('Usage: cookies export <file> [--url <url>]');
         }
-        const cookies = (await session.get_cookies?.()) ?? [];
+        const parsed = parseDirectCookieOptions(args.slice(3));
+        const url = parsed.url ?? parsed.positional[0] ?? null;
+        const allCookies = (await session.get_cookies?.()) ?? [];
+        const cookies = url
+          ? allCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
+          : allCookies;
         const outputPath = path.resolve(file);
         fs.writeFileSync(outputPath, JSON.stringify(cookies, null, 2), 'utf8');
         writeLine(environment.stdout, `Exported ${cookies.length} cookies to ${outputPath}`);
@@ -863,7 +962,7 @@ export const run_direct_command = async (
         writeLine(environment.stdout, `Imported ${cookies.length} cookies from ${inputPath}`);
       } else {
         throw new Error(
-          'Usage: cookies get [url] | cookies set <name> <value> | cookies clear | cookies export <file> | cookies import <file>'
+          'Usage: cookies get [url|--url <url>] | cookies set <name> <value> | cookies clear [--url <url>] | cookies export <file> [--url <url>] | cookies import <file>'
         );
       }
     } else if (command === 'get') {

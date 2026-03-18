@@ -20,6 +20,64 @@ type BrowserCookieInit = {
   partitionKey?: string;
 };
 
+const normalizeCookieDomain = (value: string | null | undefined) =>
+  String(value ?? '')
+    .trim()
+    .replace(/^\./, '')
+    .toLowerCase();
+
+const parseCookieHostname = (url: string | null | undefined) => {
+  const value = String(url ?? '').trim();
+  if (!value) {
+    return '';
+  }
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const cookieMatchesUrl = (
+  cookie: Pick<BrowserCookieInit, 'domain'>,
+  url: string | null | undefined
+) => {
+  const hostname = parseCookieHostname(url);
+  const domain = normalizeCookieDomain(cookie.domain);
+  if (!hostname || !domain) {
+    return false;
+  }
+  return (
+    hostname === domain ||
+    hostname.endsWith(`.${domain}`) ||
+    domain.endsWith(`.${hostname}`)
+  );
+};
+
+const normalizeSameSite = (
+  value: unknown
+): BrowserCookieInit['sameSite'] | undefined => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'strict') {
+    return 'Strict';
+  }
+  if (normalized === 'lax') {
+    return 'Lax';
+  }
+  if (normalized === 'none') {
+    return 'None';
+  }
+  return undefined;
+};
+
+const parseCookieExpires = (value: unknown) => {
+  if (value == null || value === '') {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 export class SkillCliServer {
   readonly registry: SessionRegistry;
 
@@ -455,10 +513,12 @@ export class SkillCliServer {
 
     if (action === 'cookies_get') {
       const url = typeof params.url === 'string' ? params.url.trim() : '';
-      const cookies =
-        url && browser_session.browser_context?.cookies
-          ? await browser_session.browser_context.cookies([url])
-          : await browser_session.get_cookies();
+      const allCookies = await browser_session.get_cookies();
+      const cookies = url
+        ? allCookies.filter((cookie: BrowserCookieInit) =>
+            cookieMatchesUrl(cookie, url)
+          )
+        : allCookies;
       return { cookies, count: cookies.length };
     }
 
@@ -487,6 +547,8 @@ export class SkillCliServer {
         path: typeof params.path === 'string' ? params.path : '/',
         secure: Boolean(params.secure),
         httpOnly: Boolean(params.http_only),
+        sameSite: normalizeSameSite(params.same_site ?? params.sameSite),
+        expires: parseCookieExpires(params.expires),
       };
 
       if (!cookie.url && !cookie.domain && currentUrl) {
@@ -504,8 +566,25 @@ export class SkillCliServer {
       if (!browser_session.browser_context?.clearCookies) {
         throw new Error('Browser context does not support clearing cookies');
       }
+      const url = typeof params.url === 'string' ? params.url.trim() : '';
+      if (!url) {
+        await browser_session.browser_context.clearCookies();
+        return { cleared: true };
+      }
+
+      const allCookies = await browser_session.get_cookies();
+      const remainingCookies = allCookies.filter(
+        (cookie: BrowserCookieInit) => !cookieMatchesUrl(cookie, url)
+      );
+      const removedCount = allCookies.length - remainingCookies.length;
       await browser_session.browser_context.clearCookies();
-      return { cleared: true };
+      if (
+        remainingCookies.length > 0 &&
+        browser_session.browser_context.addCookies
+      ) {
+        await browser_session.browser_context.addCookies(remainingCookies);
+      }
+      return { cleared: true, url, count: removedCount };
     }
 
     if (action === 'cookies_export') {
@@ -513,7 +592,13 @@ export class SkillCliServer {
       if (!file) {
         throw new Error('Missing file');
       }
-      const cookies = await browser_session.get_cookies();
+      const url = typeof params.url === 'string' ? params.url.trim() : '';
+      const allCookies = await browser_session.get_cookies();
+      const cookies = url
+        ? allCookies.filter((cookie: BrowserCookieInit) =>
+            cookieMatchesUrl(cookie, url)
+          )
+        : allCookies;
       const filePath = path.resolve(file);
       await fsp.writeFile(filePath, JSON.stringify(cookies, null, 2));
       return { file: filePath, count: cookies.length };

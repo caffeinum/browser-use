@@ -178,7 +178,8 @@ describe('skill-cli alignment', () => {
       url: () => 'https://example.com',
     } as any);
     vi.spyOn(session, 'get_cookies').mockResolvedValue([
-      { name: 'sid', value: '123' } as any,
+      { name: 'sid', value: '123', domain: '.example.com', path: '/' } as any,
+      { name: 'other', value: '999', domain: '.elsewhere.test', path: '/' } as any,
     ]);
     (session as any).browser_context = {
       addCookies: vi.fn(async () => {}),
@@ -219,7 +220,7 @@ describe('skill-cli alignment', () => {
           id: 'r13',
           action: 'cookies_export',
           session: 'default',
-          params: { file: cookiesPath },
+          params: { file: cookiesPath, url: 'https://example.com/dashboard' },
         })
       );
       const cookiesImport = await server.handle_request(
@@ -235,6 +236,20 @@ describe('skill-cli alignment', () => {
           id: 'r15',
           action: 'cookies_clear',
           session: 'default',
+          params: { url: 'https://example.com/dashboard' },
+        })
+      );
+      const cookiesSet = await server.handle_request(
+        new Request({
+          id: 'r16',
+          action: 'cookies_set',
+          session: 'default',
+          params: {
+            name: 'sid',
+            value: '456',
+            same_site: 'Strict',
+            expires: 1735689600,
+          },
         })
       );
 
@@ -242,13 +257,25 @@ describe('skill-cli alignment', () => {
       expect(waitText.success).toBe(true);
       expect(waitForElementSpy).toHaveBeenCalledWith('#app', 2500);
       expect(cookiesGet.success).toBe(true);
-      expect((cookiesGet.data as any).count).toBe(1);
+      expect((cookiesGet.data as any).count).toBe(2);
       expect(cookiesExport.success).toBe(true);
       expect(fs.existsSync(cookiesPath)).toBe(true);
       expect(cookiesImport.success).toBe(true);
-      expect((session as any).browser_context.addCookies).toHaveBeenCalled();
+      expect(cookiesSet.success).toBe(true);
+      expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'sid',
+          value: '456',
+          sameSite: 'Strict',
+          expires: 1735689600,
+          url: 'https://example.com',
+        }),
+      ]);
       expect(cookiesClear.success).toBe(true);
       expect((session as any).browser_context.clearCookies).toHaveBeenCalled();
+      expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
+        expect.objectContaining({ name: 'other' }),
+      ]);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

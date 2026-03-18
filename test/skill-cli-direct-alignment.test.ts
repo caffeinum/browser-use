@@ -424,7 +424,6 @@ describe('skill-cli direct alignment', () => {
     const stdout = createWritable();
     const stderr = createWritable();
     const browserContext = {
-      cookies: vi.fn(async () => [{ name: 'sid', value: '123' }]),
       addCookies: vi.fn(async () => {}),
       clearCookies: vi.fn(async () => {}),
     };
@@ -432,7 +431,10 @@ describe('skill-cli direct alignment', () => {
       start: vi.fn(async () => {}),
       tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
       switch_to_tab: vi.fn(async () => {}),
-      get_cookies: vi.fn(async () => [{ name: 'sid', value: '123' }]),
+      get_cookies: vi.fn(async () => [
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        { name: 'other', value: '999', domain: '.elsewhere.test', path: '/' },
+      ]),
       browser_context: browserContext,
       get_current_page: vi.fn(async () => ({
         url: () => 'https://example.com',
@@ -452,28 +454,52 @@ describe('skill-cli direct alignment', () => {
 
     try {
       expect(
-        await run_direct_command(['cookies', 'get'], {
-          state_file: stateFile,
-          stdout: stdout.stream,
-          stderr: stderr.stream,
-          session_factory: () => session as any,
-        })
+        await run_direct_command(
+          ['cookies', 'get', '--url', 'https://example.com/app'],
+          {
+            state_file: stateFile,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            session_factory: () => session as any,
+          }
+        )
       ).toBe(0);
       expect(
-        await run_direct_command(['cookies', 'set', 'sid', '456'], {
-          state_file: stateFile,
-          stdout: stdout.stream,
-          stderr: stderr.stream,
-          session_factory: () => session as any,
-        })
+        await run_direct_command(
+          [
+            'cookies',
+            'set',
+            'sid',
+            '456',
+            '--same-site',
+            'Lax',
+            '--expires',
+            '1735689600',
+          ],
+          {
+            state_file: stateFile,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            session_factory: () => session as any,
+          }
+        )
       ).toBe(0);
       expect(
-        await run_direct_command(['cookies', 'export', cookieFile], {
-          state_file: stateFile,
-          stdout: stdout.stream,
-          stderr: stderr.stream,
-          session_factory: () => session as any,
-        })
+        await run_direct_command(
+          [
+            'cookies',
+            'export',
+            cookieFile,
+            '--url',
+            'https://example.com/app',
+          ],
+          {
+            state_file: stateFile,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            session_factory: () => session as any,
+          }
+        )
       ).toBe(0);
       expect(
         await run_direct_command(['cookies', 'import', cookieFile], {
@@ -484,18 +510,32 @@ describe('skill-cli direct alignment', () => {
         })
       ).toBe(0);
       expect(
-        await run_direct_command(['cookies', 'clear'], {
-          state_file: stateFile,
-          stdout: stdout.stream,
-          stderr: stderr.stream,
-          session_factory: () => session as any,
-        })
+        await run_direct_command(
+          ['cookies', 'clear', '--url', 'https://example.com/app'],
+          {
+            state_file: stateFile,
+            stdout: stdout.stream,
+            stderr: stderr.stream,
+            session_factory: () => session as any,
+          }
+        )
       ).toBe(0);
 
-      expect(browserContext.addCookies).toHaveBeenCalled();
+      expect(browserContext.addCookies).toHaveBeenCalledWith([
+        expect.objectContaining({
+          name: 'sid',
+          value: '456',
+          sameSite: 'Lax',
+          expires: 1735689600,
+          url: 'https://example.com',
+        }),
+      ]);
       expect(browserContext.clearCookies).toHaveBeenCalledTimes(1);
       expect(fs.existsSync(cookieFile)).toBe(true);
       expect(stdout.read()).toContain('"count": 1');
+      expect(stdout.read()).toContain(
+        'Cleared 1 cookies matching https://example.com/app'
+      );
       expect(stderr.read()).toBe('');
     } finally {
       clear_direct_state(stateFile);
