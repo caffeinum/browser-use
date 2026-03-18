@@ -2978,7 +2978,7 @@ export async function main(argv: string[] = process.argv.slice(2)) {
       return;
     }
 
-    const subcommandArgv = [...prefixedSubcommand.forwardedArgs, ...prefixedSubcommand.argv];
+    const subcommandArgv = [...prefixedSubcommand.argv, ...prefixedSubcommand.forwardedArgs];
     if (prefixedSubcommand.command === 'task') {
       const exitCode = await runTaskCommand(subcommandArgv);
       if (exitCode !== 0) {

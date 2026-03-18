@@ -12,6 +12,7 @@ import {
   isInteractiveExitCommand,
   isInteractiveHelpCommand,
   loadCliHistory,
+  main,
   normalizeCliHistory,
   parseCliArgs,
   runDoctorChecks,
@@ -21,6 +22,7 @@ import {
   shouldStartInteractiveMode,
 } from '../src/cli.js';
 import { save_cloud_api_token } from '../src/sync/auth.js';
+import { CloudManagementClient } from '../src/browser/cloud/management.js';
 
 const MANAGED_ENV_KEYS = [
   'OPENAI_API_KEY',
@@ -217,6 +219,39 @@ describe('CLI argument parsing', () => {
       debug: true,
       forwardedArgs: [],
     });
+  });
+
+  it('dispatches json-prefixed task subcommands through main', async () => {
+    let output = '';
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(((chunk: string | Uint8Array) => {
+        output += String(chunk);
+        return true;
+      }) as any);
+    const listTasksSpy = vi
+      .spyOn(CloudManagementClient.prototype, 'list_tasks')
+      .mockResolvedValue({
+        items: [
+          {
+            id: 'task-json',
+            status: 'finished',
+            task: 'Collect data',
+          },
+        ],
+        totalItems: 1,
+        pageNumber: 1,
+        pageSize: 10,
+      } as any);
+
+    try {
+      await main(['--json', 'task', 'list']);
+    } finally {
+      stdoutSpy.mockRestore();
+      listTasksSpy.mockRestore();
+    }
+
+    expect(output).toContain('"id": "task-json"');
   });
 
   it('renders usage help text', () => {
