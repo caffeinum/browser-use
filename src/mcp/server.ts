@@ -86,6 +86,17 @@ interface MCPTrackedSession {
   last_activity: number;
 }
 
+type MCPToolContent =
+  | {
+      type: 'text';
+      text: string;
+    }
+  | {
+      type: 'image';
+      data: string;
+      mimeType: 'image/png';
+    };
+
 export class MCPServer {
   private server: Server;
   private tools: Record<string, any> = {};
@@ -481,6 +492,80 @@ export class MCPServer {
     this.sessionCleanupInterval = null;
   }
 
+  private formatToolResult(
+    toolName: string,
+    result: unknown
+  ): { content: MCPToolContent[] } {
+    if (
+      toolName === 'browser_get_state' &&
+      result &&
+      typeof result === 'object' &&
+      !Array.isArray(result)
+    ) {
+      const payload = {
+        ...(result as Record<string, unknown>),
+      } as Record<string, unknown>;
+      const screenshot =
+        typeof payload.screenshot === 'string' && payload.screenshot.trim()
+          ? payload.screenshot
+          : null;
+      delete payload.screenshot;
+
+      const pageInfo =
+        payload.page_info &&
+        typeof payload.page_info === 'object' &&
+        !Array.isArray(payload.page_info)
+          ? (payload.page_info as Record<string, unknown>)
+          : null;
+      const viewportWidth =
+        typeof pageInfo?.viewport_width === 'number'
+          ? pageInfo.viewport_width
+          : null;
+      const viewportHeight =
+        typeof pageInfo?.viewport_height === 'number'
+          ? pageInfo.viewport_height
+          : null;
+      if (
+        screenshot &&
+        viewportWidth !== null &&
+        viewportHeight !== null &&
+        payload.screenshot_dimensions == null
+      ) {
+        payload.screenshot_dimensions = {
+          width: viewportWidth,
+          height: viewportHeight,
+        };
+      }
+
+      const content: MCPToolContent[] = [
+        {
+          type: 'text',
+          text: JSON.stringify(payload, null, 2),
+        },
+      ];
+      if (screenshot) {
+        content.push({
+          type: 'image',
+          data: screenshot,
+          mimeType: 'image/png',
+        });
+      }
+      return { content };
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            typeof result === 'string'
+              ? result
+              : JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  }
+
   private setupHandlers() {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -508,17 +593,7 @@ export class MCPServer {
         this.toolExecutionCount++;
         const result = await tool.handler(request.params.arguments || {});
 
-        return {
-          content: [
-            {
-              type: 'text',
-              text:
-                typeof result === 'string'
-                  ? result
-                  : JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return this.formatToolResult(request.params.name, result);
       } catch (error) {
         this.errorCount++;
         errorMsg = error instanceof Error ? error.message : String(error);

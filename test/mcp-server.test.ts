@@ -321,6 +321,48 @@ describe('MCPServer browser_get_state', () => {
     expect(result.url).toBe('https://event.example');
     expect(result.title).toBe('From Event');
   });
+
+  it('formats browser_get_state screenshots as MCP ImageContent blocks', () => {
+    const server = new MCPServer('test-mcp', '1.0.0');
+
+    const formatted = (server as any).formatToolResult('browser_get_state', {
+      url: 'https://example.com',
+      title: 'Example',
+      tabs: [],
+      page_info: {
+        viewport_width: 1280,
+        viewport_height: 720,
+      },
+      pixels_above: 0,
+      pixels_below: 0,
+      browser_errors: [],
+      loading_status: null,
+      recent_events: null,
+      pending_network_requests: [],
+      pagination_buttons: [],
+      closed_popup_messages: [],
+      screenshot: 'base64png',
+      interactive_elements: '',
+      interactive_count: 0,
+    });
+
+    expect(formatted.content).toHaveLength(2);
+    expect(formatted.content[0]).toMatchObject({ type: 'text' });
+    expect(formatted.content[1]).toEqual({
+      type: 'image',
+      data: 'base64png',
+      mimeType: 'image/png',
+    });
+
+    const textPayload = JSON.parse(
+      (formatted.content[0] as { type: 'text'; text: string }).text
+    );
+    expect(textPayload.screenshot).toBeUndefined();
+    expect(textPayload.screenshot_dimensions).toEqual({
+      width: 1280,
+      height: 720,
+    });
+  });
 });
 
 describe('MCPServer tab tools parameter routing', () => {
