@@ -433,6 +433,7 @@ describe('skill-cli direct alignment', () => {
       switch_to_tab: vi.fn(async () => {}),
       get_cookies: vi.fn(async () => [
         { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        { name: 'admin', value: '777', domain: '.example.com', path: '/admin' },
         { name: 'other', value: '999', domain: '.elsewhere.test', path: '/' },
       ]),
       browser_context: browserContext,
@@ -533,6 +534,15 @@ describe('skill-cli direct alignment', () => {
       expect(browserContext.clearCookies).toHaveBeenCalledTimes(1);
       expect(fs.existsSync(cookieFile)).toBe(true);
       expect(stdout.read()).toContain('"count": 1');
+      expect(JSON.parse(fs.readFileSync(cookieFile, 'utf8'))).toEqual([
+        expect.objectContaining({ name: 'sid' }),
+      ]);
+      expect(browserContext.addCookies).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'admin' }),
+          expect.objectContaining({ name: 'other' }),
+        ])
+      );
       expect(stdout.read()).toContain(
         'Cleared 1 cookies matching https://example.com/app'
       );

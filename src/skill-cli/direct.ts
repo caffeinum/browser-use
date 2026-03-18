@@ -96,20 +96,60 @@ const parseCookieHostname = (url: string | null | undefined) => {
   }
 };
 
+const parseCookieUrl = (url: string | null | undefined) => {
+  const value = String(url ?? '').trim();
+  if (!value) {
+    return null;
+  }
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+};
+
+const cookiePathMatches = (cookiePath: string | null | undefined, urlPath: string) => {
+  const normalizedCookiePath =
+    typeof cookiePath === 'string' && cookiePath.length > 0 ? cookiePath : '/';
+  if (normalizedCookiePath === '/') {
+    return true;
+  }
+  if (urlPath === normalizedCookiePath) {
+    return true;
+  }
+  return urlPath.startsWith(
+    normalizedCookiePath.endsWith('/')
+      ? normalizedCookiePath
+      : `${normalizedCookiePath}/`
+  );
+};
+
 const cookieMatchesUrl = (
-  cookie: { domain?: string | null },
+  cookie: { domain?: string | null; path?: string | null; secure?: boolean | null },
   url: string | null | undefined
 ) => {
-  const hostname = parseCookieHostname(url);
+  const parsedUrl = parseCookieUrl(url);
+  const hostname = parsedUrl?.hostname.toLowerCase() ?? '';
   const domain = normalizeCookieDomain(cookie.domain);
   if (!hostname || !domain) {
     return false;
   }
-  return (
-    hostname === domain ||
-    hostname.endsWith(`.${domain}`) ||
-    domain.endsWith(`.${hostname}`)
-  );
+  if (
+    !(
+      hostname === domain ||
+      hostname.endsWith(`.${domain}`) ||
+      domain.endsWith(`.${hostname}`)
+    )
+  ) {
+    return false;
+  }
+  if (!cookiePathMatches(cookie.path, parsedUrl?.pathname || '/')) {
+    return false;
+  }
+  if (cookie.secure && parsedUrl?.protocol !== 'https:') {
+    return false;
+  }
+  return true;
 };
 
 const normalizeSameSite = (value: string | null | undefined) => {

@@ -179,6 +179,12 @@ describe('skill-cli alignment', () => {
     } as any);
     vi.spyOn(session, 'get_cookies').mockResolvedValue([
       { name: 'sid', value: '123', domain: '.example.com', path: '/' } as any,
+      {
+        name: 'admin',
+        value: '777',
+        domain: '.example.com',
+        path: '/admin',
+      } as any,
       { name: 'other', value: '999', domain: '.elsewhere.test', path: '/' } as any,
     ]);
     (session as any).browser_context = {
@@ -257,9 +263,12 @@ describe('skill-cli alignment', () => {
       expect(waitText.success).toBe(true);
       expect(waitForElementSpy).toHaveBeenCalledWith('#app', 2500);
       expect(cookiesGet.success).toBe(true);
-      expect((cookiesGet.data as any).count).toBe(2);
+      expect((cookiesGet.data as any).count).toBe(3);
       expect(cookiesExport.success).toBe(true);
       expect(fs.existsSync(cookiesPath)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(cookiesPath, 'utf8'))).toEqual([
+        expect.objectContaining({ name: 'sid' }),
+      ]);
       expect(cookiesImport.success).toBe(true);
       expect(cookiesSet.success).toBe(true);
       expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
@@ -273,9 +282,12 @@ describe('skill-cli alignment', () => {
       ]);
       expect(cookiesClear.success).toBe(true);
       expect((session as any).browser_context.clearCookies).toHaveBeenCalled();
-      expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
-        expect.objectContaining({ name: 'other' }),
-      ]);
+      expect((session as any).browser_context.addCookies).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'admin' }),
+          expect.objectContaining({ name: 'other' }),
+        ])
+      );
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
