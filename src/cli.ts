@@ -31,6 +31,7 @@ import type { BaseChatModel } from './llm/base.js';
 import { MCPServer } from './mcp/server.js';
 import { get_browser_use_version } from './utils.js';
 import { setupLogging } from './logging-config.js';
+import { get_tunnel_manager } from './skill-cli/tunnel.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -96,6 +97,7 @@ export interface ParsedCliArgs {
   provider: CliModelProvider | null;
   prompt: string | null;
   mcp: boolean;
+  json: boolean;
   positional: string[];
 }
 
@@ -195,6 +197,7 @@ export const parseCliArgs = (argv: string[]): ParsedCliArgs => {
     provider: null,
     prompt: null,
     mcp: false,
+    json: false,
     positional: [],
   };
 
@@ -224,6 +227,10 @@ export const parseCliArgs = (argv: string[]): ParsedCliArgs => {
     }
     if (arg === '--mcp') {
       parsed.mcp = true;
+      continue;
+    }
+    if (arg === '--json') {
+      parsed.json = true;
       continue;
     }
 
@@ -937,6 +944,7 @@ export const getCliUsage = () => `Usage:
   browser-use                    # interactive mode (TTY)
   browser-use doctor
   browser-use install
+  browser-use tunnel <port>
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -946,6 +954,7 @@ Options:
   -h, --help                  Show this help message
   --version                   Print version and exit
   --mcp                       Run as MCP server
+  --json                      Output command results as JSON when supported
   --provider <name>           Force provider (openai|anthropic|google|deepseek|groq|openrouter|azure|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic)
   --model <model>             Set model (e.g., gpt-5-mini, claude-4-sonnet, gemini-2.5-pro)
   -p, --prompt <task>         Run a single task
@@ -969,6 +978,18 @@ export interface RunInstallCommandOptions {
   spawn_impl?: typeof spawnSync;
 }
 
+type WritableLike = Pick<typeof process.stdout, 'write'>;
+
+export interface RunTunnelCommandOptions {
+  manager?: Pick<
+    ReturnType<typeof get_tunnel_manager>,
+    'start_tunnel' | 'list_tunnels' | 'stop_tunnel' | 'stop_all_tunnels'
+  >;
+  stdout?: WritableLike;
+  stderr?: WritableLike;
+  json_output?: boolean;
+}
+
 export const runInstallCommand = (
   options: RunInstallCommandOptions = {}
 ) => {
@@ -990,6 +1011,115 @@ export const runInstallCommand = (
     throw new Error(
       `Playwright browser install failed with exit code ${result.status ?? 1}`
     );
+  }
+};
+
+const writeLine = (stream: WritableLike, value: string) => {
+  stream.write(`${value}\n`);
+};
+
+const parseTunnelPort = (value: string | undefined | null) => {
+  const port = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(port) || port <= 0) {
+    throw new Error(`Invalid port: ${value ?? ''}`);
+  }
+  return port;
+};
+
+export const runTunnelCommand = async (
+  argv: string[],
+  options: RunTunnelCommandOptions = {}
+) => {
+  const manager = options.manager ?? get_tunnel_manager();
+  const output = options.stdout ?? process.stdout;
+  const errorOutput = options.stderr ?? process.stderr;
+  const json_output = Boolean(options.json_output);
+
+  const render = (value: unknown) => {
+    if (json_output) {
+      writeLine(output, JSON.stringify(value, null, 2));
+    }
+  };
+
+  try {
+    const first = argv[0] ?? null;
+
+    if (!first) {
+      writeLine(
+        errorOutput,
+        'Usage: browser-use tunnel <port> | list | stop <port> | stop --all'
+      );
+      return 1;
+    }
+
+    if (first === 'list') {
+      const result = manager.list_tunnels();
+      if (json_output) {
+        render(result);
+      } else if (result.tunnels.length > 0) {
+        for (const tunnel of result.tunnels) {
+          writeLine(output, `${tunnel.port}: ${tunnel.url}`);
+        }
+      } else {
+        writeLine(output, 'No active tunnels');
+      }
+      return 0;
+    }
+
+    if (first === 'stop' || first === 'stop-all') {
+      const stopAll = first === 'stop-all' || argv.includes('--all');
+      if (stopAll) {
+        const result = await manager.stop_all_tunnels();
+        if (json_output) {
+          render(result);
+        } else if (result.count > 0) {
+          writeLine(
+            output,
+            `Stopped ${result.count} tunnel(s): ${result.stopped.join(', ')}`
+          );
+        } else {
+          writeLine(output, 'No tunnels to stop');
+        }
+        return 0;
+      }
+
+      const port = parseTunnelPort(argv[1]);
+      const result = await manager.stop_tunnel(port);
+      if ('error' in result) {
+        writeLine(errorOutput, result.error);
+        return 1;
+      }
+      if (json_output) {
+        render(result);
+      } else {
+        writeLine(output, `Stopped tunnel on port ${result.stopped}`);
+      }
+      return 0;
+    }
+
+    const port = parseTunnelPort(first);
+    const result = await manager.start_tunnel(port);
+    if ('error' in result) {
+      writeLine(errorOutput, result.error);
+      return 1;
+    }
+    if (json_output) {
+      render(result);
+    } else if (result.existing) {
+      writeLine(
+        output,
+        `Tunnel already running: http://localhost:${result.port} -> ${result.url}`
+      );
+    } else {
+      writeLine(
+        output,
+        `Tunnel started: http://localhost:${result.port} -> ${result.url}`
+      );
+    }
+    return 0;
+  } catch (error) {
+    writeLine(errorOutput, (error as Error).message);
+    return 1;
   }
 };
 
@@ -1214,6 +1344,16 @@ export async function main(argv: string[] = process.argv.slice(2)) {
     console.log('Installing Chromium browser...');
     runInstallCommand();
     console.log('Chromium browser installed.');
+    return;
+  }
+
+  if (args.prompt == null && args.positional[0] === 'tunnel') {
+    const exitCode = await runTunnelCommand(args.positional.slice(1), {
+      json_output: args.json,
+    });
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
     return;
   }
 
