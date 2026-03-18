@@ -109,7 +109,10 @@ const parseCookieUrl = (url: string | null | undefined) => {
   }
 };
 
-const cookiePathMatches = (cookiePath: string | null | undefined, urlPath: string) => {
+const cookiePathMatches = (
+  cookiePath: string | null | undefined,
+  urlPath: string
+) => {
   const normalizedCookiePath =
     typeof cookiePath === 'string' && cookiePath.length > 0 ? cookiePath : '/';
   if (normalizedCookiePath === '/') {
@@ -126,7 +129,11 @@ const cookiePathMatches = (cookiePath: string | null | undefined, urlPath: strin
 };
 
 const cookieMatchesUrl = (
-  cookie: { domain?: string | null; path?: string | null; secure?: boolean | null },
+  cookie: {
+    domain?: string | null;
+    path?: string | null;
+    secure?: boolean | null;
+  },
   url: string | null | undefined
 ) => {
   const parsedUrl = parseCookieUrl(url);
@@ -174,10 +181,11 @@ export interface DirectCliEnvironment {
   stdout?: StreamLike;
   stderr?: StreamLike;
   session_factory?: (init: { cdp_url?: string | null }) => DirectSessionLike;
-  cloud_client_factory?: () => Pick<CloudBrowserClient, 'create_browser' | 'stop_browser'>;
-  local_launcher?: (options: {
-    state: DirectModeState;
-  }) => Promise<{
+  cloud_client_factory?: () => Pick<
+    CloudBrowserClient,
+    'create_browser' | 'stop_browser'
+  >;
+  local_launcher?: (options: { state: DirectModeState }) => Promise<{
     cdp_url: string;
     browser_pid?: number | null;
     user_data_dir?: string | null;
@@ -356,11 +364,11 @@ export const defaultLocalLauncher = async (options: {
 
   const port = await getFreePort();
   const reusingUserDataDir =
-    options.state.user_data_dir && options.state.user_data_dir.trim().length > 0;
-  const userDataDir =
-    reusingUserDataDir
-      ? options.state.user_data_dir
-      : fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    options.state.user_data_dir &&
+    options.state.user_data_dir.trim().length > 0;
+  const userDataDir = reusingUserDataDir
+    ? options.state.user_data_dir
+    : fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
 
   const child = spawn(
     executablePath,
@@ -394,7 +402,7 @@ export const defaultLocalLauncher = async (options: {
         // Ignore cleanup failures for a process that may not have started.
       }
     }
-    if (!reusingUserDataDir) {
+    if (!reusingUserDataDir && typeof userDataDir === 'string') {
       try {
         fs.rmSync(userDataDir, { recursive: true, force: true });
       } catch {
@@ -713,7 +721,7 @@ const updateDirectStateFromSession = async (
   const active_url =
     typeof currentPage?.url === 'function'
       ? String(currentPage.url() ?? '')
-      : session.active_tab?.url ?? null;
+      : (session.active_tab?.url ?? null);
 
   save_direct_state(
     {
@@ -735,8 +743,7 @@ export const run_direct_command = async (
     state_file: options.state_file ?? DIRECT_STATE_FILE,
     stdout: options.stdout ?? DEFAULT_STDOUT,
     stderr: options.stderr ?? DEFAULT_STDERR,
-    session_factory:
-      options.session_factory ?? createDefaultSessionFactory(),
+    session_factory: options.session_factory ?? createDefaultSessionFactory(),
     cloud_client_factory:
       options.cloud_client_factory ?? (() => new CloudBrowserClient()),
     local_launcher: options.local_launcher ?? defaultLocalLauncher,
@@ -750,7 +757,12 @@ export const run_direct_command = async (
   const { useRemote, args } = extractDirectModeArgs(argv);
   const command = args[0] ?? '';
 
-  if (!command || command === 'help' || command === '--help' || command === '-h') {
+  if (
+    !command ||
+    command === 'help' ||
+    command === '--help' ||
+    command === '-h'
+  ) {
     writeLine(environment.stdout, formatDirectUsage());
     return command ? 0 : 1;
   }
@@ -783,9 +795,7 @@ export const run_direct_command = async (
     return 0;
   }
 
-  let connected:
-    | Awaited<ReturnType<typeof connectDirectSession>>
-    | null = null;
+  let connected: Awaited<ReturnType<typeof connectDirectSession>> | null = null;
   try {
     connected = await connectDirectSession(useRemote, environment);
     const { session, state } = connected;
@@ -904,7 +914,7 @@ export const run_direct_command = async (
           ? Number.isFinite(numericIdentifier)
             ? numericIdentifier
             : rawIdentifier
-          : session.active_tab?.target_id ?? null;
+          : (session.active_tab?.target_id ?? null);
       if (identifier === null) {
         throw new Error('Usage: close-tab [tab]');
       }
@@ -1073,7 +1083,10 @@ export const run_direct_command = async (
           : allCookies;
         const outputPath = path.resolve(file);
         fs.writeFileSync(outputPath, JSON.stringify(cookies, null, 2), 'utf8');
-        writeLine(environment.stdout, `Exported ${cookies.length} cookies to ${outputPath}`);
+        writeLine(
+          environment.stdout,
+          `Exported ${cookies.length} cookies to ${outputPath}`
+        );
       } else if (cookieCommand === 'import') {
         if (!session.browser_context?.addCookies) {
           throw new Error('Browser context does not support importing cookies');
@@ -1089,7 +1102,10 @@ export const run_direct_command = async (
           throw new Error('Cookie import file must contain a JSON array');
         }
         await session.browser_context.addCookies(cookies);
-        writeLine(environment.stdout, `Imported ${cookies.length} cookies from ${inputPath}`);
+        writeLine(
+          environment.stdout,
+          `Imported ${cookies.length} cookies from ${inputPath}`
+        );
       } else {
         throw new Error(
           'Usage: cookies get [url|--url <url>] | cookies set <name> <value> | cookies clear [--url <url>] | cookies export <file> [--url <url>] | cookies import <file>'
@@ -1106,7 +1122,10 @@ export const run_direct_command = async (
       } else if (subcommand === 'html') {
         const selector = args.slice(2).join(' ').trim();
         if (!selector) {
-          writeLine(environment.stdout, (await session.get_page_html?.()) ?? '');
+          writeLine(
+            environment.stdout,
+            (await session.get_page_html?.()) ?? ''
+          );
         } else {
           const page = await session.get_current_page?.();
           if (!page?.evaluate) {
