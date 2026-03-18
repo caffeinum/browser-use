@@ -224,4 +224,60 @@ describe('cli cloud run alignment', () => {
     );
     expect(stderr.read()).toContain('create task failed');
   });
+
+  it('rejects unknown cloud run flags', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(),
+      create_task: vi.fn(),
+      get_task: vi.fn(),
+      update_session: vi.fn(),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      ['--remote', '--waait', 'Collect', 'data'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(client.create_task).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain('Unknown option: --waait');
+  });
+
+  it('allows task text that starts with dashes after --', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(),
+      create_task: vi.fn(async () => ({
+        id: 'task-dash',
+        sessionId: null,
+      })),
+      get_task: vi.fn(),
+      update_session: vi.fn(),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      ['--remote', '--', '--wait', 'for', 'selector'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(client.create_task).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: '--wait for selector',
+      })
+    );
+    expect(stdout.read()).toContain('Task started: task-dash');
+    expect(stderr.read()).toBe('');
+  });
 });

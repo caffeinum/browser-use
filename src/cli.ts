@@ -2554,6 +2554,10 @@ const parseCloudRunArgs = (argv: string[]) => {
 
   for (let index = 0; index < argv.length; index += 1) {
     const rawArg = argv[index] ?? '';
+    if (rawArg === '--') {
+      flags.task_parts.push(...argv.slice(index + 1));
+      break;
+    }
     const separator = rawArg.indexOf('=');
     const hasInlineValue = separator > 0;
     const arg = hasInlineValue ? rawArg.slice(0, separator) : rawArg;
@@ -2637,6 +2641,9 @@ const parseCloudRunArgs = (argv: string[]) => {
         index += 1;
       }
       continue;
+    }
+    if (rawArg.startsWith('-')) {
+      throw new Error(`Unknown option: ${rawArg}`);
     }
     flags.task_parts.push(rawArg);
   }
