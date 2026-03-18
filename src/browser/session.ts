@@ -176,6 +176,8 @@ export const systemChrome = {
       const commands = [
         'google-chrome',
         'google-chrome-stable',
+        'google-chrome-beta',
+        'google-chrome-unstable',
         'chromium',
         'chromium-browser',
       ];
@@ -208,6 +210,31 @@ export const systemChrome = {
           process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
           'Google',
           'Chrome',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env.LOCALAPPDATA ?? '',
+          'Google',
+          'Chrome SxS',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env.LOCALAPPDATA ?? '',
+          'Chromium',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env.ProgramFiles ?? 'C:\\Program Files',
+          'Chromium',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+          'Chromium',
           'Application',
           'chrome.exe'
         ),

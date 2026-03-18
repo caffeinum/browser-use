@@ -70,6 +70,25 @@ import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
 describe('BrowserSession Basic Operations', () => {
+  const withPlatform = async (
+    platform: NodeJS.Platform,
+    fn: () => void | Promise<void>
+  ) => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', {
+      value: platform,
+      configurable: true,
+    });
+    try {
+      await fn();
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      });
+    }
+  };
+
   const chromiumExecutablePath =
     process.platform === 'darwin'
       ? '/Applications/Chromium.app/Contents/MacOS/Chromium'
@@ -188,6 +207,53 @@ describe('BrowserSession Basic Operations', () => {
     expect(systemChrome.getUserDataDir(canaryExecutablePath)).toBe(
       canaryUserDataDir
     );
+  });
+
+  it('detects unstable Chrome commands on Linux', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-linux-chrome-')
+    );
+    const unstableBinary = path.join(tempDir, 'google-chrome-unstable');
+    const originalPath = process.env.PATH;
+    fs.writeFileSync(unstableBinary, '#!/bin/sh\nexit 0\n');
+    fs.chmodSync(unstableBinary, 0o755);
+
+    try {
+      process.env.PATH = `${tempDir}${path.delimiter}${originalPath ?? ''}`;
+      await withPlatform('linux', async () => {
+        expect(systemChrome.findExecutable()).toBe(unstableBinary);
+      });
+    } finally {
+      process.env.PATH = originalPath;
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('detects Canary installs on Windows', async () => {
+    const existsSyncSpy = vi
+      .spyOn(fs, 'existsSync')
+      .mockImplementation(((candidate: fs.PathLike) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return normalized.endsWith(
+          'Google/Chrome SxS/Application/chrome.exe'
+        );
+      }) as any);
+
+    try {
+      await withPlatform('win32', async () => {
+        expect(systemChrome.findExecutable()).toBe(
+          path.join(
+            process.env.LOCALAPPDATA ?? '',
+            'Google',
+            'Chrome SxS',
+            'Application',
+            'chrome.exe'
+          )
+        );
+      });
+    } finally {
+      existsSyncSpy.mockRestore();
+    }
   });
 
   it('builds BrowserSession.from_system_chrome from detected profile data', () => {
