@@ -323,7 +323,10 @@ const waitForLocalCdpEndpoint = async (port: number, timeoutMs = 15000) => {
   );
 };
 
-const defaultLocalLauncher = async (options: { state: DirectModeState }) => {
+export const defaultLocalLauncher = async (options: {
+  state: DirectModeState;
+  timeout_ms?: number;
+}) => {
   const executablePath = systemChrome.findExecutable();
   if (!executablePath) {
     throw new Error(
@@ -356,7 +359,7 @@ const defaultLocalLauncher = async (options: { state: DirectModeState }) => {
   child.unref();
 
   try {
-    const cdp_url = await waitForLocalCdpEndpoint(port);
+    const cdp_url = await waitForLocalCdpEndpoint(port, options.timeout_ms);
     return {
       cdp_url,
       browser_pid: child.pid ?? null,
@@ -369,6 +372,13 @@ const defaultLocalLauncher = async (options: { state: DirectModeState }) => {
         process.kill(child.pid, 'SIGTERM');
       } catch {
         // Ignore cleanup failures for a process that may not have started.
+      }
+    }
+    if (!reusingUserDataDir) {
+      try {
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup failures for ephemeral launch profiles.
       }
     }
     throw error;

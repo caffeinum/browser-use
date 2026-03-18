@@ -4,10 +4,12 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   clear_direct_state,
+  defaultLocalLauncher,
   load_direct_state,
   run_direct_command,
   save_direct_state,
 } from '../src/skill-cli/direct.js';
+import { systemChrome } from '../src/browser/session.js';
 
 const createWritable = () => {
   let buffer = '';
@@ -67,6 +69,39 @@ describe('skill-cli direct alignment', () => {
       });
     } finally {
       clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('removes ephemeral local profiles when direct launch fails before connect', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const fakeChrome = path.join(tempDir, 'fake-chrome.sh');
+    const ownedProfileDir = path.join(tempDir, 'owned-profile');
+    fs.writeFileSync(fakeChrome, '#!/bin/sh\nsleep 5\n');
+    fs.chmodSync(fakeChrome, 0o755);
+
+    const findExecutableSpy = vi
+      .spyOn(systemChrome, 'findExecutable')
+      .mockReturnValue(fakeChrome);
+    const mkdtempSpy = vi
+      .spyOn(fs, 'mkdtempSync')
+      .mockImplementation(((prefix: string) => {
+        expect(prefix).toContain('browser-use-direct-');
+        fs.mkdirSync(ownedProfileDir, { recursive: true });
+        return ownedProfileDir;
+      }) as any);
+
+    try {
+      await expect(
+        defaultLocalLauncher({
+          state: {},
+          timeout_ms: 10,
+        })
+      ).rejects.toThrow(/Timed out waiting for local Chrome debugging endpoint/);
+      expect(fs.existsSync(ownedProfileDir)).toBe(false);
+    } finally {
+      findExecutableSpy.mockRestore();
+      mkdtempSpy.mockRestore();
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
