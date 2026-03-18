@@ -256,6 +256,42 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('prefers stable Chrome over Canary on Windows', async () => {
+    const originalLocalAppData = process.env.LOCALAPPDATA;
+    process.env.LOCALAPPDATA = 'C:\\Users\\tester\\AppData\\Local';
+    const existsSyncSpy = vi
+      .spyOn(fs, 'existsSync')
+      .mockImplementation(((candidate: fs.PathLike) => {
+        const normalized = String(candidate).replace(/\\/g, '/');
+        return (
+          normalized.startsWith('C:/Users/tester/AppData/Local/') &&
+          (normalized.endsWith('Google/Chrome/Application/chrome.exe') ||
+            normalized.endsWith('Google/Chrome SxS/Application/chrome.exe'))
+        );
+      }) as any);
+
+    try {
+      await withPlatform('win32', async () => {
+        expect(systemChrome.findExecutable()).toBe(
+          path.join(
+            process.env.LOCALAPPDATA ?? '',
+            'Google',
+            'Chrome',
+            'Application',
+            'chrome.exe'
+          )
+        );
+      });
+    } finally {
+      if (originalLocalAppData === undefined) {
+        delete process.env.LOCALAPPDATA;
+      } else {
+        process.env.LOCALAPPDATA = originalLocalAppData;
+      }
+      existsSyncSpy.mockRestore();
+    }
+  });
+
   it('builds BrowserSession.from_system_chrome from detected profile data', () => {
     const findExecutableSpy = vi
       .spyOn(systemChrome, 'findExecutable')

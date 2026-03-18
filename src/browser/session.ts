@@ -216,6 +216,13 @@ export const systemChrome = {
         path.join(
           process.env.LOCALAPPDATA ?? '',
           'Google',
+          'Chrome',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env.LOCALAPPDATA ?? '',
+          'Google',
           'Chrome SxS',
           'Application',
           'chrome.exe'
@@ -235,13 +242,6 @@ export const systemChrome = {
         path.join(
           process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
           'Chromium',
-          'Application',
-          'chrome.exe'
-        ),
-        path.join(
-          process.env.LOCALAPPDATA ?? '',
-          'Google',
-          'Chrome',
           'Application',
           'chrome.exe'
         ),
