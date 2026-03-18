@@ -138,7 +138,14 @@ export class CloudManagementClient {
     });
 
     const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
+    let payload: unknown = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = text;
+      }
+    }
 
     if (!response.ok) {
       const details =

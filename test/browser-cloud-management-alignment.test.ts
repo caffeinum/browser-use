@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CloudManagementClient } from '../src/browser/cloud/management.js';
+import { CloudBrowserError } from '../src/browser/cloud/views.js';
 
 describe('browser cloud management alignment', () => {
   it('calls task management endpoints with browser-use auth headers', async () => {
@@ -106,5 +107,26 @@ describe('browser cloud management alignment', () => {
       'https://api.browser-use.test/api/v2/profiles/profile-1'
     );
     expect(requests[3]!.init.method).toBe('DELETE');
+  });
+
+  it('surfaces non-json cloud management errors as CloudBrowserError', async () => {
+    const client = new CloudManagementClient({
+      api_base_url: 'https://api.browser-use.test',
+      api_key: 'bu_test_key',
+      fetch_impl: (async () =>
+        ({
+          ok: false,
+          status: 502,
+          text: async () => '<html>bad gateway</html>',
+        }) as Response) as typeof fetch,
+    });
+
+    await expect(client.list_sessions()).rejects.toEqual(
+      expect.objectContaining<Partial<CloudBrowserError>>({
+        name: 'CloudBrowserError',
+        message:
+          'Cloud API request failed (502): <html>bad gateway</html>',
+      })
+    );
   });
 });
