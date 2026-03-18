@@ -317,4 +317,32 @@ describe('cli cloud profile alignment', () => {
       'Usage: browser-use profile get <profile-id> [--remote]'
     );
   });
+
+  it('rejects unexpected extra profile arguments', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const profiles = [
+      { directory: 'Default', name: 'Personal', email: 'person@example.com' },
+    ];
+    const client = {
+      list_profiles: vi.fn(),
+      get_profile: vi.fn(),
+      create_profile: vi.fn(),
+      update_profile: vi.fn(),
+      delete_profile: vi.fn(),
+    };
+
+    expect(
+      await runProfileCommand(['sync', '--from', 'Default', 'stray'], {
+        profile_lister: () => profiles,
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(client.create_profile).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain(
+      'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]'
+    );
+  });
 });

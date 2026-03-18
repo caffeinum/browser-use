@@ -187,4 +187,25 @@ describe('cli cloud task alignment', () => {
     expect(client.get_task).not.toHaveBeenCalled();
     expect(stderr.read()).toContain('Usage: browser-use task status <task-id>');
   });
+
+  it('rejects unexpected extra task arguments', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_tasks: vi.fn(),
+      get_task: vi.fn(),
+      update_task: vi.fn(),
+      get_task_logs: vi.fn(),
+    };
+
+    expect(
+      await runTaskCommand(['status', 'task-123', 'extra'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(client.get_task).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain('Usage: browser-use task status <task-id>');
+  });
 });

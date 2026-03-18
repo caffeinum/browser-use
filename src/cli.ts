@@ -1549,6 +1549,15 @@ const requireCommandTarget = (
   return target;
 };
 
+const rejectUnexpectedPositionals = (
+  positionals: string[],
+  usage: string
+) => {
+  if (positionals.length > 0) {
+    throw new Error(usage);
+  }
+};
+
 const parseTaskCommandFlags = (argv: string[]) => {
   const flags = {
     json: false,
@@ -1560,6 +1569,7 @@ const parseTaskCommandFlags = (argv: string[]) => {
     last: null as number | null,
     reverse: false,
     step: null as number | null,
+    positionals: [] as string[],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1613,6 +1623,7 @@ const parseTaskCommandFlags = (argv: string[]) => {
     if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`);
     }
+    flags.positionals.push(arg);
   }
 
   return flags;
@@ -1630,6 +1641,10 @@ export const runTaskCommand = async (
   try {
     if (subcommand === 'list') {
       const flags = parseTaskCommandFlags(argv.slice(1));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use task list [options]'
+      );
       const result = await client.list_tasks({
         pageSize: flags.limit,
         filterBy: flags.status,
@@ -1667,6 +1682,10 @@ export const runTaskCommand = async (
         'Usage: browser-use task status <task-id>'
       );
       const flags = parseTaskCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use task status <task-id>'
+      );
       const task = await client.get_task(taskId);
       if (flags.json) {
         writeLine(output, JSON.stringify(task, null, 2));
@@ -1720,6 +1739,10 @@ export const runTaskCommand = async (
         'Usage: browser-use task stop <task-id>'
       );
       const flags = parseTaskCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use task stop <task-id>'
+      );
       await client.update_task(taskId, 'stop');
       if (flags.json) {
         writeLine(output, JSON.stringify({ stopped: taskId }, null, 2));
@@ -1735,6 +1758,10 @@ export const runTaskCommand = async (
         'Usage: browser-use task logs <task-id>'
       );
       const flags = parseTaskCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use task logs <task-id>'
+      );
       const result = await client.get_task_logs(taskId);
       if (flags.json) {
         writeLine(output, JSON.stringify(result, null, 2));
@@ -1768,6 +1795,7 @@ const parseSessionCommandFlags = (argv: string[]) => {
     proxy_country: null as string | null,
     start_url: null as string | null,
     screen_size: null as string | null,
+    positionals: [] as string[],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1823,6 +1851,7 @@ const parseSessionCommandFlags = (argv: string[]) => {
     if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`);
     }
+    flags.positionals.push(arg);
   }
 
   return flags;
@@ -1840,6 +1869,10 @@ export const runSessionCommand = async (
   try {
     if (subcommand === 'list') {
       const flags = parseSessionCommandFlags(argv.slice(1));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use session list [options]'
+      );
       const result = await client.list_sessions({
         pageSize: flags.limit,
         filterBy: flags.status,
@@ -1868,6 +1901,10 @@ export const runSessionCommand = async (
         'Usage: browser-use session get <session-id>'
       );
       const flags = parseSessionCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use session get <session-id>'
+      );
       const session = await client.get_session(sessionId);
       if (flags.json) {
         writeLine(output, JSON.stringify(session, null, 2));
@@ -1887,6 +1924,10 @@ export const runSessionCommand = async (
     if (subcommand === 'stop') {
       const flags = parseSessionCommandFlags(argv.slice(1));
       if (flags.all) {
+        rejectUnexpectedPositionals(
+          flags.positionals,
+          'Usage: browser-use session stop <session-id> | --all'
+        );
         const sessions = await client.list_sessions({
           pageSize: 100,
           filterBy: 'active',
@@ -1905,8 +1946,13 @@ export const runSessionCommand = async (
         }
         return 0;
       }
+      const [sessionIdCandidate, ...unexpectedPositionals] = flags.positionals;
+      rejectUnexpectedPositionals(
+        unexpectedPositionals,
+        'Usage: browser-use session stop <session-id> | --all'
+      );
       const sessionId = requireCommandTarget(
-        argv[1],
+        sessionIdCandidate ?? argv[1],
         'Usage: browser-use session stop <session-id> | --all'
       );
       await client.update_session(sessionId, 'stop');
@@ -1920,6 +1966,10 @@ export const runSessionCommand = async (
 
     if (subcommand === 'create') {
       const flags = parseSessionCommandFlags(argv.slice(1));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use session create [options]'
+      );
       let browserScreenWidth: number | null = null;
       let browserScreenHeight: number | null = null;
       if (flags.screen_size) {
@@ -1954,6 +2004,10 @@ export const runSessionCommand = async (
         'Usage: browser-use session share <session-id> [--delete]'
       );
       const flags = parseSessionCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use session share <session-id> [--delete]'
+      );
       if (flags.delete) {
         await client.delete_session_public_share(sessionId);
         if (flags.json) {
@@ -1991,6 +2045,7 @@ const parseProfileCommandFlags = (argv: string[]) => {
     name: null as string | null,
     domain: null as string | null,
     from_profile: null as string | null,
+    positionals: [] as string[],
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -2030,6 +2085,7 @@ const parseProfileCommandFlags = (argv: string[]) => {
     if (arg.startsWith('-')) {
       throw new Error(`Unknown option: ${arg}`);
     }
+    flags.positionals.push(arg);
   }
 
   return flags;
@@ -2087,6 +2143,10 @@ export const runProfileCommand = async (
   try {
     if (subcommand === 'list') {
       const flags = parseProfileCommandFlags(argv.slice(1));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile list [--remote] [options]'
+      );
       if (flags.remote) {
         const result = await client.list_profiles({
           pageSize: flags.limit,
@@ -2128,6 +2188,10 @@ export const runProfileCommand = async (
         'Usage: browser-use profile get <profile-id> [--remote]'
       );
       const flags = parseProfileCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile get <profile-id> [--remote]'
+      );
       if (flags.remote) {
         const profile = await client.get_profile(profileId);
         if (flags.json) {
@@ -2162,6 +2226,10 @@ export const runProfileCommand = async (
 
     if (subcommand === 'create') {
       const flags = parseProfileCommandFlags(argv.slice(1));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile create --remote [--name <name>] [--json]'
+      );
       if (!flags.remote) {
         throw new Error('Profile create is only supported with --remote');
       }
@@ -2180,6 +2248,10 @@ export const runProfileCommand = async (
         'Usage: browser-use profile delete <profile-id> --remote'
       );
       const flags = parseProfileCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile delete <profile-id> --remote'
+      );
       if (!flags.remote) {
         throw new Error('Profile delete is only supported with --remote');
       }
@@ -2198,6 +2270,10 @@ export const runProfileCommand = async (
         'Usage: browser-use profile cookies <profile-id>'
       );
       const flags = parseProfileCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile cookies <profile-id>'
+      );
       if (flags.remote) {
         throw new Error('Profile cookies is only supported for local Chrome profiles');
       }
@@ -2265,6 +2341,10 @@ export const runProfileCommand = async (
 
     if (subcommand === 'sync') {
       const flags = parseProfileCommandFlags(argv.slice(1));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile sync --from <profile-id> [--name <name>] [--domain <domain>] [--json]'
+      );
       const profiles = profileLister();
       const fromProfile = flags.from_profile?.trim();
       if (!fromProfile) {
@@ -2398,6 +2478,10 @@ export const runProfileCommand = async (
         'Usage: browser-use profile update <profile-id> --remote --name <name>'
       );
       const flags = parseProfileCommandFlags(argv.slice(2));
+      rejectUnexpectedPositionals(
+        flags.positionals,
+        'Usage: browser-use profile update <profile-id> --remote --name <name>'
+      );
       if (!flags.remote) {
         throw new Error('Profile update is only supported with --remote');
       }
