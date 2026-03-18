@@ -253,4 +253,43 @@ describe('skill-cli alignment', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('supports screenshot action with inline and file outputs', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-shot-'));
+    const screenshotPath = path.join(tempDir, 'capture.png');
+    const session = new BrowserSession();
+    vi.spyOn(session, 'take_screenshot').mockResolvedValue(
+      Buffer.from('fake-png').toString('base64')
+    );
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    try {
+      const inline = await server.handle_request(
+        new Request({
+          id: 'r16',
+          action: 'screenshot',
+          session: 'default',
+        })
+      );
+      const saved = await server.handle_request(
+        new Request({
+          id: 'r17',
+          action: 'screenshot',
+          session: 'default',
+          params: { file: screenshotPath },
+        })
+      );
+
+      expect(inline.success).toBe(true);
+      expect((inline.data as any).screenshot).toBeTypeOf('string');
+      expect(saved.success).toBe(true);
+      expect((saved.data as any).file).toBe(screenshotPath);
+      expect(fs.existsSync(screenshotPath)).toBe(true);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

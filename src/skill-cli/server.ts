@@ -128,6 +128,22 @@ export class SkillCliServer {
       };
     }
 
+    if (action === 'screenshot') {
+      const screenshot = await browser_session.take_screenshot(false);
+      if (!screenshot) {
+        throw new Error('Failed to capture screenshot');
+      }
+
+      const file = typeof params.file === 'string' ? params.file.trim() : '';
+      if (!file) {
+        return { screenshot };
+      }
+
+      const filePath = path.resolve(file);
+      await fsp.writeFile(filePath, Buffer.from(screenshot, 'base64'));
+      return { file: filePath };
+    }
+
     if (action === 'wait_selector') {
       const selector = String(params.selector ?? '');
       if (!selector) {
