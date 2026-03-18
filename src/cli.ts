@@ -971,6 +971,7 @@ export const getCliUsage = () => `Usage:
   browser-use setup [--mode <local|remote|full>]
   browser-use tunnel <port>
   browser-use task <list|status|stop|logs>
+  browser-use session <list|get|stop|create|share>
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -1036,6 +1037,20 @@ export interface RunTaskCommandOptions {
   client?: Pick<
     CloudManagementClient,
     'list_tasks' | 'get_task' | 'update_task' | 'get_task_logs'
+  >;
+  stdout?: WritableLike;
+  stderr?: WritableLike;
+}
+
+export interface RunSessionCommandOptions {
+  client?: Pick<
+    CloudManagementClient,
+    | 'list_sessions'
+    | 'get_session'
+    | 'update_session'
+    | 'create_session'
+    | 'create_session_public_share'
+    | 'delete_session_public_share'
   >;
   stdout?: WritableLike;
   stderr?: WritableLike;
@@ -1678,6 +1693,220 @@ export const runTaskCommand = async (
   }
 };
 
+const parseSessionCommandFlags = (argv: string[]) => {
+  const flags = {
+    json: false,
+    limit: 10,
+    status: null as string | null,
+    all: false,
+    delete: false,
+    profile: null as string | null,
+    proxy_country: null as string | null,
+    start_url: null as string | null,
+    screen_size: null as string | null,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? '';
+    if (arg === '--json') {
+      flags.json = true;
+      continue;
+    }
+    if (arg === '--all') {
+      flags.all = true;
+      continue;
+    }
+    if (arg === '--delete') {
+      flags.delete = true;
+      continue;
+    }
+    if (
+      arg === '--limit' ||
+      arg === '--status' ||
+      arg === '--profile' ||
+      arg === '--proxy-country' ||
+      arg === '--start-url' ||
+      arg === '--screen-size'
+    ) {
+      const next = argv[index + 1]?.trim();
+      if (!next) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      if (arg === '--limit') {
+        flags.limit = parsePositiveInt('--limit', next);
+      } else if (arg === '--status') {
+        flags.status = next;
+      } else if (arg === '--profile') {
+        flags.profile = next;
+      } else if (arg === '--proxy-country') {
+        flags.proxy_country = next;
+      } else if (arg === '--start-url') {
+        flags.start_url = next;
+      } else {
+        flags.screen_size = next;
+      }
+      index += 1;
+    }
+  }
+
+  return flags;
+};
+
+export const runSessionCommand = async (
+  argv: string[],
+  options: RunSessionCommandOptions = {}
+) => {
+  const client = options.client ?? new CloudManagementClient();
+  const output = options.stdout ?? process.stdout;
+  const errorOutput = options.stderr ?? process.stderr;
+  const subcommand = argv[0] ?? '';
+
+  try {
+    if (subcommand === 'list') {
+      const flags = parseSessionCommandFlags(argv.slice(1));
+      const result = await client.list_sessions({
+        pageSize: flags.limit,
+        filterBy: flags.status,
+      });
+      if (flags.json) {
+        writeLine(output, JSON.stringify(result.items, null, 2));
+        return 0;
+      }
+      if (result.items.length === 0) {
+        writeLine(output, 'No sessions found');
+        return 0;
+      }
+      writeLine(output, `Sessions (${result.items.length}):`);
+      for (const session of result.items) {
+        const emoji = session.status === 'active' ? '🟢' : '⏹️';
+        const duration = formatDuration(session.startedAt, session.finishedAt);
+        const details = duration ? ` ${duration}` : '';
+        writeLine(output, `  ${emoji} ${session.id.slice(0, 8)}... [${session.status}]${details}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'get') {
+      const sessionId = argv[1]?.trim();
+      if (!sessionId) {
+        throw new Error('Usage: browser-use session get <session-id>');
+      }
+      const flags = parseSessionCommandFlags(argv.slice(2));
+      const session = await client.get_session(sessionId);
+      if (flags.json) {
+        writeLine(output, JSON.stringify(session, null, 2));
+      } else {
+        writeLine(output, `${session.id} [${session.status}]`);
+        if (session.liveUrl) {
+          writeLine(output, `Live URL: ${session.liveUrl}`);
+        }
+        const duration = formatDuration(session.startedAt, session.finishedAt);
+        if (duration) {
+          writeLine(output, `Duration: ${duration}`);
+        }
+      }
+      return 0;
+    }
+
+    if (subcommand === 'stop') {
+      const flags = parseSessionCommandFlags(argv.slice(1));
+      const sessionId = argv[1]?.trim();
+      if (flags.all) {
+        const sessions = await client.list_sessions({
+          pageSize: 100,
+          filterBy: 'active',
+        });
+        const stopped: string[] = [];
+        for (const session of sessions.items) {
+          await client.update_session(session.id, 'stop');
+          stopped.push(session.id);
+        }
+        if (flags.json) {
+          writeLine(output, JSON.stringify({ stopped }, null, 2));
+        } else if (stopped.length > 0) {
+          writeLine(output, `Stopped ${stopped.length} session(s): ${stopped.join(', ')}`);
+        } else {
+          writeLine(output, 'No sessions to stop');
+        }
+        return 0;
+      }
+      if (!sessionId) {
+        throw new Error('Usage: browser-use session stop <session-id> | --all');
+      }
+      await client.update_session(sessionId, 'stop');
+      if (flags.json) {
+        writeLine(output, JSON.stringify({ stopped: sessionId }, null, 2));
+      } else {
+        writeLine(output, `Stopped session: ${sessionId}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'create') {
+      const flags = parseSessionCommandFlags(argv.slice(1));
+      let browserScreenWidth: number | null = null;
+      let browserScreenHeight: number | null = null;
+      if (flags.screen_size) {
+        const match = flags.screen_size.match(/^(\d+)x(\d+)$/i);
+        if (!match) {
+          throw new Error('Expected --screen-size WIDTHxHEIGHT');
+        }
+        browserScreenWidth = Number.parseInt(match[1]!, 10);
+        browserScreenHeight = Number.parseInt(match[2]!, 10);
+      }
+      const session = await client.create_session({
+        profileId: flags.profile,
+        proxyCountryCode: flags.proxy_country,
+        startUrl: flags.start_url,
+        browserScreenWidth,
+        browserScreenHeight,
+      });
+      if (flags.json) {
+        writeLine(output, JSON.stringify(session, null, 2));
+      } else {
+        writeLine(output, `Created session: ${session.id}`);
+        if (session.liveUrl) {
+          writeLine(output, `Live URL: ${session.liveUrl}`);
+        }
+      }
+      return 0;
+    }
+
+    if (subcommand === 'share') {
+      const sessionId = argv[1]?.trim();
+      if (!sessionId) {
+        throw new Error('Usage: browser-use session share <session-id> [--delete]');
+      }
+      const flags = parseSessionCommandFlags(argv.slice(2));
+      if (flags.delete) {
+        await client.delete_session_public_share(sessionId);
+        if (flags.json) {
+          writeLine(output, JSON.stringify({ deleted: sessionId }, null, 2));
+        } else {
+          writeLine(output, `Deleted public share for session: ${sessionId}`);
+        }
+      } else {
+        const share = await client.create_session_public_share(sessionId);
+        if (flags.json) {
+          writeLine(output, JSON.stringify(share, null, 2));
+        } else {
+          writeLine(output, `Public share URL: ${share.shareUrl}`);
+        }
+      }
+      return 0;
+    }
+
+    writeLine(
+      errorOutput,
+      'Usage: browser-use session <list|get|stop|create|share> [options]'
+    );
+    return 1;
+  } catch (error) {
+    writeLine(errorOutput, `Error: ${(error as Error).message}`);
+    return 1;
+  }
+};
+
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
   message: string;
@@ -1888,6 +2117,14 @@ async function runMcpServer() {
 export async function main(argv: string[] = process.argv.slice(2)) {
   if (argv[0] === 'task') {
     const exitCode = await runTaskCommand(argv.slice(1));
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+    return;
+  }
+
+  if (argv[0] === 'session') {
+    const exitCode = await runSessionCommand(argv.slice(1));
     if (exitCode !== 0) {
       process.exit(exitCode);
     }
