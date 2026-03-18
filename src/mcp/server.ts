@@ -1006,7 +1006,7 @@ export class MCPServer {
       z.object({
         task: z.string(),
         max_steps: z.number().int().optional().default(100),
-        model: z.string().optional().default('gpt-4o'),
+        model: z.string().optional(),
         allowed_domains: z.array(z.string()).optional().default([]),
         use_vision: z.boolean().optional().default(true),
       }),
@@ -1016,7 +1016,8 @@ export class MCPServer {
           throw new Error('task is required');
         }
 
-        const model = String(args?.model ?? 'gpt-4o').trim();
+        const requestedModel =
+          typeof args?.model === 'string' ? args.model.trim() : '';
         const maxSteps = Number(args?.max_steps ?? 100);
         const useVision = Boolean(args?.use_vision ?? true);
         const allowedDomains = Array.isArray(args?.allowed_domains)
@@ -1030,7 +1031,7 @@ export class MCPServer {
           typeof llmConfig.model === 'string' && llmConfig.model.trim()
             ? llmConfig.model.trim()
             : 'gpt-4o';
-        const llmModel = model || configuredModel;
+        const llmModel = requestedModel || configuredModel;
         let llm: BaseChatModel;
         try {
           llm = this.createLlmFromModelName(llmModel, llmConfig);

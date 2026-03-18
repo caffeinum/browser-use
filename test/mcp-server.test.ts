@@ -444,6 +444,31 @@ describe('MCPServer retry_with_browser_use_agent', () => {
     expect(instance.runMaxSteps).toBe(100);
   });
 
+  it('uses configured default model when model argument is omitted', async () => {
+    mockAgentInstances.length = 0;
+    const previousOpenAiApiKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = 'test-openai-key';
+
+    try {
+      const server = new MCPServer('test-mcp', '1.0.0');
+
+      await (server as any).tools.retry_with_browser_use_agent.handler({
+        task: 'Retry with configured default model',
+      });
+
+      expect(mockAgentInstances.length).toBe(1);
+      const instance = mockAgentInstances[0];
+      expect(instance.params.llm.provider).toBe('openai');
+      expect(instance.params.llm.model).toBe('gpt-4o-mini');
+    } finally {
+      if (previousOpenAiApiKey === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previousOpenAiApiKey;
+      }
+    }
+  });
+
   it('supports non-openai models via shared llm factory', async () => {
     mockAgentInstances.length = 0;
     const previousBrowserUseApiKey = process.env.BROWSER_USE_API_KEY;
