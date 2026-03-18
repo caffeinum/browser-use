@@ -972,6 +972,7 @@ export const getCliUsage = () => `Usage:
   browser-use tunnel <port>
   browser-use task <list|status|stop|logs>
   browser-use session <list|get|stop|create|share>
+  browser-use profile <list|get|create|delete>
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -1052,6 +1053,16 @@ export interface RunSessionCommandOptions {
     | 'create_session_public_share'
     | 'delete_session_public_share'
   >;
+  stdout?: WritableLike;
+  stderr?: WritableLike;
+}
+
+export interface RunProfileCommandOptions {
+  client?: Pick<
+    CloudManagementClient,
+    'list_profiles' | 'get_profile' | 'create_profile' | 'delete_profile'
+  >;
+  profile_lister?: () => Array<{ directory: string; name: string }>;
   stdout?: WritableLike;
   stderr?: WritableLike;
 }
@@ -1907,6 +1918,166 @@ export const runSessionCommand = async (
   }
 };
 
+const parseProfileCommandFlags = (argv: string[]) => {
+  const flags = {
+    json: false,
+    remote: false,
+    limit: 20,
+    name: null as string | null,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? '';
+    if (arg === '--json') {
+      flags.json = true;
+      continue;
+    }
+    if (arg === '--remote') {
+      flags.remote = true;
+      continue;
+    }
+    if (arg === '--limit' || arg === '--name') {
+      const next = argv[index + 1]?.trim();
+      if (!next) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      if (arg === '--limit') {
+        flags.limit = parsePositiveInt('--limit', next);
+      } else {
+        flags.name = next;
+      }
+      index += 1;
+    }
+  }
+
+  return flags;
+};
+
+export const runProfileCommand = async (
+  argv: string[],
+  options: RunProfileCommandOptions = {}
+) => {
+  const client = options.client ?? new CloudManagementClient();
+  const profileLister = options.profile_lister ?? (() => systemChrome.listProfiles());
+  const output = options.stdout ?? process.stdout;
+  const errorOutput = options.stderr ?? process.stderr;
+  const subcommand = argv[0] ?? '';
+
+  try {
+    if (subcommand === 'list') {
+      const flags = parseProfileCommandFlags(argv.slice(1));
+      if (flags.remote) {
+        const result = await client.list_profiles({
+          pageSize: flags.limit,
+        });
+        if (flags.json) {
+          writeLine(output, JSON.stringify(result.items, null, 2));
+        } else if (result.items.length === 0) {
+          writeLine(output, 'No cloud profiles found');
+        } else {
+          writeLine(output, `Cloud profiles (${result.items.length}):`);
+          result.items.forEach((profile) => {
+            writeLine(
+              output,
+              `  ${profile.id}: ${profile.name || 'Unnamed'}`
+            );
+          });
+        }
+        return 0;
+      }
+
+      const profiles = profileLister();
+      if (flags.json) {
+        writeLine(output, JSON.stringify({ profiles }, null, 2));
+      } else if (profiles.length === 0) {
+        writeLine(output, 'No Chrome profiles found');
+      } else {
+        writeLine(output, 'Local Chrome profiles:');
+        profiles.forEach((profile) => {
+          writeLine(output, `  ${profile.directory}: ${profile.name}`);
+        });
+      }
+      return 0;
+    }
+
+    if (subcommand === 'get') {
+      const profileId = argv[1]?.trim();
+      if (!profileId) {
+        throw new Error('Usage: browser-use profile get <profile-id> [--remote]');
+      }
+      const flags = parseProfileCommandFlags(argv.slice(2));
+      if (flags.remote) {
+        const profile = await client.get_profile(profileId);
+        if (flags.json) {
+          writeLine(output, JSON.stringify(profile, null, 2));
+        } else {
+          writeLine(output, `Profile: ${profile.id}`);
+          if (profile.name) {
+            writeLine(output, `  Name: ${profile.name}`);
+          }
+          writeLine(output, `  Updated: ${profile.updatedAt}`);
+        }
+        return 0;
+      }
+
+      const profile = profileLister().find(
+        (entry) => entry.directory === profileId || entry.name === profileId
+      );
+      if (!profile) {
+        throw new Error(`Profile "${profileId}" not found`);
+      }
+      if (flags.json) {
+        writeLine(output, JSON.stringify(profile, null, 2));
+      } else {
+        writeLine(output, `Profile: ${profile.directory}`);
+        writeLine(output, `  Name: ${profile.name}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'create') {
+      const flags = parseProfileCommandFlags(argv.slice(1));
+      if (!flags.remote) {
+        throw new Error('Profile create is only supported with --remote');
+      }
+      const profile = await client.create_profile({ name: flags.name });
+      if (flags.json) {
+        writeLine(output, JSON.stringify(profile, null, 2));
+      } else {
+        writeLine(output, `Created cloud profile: ${profile.id}`);
+      }
+      return 0;
+    }
+
+    if (subcommand === 'delete') {
+      const profileId = argv[1]?.trim();
+      if (!profileId) {
+        throw new Error('Usage: browser-use profile delete <profile-id> --remote');
+      }
+      const flags = parseProfileCommandFlags(argv.slice(2));
+      if (!flags.remote) {
+        throw new Error('Profile delete is only supported with --remote');
+      }
+      await client.delete_profile(profileId);
+      if (flags.json) {
+        writeLine(output, JSON.stringify({ deleted: profileId }, null, 2));
+      } else {
+        writeLine(output, `Deleted cloud profile: ${profileId}`);
+      }
+      return 0;
+    }
+
+    writeLine(
+      errorOutput,
+      'Usage: browser-use profile <list|get|create|delete> [--remote] [options]'
+    );
+    return 1;
+  } catch (error) {
+    writeLine(errorOutput, `Error: ${(error as Error).message}`);
+    return 1;
+  }
+};
+
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
   message: string;
@@ -2125,6 +2296,14 @@ export async function main(argv: string[] = process.argv.slice(2)) {
 
   if (argv[0] === 'session') {
     const exitCode = await runSessionCommand(argv.slice(1));
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+    return;
+  }
+
+  if (argv[0] === 'profile') {
+    const exitCode = await runProfileCommand(argv.slice(1));
     if (exitCode !== 0) {
       process.exit(exitCode);
     }
