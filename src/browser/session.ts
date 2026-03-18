@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isIP } from 'node:net';
-import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import {
+  spawn,
+  execFile,
+  execFileSync,
+  type ChildProcess,
+} from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLogger } from '../logging-config.js';
 import { match_url_with_domain_pattern, uuid7str } from '../utils.js';
@@ -88,6 +93,137 @@ export interface BrowserSessionInit {
   playwright?: unknown;
   downloaded_files?: string[];
   closed_popup_messages?: string[];
+}
+
+export interface ChromeProfileInfo {
+  directory: string;
+  name: string;
+}
+
+const cloneBrowserProfileConfig = (profile: BrowserProfile) =>
+  typeof structuredClone === 'function'
+    ? structuredClone(profile.config)
+    : JSON.parse(JSON.stringify(profile.config));
+
+export const systemChrome = {
+  findExecutable(): string | null {
+    if (process.platform === 'darwin') {
+      const candidates = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+      ];
+      return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+    }
+
+    if (process.platform === 'linux') {
+      const commands = [
+        'google-chrome',
+        'google-chrome-stable',
+        'chromium',
+        'chromium-browser',
+      ];
+      for (const command of commands) {
+        try {
+          const resolved = execFileSync('which', [command], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+          }).trim();
+          if (resolved) {
+            return resolved;
+          }
+        } catch {
+          // Ignore missing commands and try the next candidate.
+        }
+      }
+      return null;
+    }
+
+    if (process.platform === 'win32') {
+      const candidates = [
+        path.join(
+          process.env.ProgramFiles ?? 'C:\\Program Files',
+          'Google',
+          'Chrome',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+          'Google',
+          'Chrome',
+          'Application',
+          'chrome.exe'
+        ),
+        path.join(
+          process.env.LOCALAPPDATA ?? '',
+          'Google',
+          'Chrome',
+          'Application',
+          'chrome.exe'
+        ),
+      ];
+      return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+    }
+
+    return null;
+  },
+
+  getUserDataDir(): string | null {
+    if (process.platform === 'darwin') {
+      return path.join(
+        os.homedir(),
+        'Library',
+        'Application Support',
+        'Google',
+        'Chrome'
+      );
+    }
+    if (process.platform === 'linux') {
+      return path.join(os.homedir(), '.config', 'google-chrome');
+    }
+    if (process.platform === 'win32') {
+      const localAppData =
+        process.env.LOCALAPPDATA ??
+        path.join(os.homedir(), 'AppData', 'Local');
+      return path.join(localAppData, 'Google', 'Chrome', 'User Data');
+    }
+    return null;
+  },
+
+  listProfiles(userDataDir: string | null = systemChrome.getUserDataDir()) {
+    if (!userDataDir) {
+      return [] as ChromeProfileInfo[];
+    }
+
+    const localStatePath = path.join(userDataDir, 'Local State');
+    if (!fs.existsSync(localStatePath)) {
+      return [] as ChromeProfileInfo[];
+    }
+
+    try {
+      const raw = fs.readFileSync(localStatePath, 'utf8');
+      const localState = JSON.parse(raw) as {
+        profile?: { info_cache?: Record<string, { name?: string }> };
+      };
+      const infoCache = localState.profile?.info_cache ?? {};
+      return Object.entries(infoCache)
+        .map(([directory, info]) => ({
+          directory,
+          name: info?.name || directory,
+        }))
+        .sort((left, right) => left.directory.localeCompare(right.directory));
+    } catch {
+      return [] as ChromeProfileInfo[];
+    }
+  },
+};
+
+export interface BrowserSessionFromSystemChromeInit
+  extends Omit<BrowserSessionInit, 'browser_profile' | 'profile'> {
+  browser_profile?: BrowserProfile;
+  profile?: Partial<BrowserProfileOptions>;
+  profile_directory?: string | null;
 }
 
 const createEmptyDomState = (): DOMState => {
@@ -176,9 +312,7 @@ export class BrowserSession {
 
   constructor(init: BrowserSessionInit = {}) {
     const sourceProfileConfig = init.browser_profile
-      ? typeof structuredClone === 'function'
-        ? structuredClone(init.browser_profile.config)
-        : JSON.parse(JSON.stringify(init.browser_profile.config))
+      ? cloneBrowserProfileConfig(init.browser_profile)
       : (init.profile ?? {});
     this.browser_profile = new BrowserProfile(sourceProfileConfig);
     this.id = init.id ?? uuid7str();
@@ -217,6 +351,68 @@ export class BrowserSession {
     this._syncSessionManagerFromTabs();
     this._attachDialogHandler(this.agent_current_page);
     this._recordRecentEvent('session_initialized', { url: this.currentUrl });
+  }
+
+  static from_system_chrome(
+    init: BrowserSessionFromSystemChromeInit = {}
+  ): BrowserSession {
+    const executablePath = systemChrome.findExecutable();
+    if (!executablePath) {
+      throw new Error(
+        'Chrome not found. Please install Chrome or use BrowserSession with an explicit executable_path.\n' +
+          'Expected locations:\n' +
+          '  macOS: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome\n' +
+          '  Linux: /usr/bin/google-chrome or /usr/bin/chromium\n' +
+          '  Windows: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+      );
+    }
+
+    const userDataDir = systemChrome.getUserDataDir();
+    if (!userDataDir) {
+      throw new Error(
+        'Could not detect Chrome profile directory for your platform.\n' +
+          'Expected locations:\n' +
+          '  macOS: ~/Library/Application Support/Google/Chrome\n' +
+          '  Linux: ~/.config/google-chrome\n' +
+          '  Windows: %LocalAppData%\\Google\\Chrome\\User Data'
+      );
+    }
+
+    const availableProfiles = systemChrome.listProfiles(userDataDir);
+    const selectedProfileDirectory =
+      init.profile_directory ??
+      availableProfiles[0]?.directory ??
+      'Default';
+
+    if (typeof init.profile_directory === 'undefined' && availableProfiles[0]) {
+      createLogger('browser_use.browser.session').info(
+        `Auto-selected Chrome profile: ${availableProfiles[0].name} (${availableProfiles[0].directory})`
+      );
+    }
+
+    const sourceProfileConfig = init.browser_profile
+      ? cloneBrowserProfileConfig(init.browser_profile)
+      : (init.profile ?? {});
+    const {
+      browser_profile: _browserProfile,
+      profile: _profile,
+      profile_directory: _profileDirectory,
+      ...sessionInit
+    } = init;
+
+    return new BrowserSession({
+      ...sessionInit,
+      browser_profile: new BrowserProfile({
+        ...sourceProfileConfig,
+        executable_path: executablePath,
+        user_data_dir: userDataDir,
+        profile_directory: selectedProfileDirectory,
+      }),
+    });
+  }
+
+  static list_chrome_profiles(): ChromeProfileInfo[] {
+    return systemChrome.listProfiles();
   }
 
   attach_watchdog(watchdog: BaseWatchdog) {

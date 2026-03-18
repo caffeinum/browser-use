@@ -57,7 +57,10 @@ vi.mock('../src/telemetry/service.js', () => ({
 }));
 
 // Import after mocks
-import { BrowserSession } from '../src/browser/session.js';
+import {
+  BrowserSession,
+  systemChrome,
+} from '../src/browser/session.js';
 import { BrowserProfile } from '../src/browser/profile.js';
 import {
   DownloadProgressEvent,
@@ -77,6 +80,83 @@ describe('BrowserSession Basic Operations', () => {
     });
 
     expect(session).toBeDefined();
+  });
+
+  it('lists Chrome profiles from Local State metadata', () => {
+    const userDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-chrome-profiles-')
+    );
+    try {
+      fs.writeFileSync(
+        path.join(userDataDir, 'Local State'),
+        JSON.stringify({
+          profile: {
+            info_cache: {
+              'Profile 2': { name: 'Work' },
+              Default: { name: 'Personal' },
+            },
+          },
+        })
+      );
+
+      expect(systemChrome.listProfiles(userDataDir)).toEqual([
+        { directory: 'Default', name: 'Personal' },
+        { directory: 'Profile 2', name: 'Work' },
+      ]);
+    } finally {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('exposes Chrome profile listing via BrowserSession', () => {
+    const listProfilesSpy = vi
+      .spyOn(systemChrome, 'listProfiles')
+      .mockReturnValue([{ directory: 'Default', name: 'Default Profile' }]);
+
+    try {
+      expect(BrowserSession.list_chrome_profiles()).toEqual([
+        { directory: 'Default', name: 'Default Profile' },
+      ]);
+      expect(listProfilesSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      listProfilesSpy.mockRestore();
+    }
+  });
+
+  it('builds BrowserSession.from_system_chrome from detected profile data', () => {
+    const findExecutableSpy = vi
+      .spyOn(systemChrome, 'findExecutable')
+      .mockReturnValue(
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+      );
+    const getUserDataDirSpy = vi
+      .spyOn(systemChrome, 'getUserDataDir')
+      .mockReturnValue('/tmp/chrome-user-data');
+    const listProfilesSpy = vi
+      .spyOn(systemChrome, 'listProfiles')
+      .mockReturnValue([{ directory: 'Profile 4', name: 'Work' }]);
+
+    try {
+      const session = BrowserSession.from_system_chrome({
+        profile: { headless: true },
+      });
+
+      expect(session.browser_profile.config.executable_path).toBe(
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+      );
+      expect(session.browser_profile.user_data_dir).toBe(
+        '/tmp/chrome-user-data'
+      );
+      expect(session.browser_profile.config.profile_directory).toBe(
+        'Profile 4'
+      );
+      expect(session.browser_profile.config.headless).toBe(true);
+      expect(listProfilesSpy).toHaveBeenCalledWith('/tmp/chrome-user-data');
+    } finally {
+      findExecutableSpy.mockRestore();
+      getUserDataDirSpy.mockRestore();
+      listProfilesSpy.mockRestore();
+    }
   });
 
   it('clones provided browser_profile to avoid shared mutable state', () => {
