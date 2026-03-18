@@ -14,6 +14,7 @@ import {
   normalizeCliHistory,
   parseCliArgs,
   runDoctorChecks,
+  runInstallCommand,
   saveCliHistory,
   shouldStartInteractiveMode,
 } from '../src/cli.js';
@@ -184,6 +185,7 @@ describe('CLI argument parsing', () => {
     const usage = getCliUsage();
     expect(usage).toContain('browser-use --mcp');
     expect(usage).toContain('browser-use doctor');
+    expect(usage).toContain('browser-use install');
     expect(usage).toContain('--provider <name>');
     expect(usage).toContain('--model <model>');
     expect(usage).toContain('--headless');
@@ -463,5 +465,34 @@ describe('CLI doctor checks', () => {
     expect(report.checks.api_key.status).toBe('missing');
     expect(report.checks.cloudflared.status).toBe('missing');
     expect(report.checks.network.status).toBe('warning');
+  });
+});
+
+describe('CLI install command', () => {
+  it('invokes playwright install chromium', () => {
+    const spawnImpl = vi.fn(() => ({ status: 0 }) as any);
+
+    runInstallCommand({
+      playwright_cli_path: '/tmp/playwright-cli.js',
+      spawn_impl: spawnImpl as typeof import('node:child_process').spawnSync,
+    });
+
+    expect(spawnImpl).toHaveBeenCalledWith(
+      process.execPath,
+      ['/tmp/playwright-cli.js', 'install', 'chromium'],
+      { stdio: 'inherit' }
+    );
+  });
+
+  it('throws when playwright install fails', () => {
+    const spawnImpl = vi.fn(() => ({ status: 2 }) as any);
+
+    expect(() =>
+      runInstallCommand({
+        playwright_cli_path: '/tmp/playwright-cli.js',
+        spawn_impl:
+          spawnImpl as typeof import('node:child_process').spawnSync,
+      })
+    ).toThrow('Playwright browser install failed with exit code 2');
   });
 });

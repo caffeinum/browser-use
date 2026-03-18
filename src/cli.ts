@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { Agent } from './agent/service.js';
@@ -33,6 +34,8 @@ import { setupLogging } from './logging-config.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
+
+const require = createRequire(import.meta.url);
 
 type CliModelProvider =
   | 'openai'
@@ -933,6 +936,7 @@ const runInteractiveMode = async (
 export const getCliUsage = () => `Usage:
   browser-use                    # interactive mode (TTY)
   browser-use doctor
+  browser-use install
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -957,6 +961,37 @@ Options:
   --proxy-password <value>    Proxy password
   --cdp-url <url>             Connect to an existing Chromium instance via CDP
   --debug                     Enable debug logging`;
+
+const resolvePlaywrightCliPath = () => require.resolve('playwright/cli');
+
+export interface RunInstallCommandOptions {
+  playwright_cli_path?: string;
+  spawn_impl?: typeof spawnSync;
+}
+
+export const runInstallCommand = (
+  options: RunInstallCommandOptions = {}
+) => {
+  const playwrightCliPath =
+    options.playwright_cli_path ?? resolvePlaywrightCliPath();
+  const spawnImpl = options.spawn_impl ?? spawnSync;
+  const result = spawnImpl(
+    process.execPath,
+    [playwrightCliPath, 'install', 'chromium'],
+    {
+      stdio: 'inherit',
+    }
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `Playwright browser install failed with exit code ${result.status ?? 1}`
+    );
+  }
+};
 
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
@@ -1172,6 +1207,13 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   if (args.prompt == null && args.positional[0] === 'doctor') {
     const report = await runDoctorChecks();
     printDoctorReport(report);
+    return;
+  }
+
+  if (args.prompt == null && args.positional[0] === 'install') {
+    console.log('Installing Chromium browser...');
+    runInstallCommand();
+    console.log('Chromium browser installed.');
     return;
   }
 
