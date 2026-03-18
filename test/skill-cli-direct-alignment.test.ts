@@ -855,4 +855,55 @@ describe('skill-cli direct alignment', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('rejects unknown direct cookie options instead of treating them as positional values', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const browserContext = {
+      addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
+    };
+    const session = {
+      start: vi.fn(async () => {}),
+      get_cookies: vi.fn(async () => [
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]),
+      browser_context: browserContext,
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(
+        ['cookies', 'clear', '--urll', 'https://example.com/app'],
+        {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+
+      expect(exitCode).toBe(1);
+      expect(browserContext.clearCookies).not.toHaveBeenCalled();
+      expect(stderr.read()).toContain('Unknown option: --urll');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

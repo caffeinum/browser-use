@@ -495,6 +495,18 @@ const readDirectNodeData = async (
   );
 };
 
+const takeDirectOptionValue = (
+  args: string[],
+  index: number,
+  option: string
+) => {
+  const next = args[index + 1]?.trim();
+  if (!next || next === '--' || next.startsWith('-')) {
+    throw new Error(`Missing value for ${option}`);
+  }
+  return next;
+};
+
 const parseDirectCookieOptions = (args: string[]) => {
   const positional: string[] = [];
   let url: string | null = null;
@@ -507,6 +519,10 @@ const parseDirectCookieOptions = (args: string[]) => {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index] ?? '';
+    if (arg === '--') {
+      positional.push(...args.slice(index + 1));
+      break;
+    }
     if (
       arg === '--url' ||
       arg === '--domain' ||
@@ -514,10 +530,7 @@ const parseDirectCookieOptions = (args: string[]) => {
       arg === '--same-site' ||
       arg === '--expires'
     ) {
-      const next = args[index + 1]?.trim();
-      if (!next) {
-        throw new Error(`Missing value for ${arg}`);
-      }
+      const next = takeDirectOptionValue(args, index, arg);
       if (arg === '--url') {
         url = next;
       } else if (arg === '--domain') {
@@ -548,6 +561,9 @@ const parseDirectCookieOptions = (args: string[]) => {
     if (arg === '--http-only') {
       httpOnly = true;
       continue;
+    }
+    if (arg.startsWith('-')) {
+      throw new Error(`Unknown option: ${arg}`);
     }
     positional.push(arg);
   }
