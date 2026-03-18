@@ -2691,6 +2691,18 @@ export const hasCloudRunFlags = (argv: string[]) => {
   return false;
 };
 
+const hasExplicitRemoteRunFlag = (argv: string[]) => {
+  for (const arg of argv) {
+    if (arg === '--') {
+      break;
+    }
+    if (arg === '--remote') {
+      return true;
+    }
+  }
+  return false;
+};
+
 type PrefixedSubcommand = {
   command: 'run' | 'task' | 'session' | 'profile';
   argv: string[];
@@ -2887,6 +2899,9 @@ export const runCloudTaskCommand = async (
 
   try {
     const flags = parseCloudRunArgs(argv);
+    if (!flags.remote) {
+      throw new Error('Usage: browser-use run --remote <task>');
+    }
     const task = flags.task_parts.join(' ').trim();
     if (!task) {
       throw new Error('Usage: browser-use run --remote <task>');
@@ -3189,7 +3204,10 @@ export async function main(argv: string[] = process.argv.slice(2)) {
     }
 
     if (prefixedSubcommand.command === 'run') {
-      if (!hasCloudRunFlags(prefixedSubcommand.argv)) {
+      if (
+        !hasCloudRunFlags(prefixedSubcommand.argv) ||
+        !hasExplicitRemoteRunFlag(prefixedSubcommand.argv)
+      ) {
         await main([...prefixedSubcommand.forwardedArgs, ...prefixedSubcommand.argv]);
         return;
       }

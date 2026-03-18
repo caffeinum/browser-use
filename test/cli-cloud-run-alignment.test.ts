@@ -249,6 +249,27 @@ describe('cli cloud run alignment', () => {
     expect(stderr.read()).toContain('Unknown option: --waait');
   });
 
+  it('requires an explicit --remote flag before creating cloud tasks', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(),
+      create_task: vi.fn(),
+      get_task: vi.fn(),
+      update_session: vi.fn(),
+    };
+
+    const exitCode = await runCloudTaskCommand(['--wait', 'Finish', 'task'], {
+      client: client as any,
+      stdout: stdout.stream,
+      stderr: stderr.stream,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(client.create_task).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain('Usage: browser-use run --remote <task>');
+  });
+
   it('allows task text that starts with dashes after --', async () => {
     const stdout = createWritable();
     const stderr = createWritable();
