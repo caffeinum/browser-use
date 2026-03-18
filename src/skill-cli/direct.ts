@@ -275,6 +275,26 @@ Commands:
 Flags:
   --remote                Launch browser-use cloud browser`;
 
+const extractDirectModeArgs = (argv: string[]) => {
+  let useRemote = false;
+  let index = 0;
+
+  while (index < argv.length) {
+    const arg = argv[index] ?? '';
+    if (arg === '--remote') {
+      useRemote = true;
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  return {
+    useRemote,
+    args: argv.slice(index),
+  };
+};
+
 const getFreePort = async () =>
   await new Promise<number>((resolve, reject) => {
     const server = net.createServer();
@@ -711,8 +731,7 @@ export const run_direct_command = async (
       }),
   };
 
-  const useRemote = argv.includes('--remote');
-  const args = argv.filter((arg) => arg !== '--remote');
+  const { useRemote, args } = extractDirectModeArgs(argv);
   const command = args[0] ?? '';
 
   if (!command || command === 'help' || command === '--help' || command === '-h') {

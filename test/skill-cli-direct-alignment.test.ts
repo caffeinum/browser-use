@@ -73,6 +73,57 @@ describe('skill-cli direct alignment', () => {
     }
   });
 
+  it('treats non-leading --remote as command text instead of a mode switch', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const sendKeysSpy = vi.fn(async () => {});
+    const createBrowserSpy = vi.fn(async () => ({
+      id: 'remote-browser',
+      cdpUrl: 'wss://cloud.example/devtools/browser/1',
+    }));
+    const localLauncher = vi.fn(async () => ({
+      cdp_url: 'http://127.0.0.1:9222',
+      browser_pid: 321,
+      user_data_dir: '/tmp/browser-use-direct-profile',
+    }));
+    const session = {
+      start: vi.fn(async () => {}),
+      send_keys: sendKeysSpy,
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    try {
+      const exitCode = await run_direct_command(['type', '--remote'], {
+        state_file: stateFile,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        local_launcher: localLauncher,
+        cloud_client_factory: () =>
+          ({
+            create_browser: createBrowserSpy,
+            stop_browser: vi.fn(async () => {}),
+          }) as any,
+        session_factory: () => session as any,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(sendKeysSpy).toHaveBeenCalledWith('--remote');
+      expect(localLauncher).toHaveBeenCalledTimes(1);
+      expect(createBrowserSpy).not.toHaveBeenCalled();
+      expect(stdout.read()).toContain('Typed: --remote');
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('removes ephemeral local profiles when direct launch fails before connect', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
     const fakeChrome = path.join(tempDir, 'fake-chrome.sh');
