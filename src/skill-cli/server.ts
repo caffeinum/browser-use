@@ -55,9 +55,12 @@ export class SkillCliServer {
     const browser_session = session.browser_session;
 
     if (action === 'open') {
-      const url = String(params.url ?? '');
+      let url = String(params.url ?? '').trim();
       if (!url) {
         throw new Error('Missing url');
+      }
+      if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {
+        url = `https://${url}`;
       }
       await browser_session.navigate_to(url);
       return { url };
@@ -129,20 +132,42 @@ export class SkillCliServer {
       return { typed: text };
     }
 
+    if (action === 'input') {
+      const node = await this._require_node_by_index(
+        browser_session,
+        params.index
+      );
+      if ('error' in node) {
+        return node;
+      }
+      const text = String(params.text ?? '');
+      const clear =
+        typeof params.clear === 'boolean' ? params.clear : true;
+      await browser_session._input_text_element_node(node, text, { clear });
+      return { input: Number(params.index), text, clear };
+    }
+
     if (action === 'state') {
       const state = await browser_session.get_browser_state_with_recovery({
         include_screenshot: false,
       });
+      const page_info =
+        typeof browser_session.get_page_info === 'function'
+          ? await browser_session.get_page_info()
+          : null;
       return {
         url: state.url,
         title: state.title,
         tabs: state.tabs,
+        page_info,
         llm_representation: state.llm_representation(),
       };
     }
 
     if (action === 'screenshot') {
-      const screenshot = await browser_session.take_screenshot(false);
+      const screenshot = await browser_session.take_screenshot(
+        Boolean(params.full)
+      );
       if (!screenshot) {
         throw new Error('Failed to capture screenshot');
       }
@@ -184,6 +209,127 @@ export class SkillCliServer {
         { timeout }
       );
       return { waited_for: 'text', text, timeout };
+    }
+
+    if (action === 'scroll') {
+      let direction: 'up' | 'down' | 'left' | 'right' = 'down';
+      if (
+        typeof params.direction === 'string' &&
+        ['up', 'down', 'left', 'right'].includes(params.direction)
+      ) {
+        direction = params.direction as 'up' | 'down' | 'left' | 'right';
+      }
+      const amount = Number(params.amount ?? 500);
+      await browser_session.scroll(direction, amount);
+      return { direction, amount };
+    }
+
+    if (action === 'back') {
+      await browser_session.go_back();
+      return { navigated: 'back' };
+    }
+
+    if (action === 'forward') {
+      await browser_session.go_forward();
+      return { navigated: 'forward' };
+    }
+
+    if (action === 'switch') {
+      const identifier = params.tab ?? params.target_id;
+      if (
+        typeof identifier !== 'string' &&
+        typeof identifier !== 'number'
+      ) {
+        throw new Error('Missing tab');
+      }
+      await browser_session.switch_to_tab(identifier);
+      return {
+        active_tab:
+          browser_session.active_tab?.target_id ??
+          browser_session.active_tab?.tab_id ??
+          browser_session.active_tab?.page_id ??
+          null,
+      };
+    }
+
+    if (action === 'close_tab' || action === 'close-tab') {
+      const identifier =
+        params.tab ??
+        params.target_id ??
+        browser_session.active_tab?.target_id ??
+        browser_session.active_tab?.page_id ??
+        browser_session.active_tab_index;
+      if (
+        typeof identifier !== 'string' &&
+        typeof identifier !== 'number'
+      ) {
+        throw new Error('Missing tab');
+      }
+      await browser_session.close_tab(identifier);
+      return { closed_tab: identifier };
+    }
+
+    if (action === 'keys') {
+      const keys = String(params.keys ?? '');
+      if (!keys) {
+        throw new Error('Missing keys');
+      }
+      await browser_session.send_keys(keys);
+      return { keys };
+    }
+
+    if (action === 'select') {
+      const node = await this._require_node_by_index(
+        browser_session,
+        params.index
+      );
+      if ('error' in node) {
+        return node;
+      }
+      const value = String(params.value ?? '');
+      if (!value) {
+        throw new Error('Missing value');
+      }
+      const selected = await browser_session.select_dropdown_option(
+        node,
+        value
+      );
+      return {
+        index: Number(params.index),
+        value,
+        selected,
+      };
+    }
+
+    if (action === 'html') {
+      const selector =
+        typeof params.selector === 'string' ? params.selector.trim() : '';
+      if (!selector) {
+        return { html: await browser_session.get_page_html() };
+      }
+
+      const page = await browser_session.get_current_page();
+      if (!page?.evaluate) {
+        throw new Error('No active page available for html');
+      }
+      const html = await page.evaluate((targetSelector: string) => {
+        const element = document.querySelector(targetSelector);
+        return element ? element.outerHTML : null;
+      }, selector);
+      if (typeof html !== 'string' || html.length === 0) {
+        throw new Error(`No element found for selector: ${selector}`);
+      }
+      return { selector, html };
+    }
+
+    if (action === 'eval') {
+      const script = String(params.js ?? params.script ?? '').trim();
+      if (!script) {
+        throw new Error('Missing js');
+      }
+      return {
+        result: await browser_session.execute_javascript(script),
+      };
     }
 
     if (action === 'cookies_get') {

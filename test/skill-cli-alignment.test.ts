@@ -292,4 +292,140 @@ describe('skill-cli alignment', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('supports expanded browser control actions', async () => {
+    const session = new BrowserSession();
+    const node = {} as any;
+    vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue(node);
+    const inputSpy = vi
+      .spyOn(session, '_input_text_element_node')
+      .mockResolvedValue(null as any);
+    const scrollSpy = vi.spyOn(session, 'scroll').mockResolvedValue();
+    const backSpy = vi.spyOn(session, 'go_back').mockResolvedValue();
+    const forwardSpy = vi.spyOn(session, 'go_forward').mockResolvedValue();
+    const switchSpy = vi
+      .spyOn(session, 'switch_to_tab')
+      .mockResolvedValue({} as any);
+    const closeTabSpy = vi.spyOn(session, 'close_tab').mockResolvedValue();
+    const sendKeysSpy = vi.spyOn(session, 'send_keys').mockResolvedValue();
+    const selectSpy = vi
+      .spyOn(session, 'select_dropdown_option')
+      .mockResolvedValue(['selected'] as any);
+    const evalSpy = vi
+      .spyOn(session, 'execute_javascript')
+      .mockResolvedValue({ ok: true });
+    const getPageHtmlSpy = vi
+      .spyOn(session, 'get_page_html')
+      .mockResolvedValue('<html></html>');
+    vi.spyOn(session, 'get_current_page').mockResolvedValue({
+      evaluate: vi.fn(async (fn: (selector: string) => string | null, selector: string) =>
+        fn(selector)
+      ),
+    } as any);
+
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    const input = await server.handle_request(
+      new Request({
+        id: 'r18',
+        action: 'input',
+        session: 'default',
+        params: { index: 2, text: 'hello', clear: false },
+      })
+    );
+    const scroll = await server.handle_request(
+      new Request({
+        id: 'r19',
+        action: 'scroll',
+        session: 'default',
+        params: { direction: 'up', amount: 250 },
+      })
+    );
+    const back = await server.handle_request(
+      new Request({
+        id: 'r20',
+        action: 'back',
+        session: 'default',
+      })
+    );
+    const forward = await server.handle_request(
+      new Request({
+        id: 'r21',
+        action: 'forward',
+        session: 'default',
+      })
+    );
+    const sw = await server.handle_request(
+      new Request({
+        id: 'r22',
+        action: 'switch',
+        session: 'default',
+        params: { tab: 3 },
+      })
+    );
+    const closeTab = await server.handle_request(
+      new Request({
+        id: 'r23',
+        action: 'close-tab',
+        session: 'default',
+      })
+    );
+    const keys = await server.handle_request(
+      new Request({
+        id: 'r24',
+        action: 'keys',
+        session: 'default',
+        params: { keys: 'Control+a' },
+      })
+    );
+    const select = await server.handle_request(
+      new Request({
+        id: 'r25',
+        action: 'select',
+        session: 'default',
+        params: { index: 2, value: 'Option A' },
+      })
+    );
+    const html = await server.handle_request(
+      new Request({
+        id: 'r26',
+        action: 'html',
+        session: 'default',
+      })
+    );
+    const evaluated = await server.handle_request(
+      new Request({
+        id: 'r27',
+        action: 'eval',
+        session: 'default',
+        params: { js: '({ ok: true })' },
+      })
+    );
+
+    expect(input.success).toBe(true);
+    expect(inputSpy).toHaveBeenCalledWith(node, 'hello', { clear: false });
+    expect(scroll.success).toBe(true);
+    expect(scrollSpy).toHaveBeenCalledWith('up', 250);
+    expect(back.success).toBe(true);
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    expect(forward.success).toBe(true);
+    expect(forwardSpy).toHaveBeenCalledTimes(1);
+    expect(sw.success).toBe(true);
+    expect(switchSpy).toHaveBeenCalledWith(3);
+    expect(closeTab.success).toBe(true);
+    expect(closeTabSpy).toHaveBeenCalledWith(session.active_tab?.target_id);
+    expect(keys.success).toBe(true);
+    expect(sendKeysSpy).toHaveBeenCalledWith('Control+a');
+    expect(select.success).toBe(true);
+    expect(selectSpy).toHaveBeenCalledWith(node, 'Option A');
+    expect(html.success).toBe(true);
+    expect((html.data as any).html).toBe('<html></html>');
+    expect(getPageHtmlSpy).toHaveBeenCalledTimes(1);
+    expect(evaluated.success).toBe(true);
+    expect((evaluated.data as any).result).toEqual({ ok: true });
+    expect(evalSpy).toHaveBeenCalledWith('({ ok: true })');
+  });
 });
