@@ -48,6 +48,25 @@ const saveAuthConfig = (config: CloudAuthConfigData) => {
   }
 };
 
+export const load_cloud_auth_config = (): CloudAuthConfigData =>
+  loadAuthConfig();
+
+export const save_cloud_api_token = (
+  api_token: string,
+  user_id: string | null = TEMP_USER_ID
+) => {
+  const normalized = api_token.trim();
+  if (!normalized) {
+    throw new Error('API token cannot be empty');
+  }
+
+  saveAuthConfig({
+    api_token: normalized,
+    user_id,
+    authorized_at: new Date().toISOString(),
+  });
+};
+
 const getOrCreateDeviceId = () => {
   ensureDir();
   try {

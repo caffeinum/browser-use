@@ -32,6 +32,7 @@ import { MCPServer } from './mcp/server.js';
 import { get_browser_use_version } from './utils.js';
 import { setupLogging } from './logging-config.js';
 import { get_tunnel_manager } from './skill-cli/tunnel.js';
+import { DeviceAuthClient, save_cloud_api_token } from './sync/auth.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -98,6 +99,9 @@ export interface ParsedCliArgs {
   prompt: string | null;
   mcp: boolean;
   json: boolean;
+  yes: boolean;
+  setup_mode: string | null;
+  api_key: string | null;
   positional: string[];
 }
 
@@ -198,6 +202,9 @@ export const parseCliArgs = (argv: string[]): ParsedCliArgs => {
     prompt: null,
     mcp: false,
     json: false,
+    yes: false,
+    setup_mode: null,
+    api_key: null,
     positional: [],
   };
 
@@ -233,6 +240,10 @@ export const parseCliArgs = (argv: string[]): ParsedCliArgs => {
       parsed.json = true;
       continue;
     }
+    if (arg === '-y' || arg === '--yes') {
+      parsed.yes = true;
+      continue;
+    }
 
     if (arg === '-p' || arg === '--prompt' || arg.startsWith('--prompt=')) {
       const { value, nextIndex } = takeOptionValue(arg, i, argv);
@@ -249,6 +260,18 @@ export const parseCliArgs = (argv: string[]): ParsedCliArgs => {
     if (arg === '--provider' || arg.startsWith('--provider=')) {
       const { value, nextIndex } = takeOptionValue(arg, i, argv);
       parsed.provider = parseProvider(value);
+      i = nextIndex;
+      continue;
+    }
+    if (arg === '--mode' || arg.startsWith('--mode=')) {
+      const { value, nextIndex } = takeOptionValue(arg, i, argv);
+      parsed.setup_mode = value.trim();
+      i = nextIndex;
+      continue;
+    }
+    if (arg === '--api-key' || arg.startsWith('--api-key=')) {
+      const { value, nextIndex } = takeOptionValue(arg, i, argv);
+      parsed.api_key = value.trim();
       i = nextIndex;
       continue;
     }
@@ -944,6 +967,7 @@ export const getCliUsage = () => `Usage:
   browser-use                    # interactive mode (TTY)
   browser-use doctor
   browser-use install
+  browser-use setup [--mode <local|remote|full>]
   browser-use tunnel <port>
   browser-use <task>
   browser-use -p "<task>"
@@ -955,9 +979,12 @@ Options:
   --version                   Print version and exit
   --mcp                       Run as MCP server
   --json                      Output command results as JSON when supported
+  -y, --yes                   Skip optional setup prompts where supported
   --provider <name>           Force provider (openai|anthropic|google|deepseek|groq|openrouter|azure|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic)
   --model <model>             Set model (e.g., gpt-5-mini, claude-4-sonnet, gemini-2.5-pro)
   -p, --prompt <task>         Run a single task
+  --mode <name>              Setup mode for setup command (local|remote|full)
+  --api-key <value>          Browser Use API key for setup or cloud operations
   --headless                  Run browser in headless mode
   --allowed-domains <items>   Comma-separated allowlist (e.g., example.com,*.example.org)
   --window-width <px>         Browser window width
@@ -985,6 +1012,19 @@ export interface RunTunnelCommandOptions {
     ReturnType<typeof get_tunnel_manager>,
     'start_tunnel' | 'list_tunnels' | 'stop_tunnel' | 'stop_all_tunnels'
   >;
+  stdout?: WritableLike;
+  stderr?: WritableLike;
+  json_output?: boolean;
+}
+
+type CliSetupMode = 'local' | 'remote' | 'full';
+
+export interface RunSetupCommandOptions {
+  run_doctor_checks?: (
+    options?: RunDoctorChecksOptions
+  ) => Promise<CliDoctorReport>;
+  install_command?: () => void | Promise<void>;
+  save_api_key?: (api_key: string) => void;
   stdout?: WritableLike;
   stderr?: WritableLike;
   json_output?: boolean;
@@ -1123,6 +1163,247 @@ export const runTunnelCommand = async (
   }
 };
 
+type PlannedSetupAction =
+  | { type: 'install_browser'; description: string; required: boolean }
+  | {
+      type: 'configure_api_key';
+      description: string;
+      required: boolean;
+      api_key: string;
+    }
+  | { type: 'prompt_api_key'; description: string; required: boolean }
+  | { type: 'install_cloudflared'; description: string; required: boolean };
+
+const validateSetupMode = (mode: string | null | undefined): CliSetupMode => {
+  const normalized = (mode ?? 'local').trim().toLowerCase();
+  if (normalized === 'local' || normalized === 'remote' || normalized === 'full') {
+    return normalized;
+  }
+  throw new Error(
+    `Invalid setup mode "${mode ?? ''}". Expected local, remote, or full.`
+  );
+};
+
+const renderSetupChecks = (
+  mode: CliSetupMode,
+  report: CliDoctorReport
+): Record<string, CliDoctorCheck> => {
+  const checks: Record<string, CliDoctorCheck> = {
+    browser_use_package: report.checks.package,
+  };
+  if (mode === 'local' || mode === 'full') {
+    checks.browser = report.checks.browser;
+  }
+  if (mode === 'remote' || mode === 'full') {
+    checks.api_key = report.checks.api_key;
+    checks.cloudflared = report.checks.cloudflared;
+  }
+  return checks;
+};
+
+const planSetupActions = (
+  mode: CliSetupMode,
+  checks: Record<string, CliDoctorCheck>,
+  yes: boolean,
+  api_key: string | null
+): PlannedSetupAction[] => {
+  const actions: PlannedSetupAction[] = [];
+
+  if (
+    (mode === 'local' || mode === 'full') &&
+    checks.browser?.status !== 'ok'
+  ) {
+    actions.push({
+      type: 'install_browser',
+      description: 'Install browser (Chromium)',
+      required: true,
+    });
+  }
+
+  if ((mode === 'remote' || mode === 'full') && checks.api_key?.status !== 'ok') {
+    if (api_key?.trim()) {
+      actions.push({
+        type: 'configure_api_key',
+        description: 'Configure API key',
+        required: true,
+        api_key: api_key.trim(),
+      });
+    } else if (!yes) {
+      actions.push({
+        type: 'prompt_api_key',
+        description: 'Prompt for API key',
+        required: false,
+      });
+    }
+  }
+
+  if (
+    (mode === 'remote' || mode === 'full') &&
+    checks.cloudflared?.status !== 'ok'
+  ) {
+    actions.push({
+      type: 'install_cloudflared',
+      description: 'Install cloudflared (for tunneling)',
+      required: true,
+    });
+  }
+
+  return actions;
+};
+
+const logSetupChecks = (
+  stream: WritableLike,
+  checks: Record<string, CliDoctorCheck>
+) => {
+  writeLine(stream, '');
+  writeLine(stream, 'Running checks...');
+  writeLine(stream, '');
+  for (const [name, check] of Object.entries(checks)) {
+    const icon =
+      check.status === 'ok' ? '✓' : check.status === 'missing' ? '⚠' : '✗';
+    writeLine(
+      stream,
+      `  ${icon} ${name.replace(/_/g, ' ')}: ${check.message}`
+    );
+  }
+  writeLine(stream, '');
+};
+
+const logSetupActions = (stream: WritableLike, actions: PlannedSetupAction[]) => {
+  if (actions.length === 0) {
+    writeLine(stream, 'No additional setup needed.');
+    writeLine(stream, '');
+    return;
+  }
+
+  writeLine(stream, '');
+  writeLine(stream, 'Setup actions:');
+  writeLine(stream, '');
+  actions.forEach((action, index) => {
+    writeLine(
+      stream,
+      `  ${index + 1}. ${action.description} ${action.required ? '(required)' : '(optional)'}`
+    );
+  });
+  writeLine(stream, '');
+};
+
+const logSetupValidation = (
+  stream: WritableLike,
+  validation: Record<string, string | boolean>
+) => {
+  writeLine(stream, '');
+  writeLine(stream, 'Validation:');
+  writeLine(stream, '');
+  for (const [name, result] of Object.entries(validation)) {
+    const normalized = String(result);
+    const ok = normalized === 'ok' || normalized === 'true';
+    writeLine(
+      stream,
+      `  ${ok ? '✓' : '✗'} ${name.replace(/_/g, ' ')}: ${normalized}`
+    );
+  }
+  writeLine(stream, '');
+};
+
+export const runSetupCommand = async (
+  params: {
+    mode?: string | null;
+    yes?: boolean;
+    api_key?: string | null;
+  },
+  options: RunSetupCommandOptions = {}
+) => {
+  const mode = validateSetupMode(params.mode);
+  const yes = Boolean(params.yes);
+  const api_key = params.api_key?.trim() || null;
+  const runDoctor =
+    options.run_doctor_checks ??
+    ((doctorOptions?: RunDoctorChecksOptions) => runDoctorChecks(doctorOptions));
+  const installCommand = options.install_command ?? runInstallCommand;
+  const saveApiKey = options.save_api_key ?? save_cloud_api_token;
+  const output = options.stdout ?? process.stdout;
+  const json_output = Boolean(options.json_output);
+
+  const initialReport = await runDoctor();
+  const checks = renderSetupChecks(mode, initialReport);
+  const actions = planSetupActions(mode, checks, yes, api_key);
+
+  if (!json_output) {
+    logSetupChecks(output, checks);
+    logSetupActions(output, actions);
+  }
+
+  for (const action of actions) {
+    if (action.type === 'install_browser') {
+      if (!json_output) {
+        writeLine(output, 'Installing Chromium browser...');
+      }
+      await installCommand();
+      continue;
+    }
+
+    if (action.type === 'configure_api_key') {
+      if (!json_output) {
+        writeLine(output, 'Configuring API key...');
+      }
+      saveApiKey(action.api_key);
+      continue;
+    }
+
+    if (action.type === 'prompt_api_key' && !json_output) {
+      writeLine(output, 'API key not configured');
+      writeLine(output, '  Set via: export BROWSER_USE_API_KEY=your_key');
+      writeLine(output, '  Or: browser-use setup --api-key <key>');
+      continue;
+    }
+
+    if (action.type === 'install_cloudflared' && !json_output) {
+      writeLine(output, 'cloudflared not installed');
+      writeLine(output, '  Install via:');
+      writeLine(output, '  macOS:   brew install cloudflared');
+      writeLine(
+        output,
+        '  Linux:   curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/.local/bin/cloudflared && chmod +x ~/.local/bin/cloudflared'
+      );
+      writeLine(output, '  Windows: winget install Cloudflare.cloudflared');
+      writeLine(output, '');
+    }
+  }
+
+  const validationReport = await runDoctor();
+  const validation: Record<string, string | boolean> = {
+    browser_use_import: 'ok',
+  };
+  if (mode === 'local' || mode === 'full') {
+    validation.browser_available =
+      validationReport.checks.browser.status === 'ok'
+        ? 'ok'
+        : `failed: ${validationReport.checks.browser.message}`;
+  }
+  if (mode === 'remote' || mode === 'full') {
+    validation.api_key_available =
+      validationReport.checks.api_key.status === 'ok';
+    validation.cloudflared_available =
+      validationReport.checks.cloudflared.status === 'ok';
+  }
+
+  const result = {
+    status: 'success' as const,
+    mode,
+    checks,
+    validation,
+  };
+
+  if (json_output) {
+    writeLine(output, JSON.stringify(result, null, 2));
+  } else {
+    logSetupValidation(output, validation);
+  }
+
+  return 0;
+};
+
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
   message: string;
@@ -1185,6 +1466,36 @@ export const runDoctorChecks = async (
   options: RunDoctorChecksOptions = {}
 ): Promise<CliDoctorReport> => {
   const fetchImpl = options.fetch_impl ?? fetch;
+  const configuredApiKey =
+    options.api_key !== undefined
+      ? options.api_key?.trim() || null
+      : (process.env.BROWSER_USE_API_KEY?.trim() ||
+          new DeviceAuthClient().api_token?.trim() ||
+          null);
+  const apiKeySource =
+    options.api_key !== undefined
+      ? 'argument'
+      : process.env.BROWSER_USE_API_KEY?.trim()
+        ? 'environment'
+        : new DeviceAuthClient().api_token?.trim()
+          ? 'cloud_auth'
+          : null;
+  const tunnelStatus =
+    options.cloudflared_path !== undefined
+      ? options.cloudflared_path
+        ? {
+            available: true,
+            source: 'system' as const,
+            path: options.cloudflared_path,
+            note: 'cloudflared installed',
+          }
+        : {
+            available: false,
+            source: null,
+            path: null,
+            note: 'cloudflared not installed - install it manually before using tunnel',
+          }
+      : get_tunnel_manager().get_status();
   const checks: Record<string, CliDoctorCheck> = {
     package: {
       status: 'ok',
@@ -1208,14 +1519,13 @@ export const runDoctorChecks = async (
       };
     })(),
     api_key: (() => {
-      const apiKey =
-        options.api_key !== undefined
-          ? options.api_key
-          : (process.env.BROWSER_USE_API_KEY ?? null);
-      if (typeof apiKey === 'string' && apiKey.trim().length > 0) {
+      if (configuredApiKey) {
         return {
           status: 'ok',
-          message: 'BROWSER_USE_API_KEY is configured',
+          message:
+            apiKeySource === 'cloud_auth'
+              ? 'Browser Use API key is configured in cloud auth'
+              : 'BROWSER_USE_API_KEY is configured',
         };
       }
       return {
@@ -1225,20 +1535,18 @@ export const runDoctorChecks = async (
       };
     })(),
     cloudflared: (() => {
-      const binaryPath =
-        options.cloudflared_path !== undefined
-          ? options.cloudflared_path
-          : findSystemBinary('cloudflared');
-      if (binaryPath) {
+      if (tunnelStatus.available && tunnelStatus.path) {
         return {
           status: 'ok',
-          message: `cloudflared detected at ${binaryPath}`,
+          message: `cloudflared detected at ${tunnelStatus.path}`,
         };
       }
       return {
         status: 'missing',
         message: 'cloudflared not found',
-        note: 'Tunnel features remain unavailable until cloudflared is installed.',
+        note:
+          tunnelStatus.note ||
+          'Tunnel features remain unavailable until cloudflared is installed.',
       };
     })(),
     network: {
@@ -1344,6 +1652,23 @@ export async function main(argv: string[] = process.argv.slice(2)) {
     console.log('Installing Chromium browser...');
     runInstallCommand();
     console.log('Chromium browser installed.');
+    return;
+  }
+
+  if (args.prompt == null && args.positional[0] === 'setup') {
+    const exitCode = await runSetupCommand(
+      {
+        mode: args.setup_mode,
+        yes: args.yes,
+        api_key: args.api_key,
+      },
+      {
+        json_output: args.json,
+      }
+    );
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
     return;
   }
 

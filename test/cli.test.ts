@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CLI_HISTORY_LIMIT,
   buildBrowserProfileFromCliArgs,
@@ -15,9 +15,11 @@ import {
   parseCliArgs,
   runDoctorChecks,
   runInstallCommand,
+  runSetupCommand,
   saveCliHistory,
   shouldStartInteractiveMode,
 } from '../src/cli.js';
+import { save_cloud_api_token } from '../src/sync/auth.js';
 
 const MANAGED_ENV_KEYS = [
   'OPENAI_API_KEY',
@@ -85,6 +87,12 @@ describe('CLI argument parsing', () => {
 
   it('parses prompt mode and browser options', () => {
     const parsed = parseCliArgs([
+      '--json',
+      '--yes',
+      '--mode',
+      'full',
+      '--api-key',
+      'bu_test_123',
       '--provider',
       'anthropic',
       '--model',
@@ -115,6 +123,10 @@ describe('CLI argument parsing', () => {
 
     expect(parsed.provider).toBe('anthropic');
     expect(parsed.model).toBe('claude-sonnet-4-20250514');
+    expect(parsed.json).toBe(true);
+    expect(parsed.yes).toBe(true);
+    expect(parsed.setup_mode).toBe('full');
+    expect(parsed.api_key).toBe('bu_test_123');
     expect(parsed.headless).toBe(true);
     expect(parsed.window_width).toBe(1440);
     expect(parsed.window_height).toBe(900);
@@ -186,8 +198,13 @@ describe('CLI argument parsing', () => {
     expect(usage).toContain('browser-use --mcp');
     expect(usage).toContain('browser-use doctor');
     expect(usage).toContain('browser-use install');
+    expect(usage).toContain('browser-use setup');
+    expect(usage).toContain('browser-use tunnel <port>');
     expect(usage).toContain('--provider <name>');
     expect(usage).toContain('--model <model>');
+    expect(usage).toContain('--json');
+    expect(usage).toContain('--mode <name>');
+    expect(usage).toContain('--api-key <value>');
     expect(usage).toContain('--headless');
     expect(usage).toContain('--allowed-domains <items>');
   });
@@ -466,6 +483,27 @@ describe('CLI doctor checks', () => {
     expect(report.checks.cloudflared.status).toBe('missing');
     expect(report.checks.network.status).toBe('warning');
   });
+
+  it('detects API key persisted in local cloud auth config', async () => {
+    const configDir = await makeTempDir();
+    process.env.BROWSER_USE_CONFIG_DIR = configDir;
+    save_cloud_api_token('bu_saved_token');
+
+    const report = await runDoctorChecks({
+      version: '1.2.3',
+      browser_executable:
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      cloudflared_path: '/usr/local/bin/cloudflared',
+      fetch_impl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+        }) as Response) as typeof fetch,
+    });
+
+    expect(report.checks.api_key.status).toBe('ok');
+    expect(report.checks.api_key.message).toContain('cloud auth');
+  });
 });
 
 describe('CLI install command', () => {
@@ -494,5 +532,100 @@ describe('CLI install command', () => {
           spawnImpl as typeof import('node:child_process').spawnSync,
       })
     ).toThrow('Playwright browser install failed with exit code 2');
+  });
+});
+
+describe('CLI setup command', () => {
+  it('plans and executes local setup actions', async () => {
+    const stdout = { write: vi.fn() };
+    const installCommand = vi.fn();
+    const runDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'issues_found',
+        summary: 'issues',
+        checks: {
+          package: { status: 'ok', message: 'browser-use 1.2.3' },
+          browser: {
+            status: 'warning',
+            message: 'Chrome executable not detected',
+          },
+          api_key: { status: 'missing', message: 'missing' },
+          cloudflared: { status: 'missing', message: 'missing' },
+          network: { status: 'ok', message: 'ok' },
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 'healthy',
+        summary: 'ok',
+        checks: {
+          package: { status: 'ok', message: 'browser-use 1.2.3' },
+          browser: { status: 'ok', message: 'Chrome detected' },
+          api_key: { status: 'missing', message: 'missing' },
+          cloudflared: { status: 'missing', message: 'missing' },
+          network: { status: 'ok', message: 'ok' },
+        },
+      });
+
+    const exitCode = await runSetupCommand(
+      { mode: 'local' },
+      {
+        run_doctor_checks: runDoctor as any,
+        install_command: installCommand,
+        stdout: stdout as any,
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(installCommand).toHaveBeenCalledTimes(1);
+    expect(runDoctor).toHaveBeenCalledTimes(2);
+    expect(
+      stdout.write.mock.calls.map((call) => String(call[0])).join('')
+    ).toContain('Install browser (Chromium)');
+  });
+
+  it('persists API key during remote setup and supports JSON output', async () => {
+    const stdout = { write: vi.fn() };
+    const saveApiKey = vi.fn();
+    const runDoctor = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'issues_found',
+        summary: 'issues',
+        checks: {
+          package: { status: 'ok', message: 'browser-use 1.2.3' },
+          browser: { status: 'ok', message: 'Chrome detected' },
+          api_key: { status: 'missing', message: 'No API key configured' },
+          cloudflared: { status: 'missing', message: 'cloudflared not found' },
+          network: { status: 'ok', message: 'ok' },
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 'issues_found',
+        summary: 'issues',
+        checks: {
+          package: { status: 'ok', message: 'browser-use 1.2.3' },
+          browser: { status: 'ok', message: 'Chrome detected' },
+          api_key: { status: 'ok', message: 'API key configured' },
+          cloudflared: { status: 'missing', message: 'cloudflared not found' },
+          network: { status: 'ok', message: 'ok' },
+        },
+      });
+
+    const exitCode = await runSetupCommand(
+      { mode: 'remote', api_key: 'bu_secret', yes: true },
+      {
+        run_doctor_checks: runDoctor as any,
+        save_api_key: saveApiKey,
+        stdout: stdout as any,
+        json_output: true,
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(saveApiKey).toHaveBeenCalledWith('bu_secret');
+    expect(
+      stdout.write.mock.calls.map((call) => String(call[0])).join('')
+    ).toContain('"mode": "remote"');
   });
 });
