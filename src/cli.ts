@@ -2710,6 +2710,25 @@ type PrefixedSubcommand = {
   forwardedArgs: string[];
 };
 
+const PREFIXED_SUBCOMMAND_VALUE_FLAGS = [
+  '--api-key',
+  '--provider',
+  '--model',
+  '--window-width',
+  '--window-height',
+  '--user-data-dir',
+  '--profile-directory',
+  '--allowed-domains',
+  '--proxy-url',
+  '--no-proxy',
+  '--proxy-username',
+  '--proxy-password',
+  '--cdp-url',
+];
+
+const matchesOptionWithValue = (arg: string, option: string) =>
+  arg === option || arg.startsWith(`${option}=`);
+
 export const extractPrefixedSubcommand = (
   argv: string[]
 ): PrefixedSubcommand | null => {
@@ -2727,6 +2746,24 @@ export const extractPrefixedSubcommand = (
     if (arg === '--json') {
       forwardedArgs.push(arg);
       index += 1;
+      continue;
+    }
+    if (arg === '--headless') {
+      index += 1;
+      continue;
+    }
+    const valueOption = PREFIXED_SUBCOMMAND_VALUE_FLAGS.find((option) =>
+      matchesOptionWithValue(arg, option)
+    );
+    if (valueOption) {
+      if (arg === valueOption) {
+        if (index + 1 >= argv.length) {
+          break;
+        }
+        index += 2;
+      } else {
+        index += 1;
+      }
       continue;
     }
     break;

@@ -211,6 +211,17 @@ describe('CLI argument parsing', () => {
     });
   });
 
+  it('extracts task subcommands after leading value-based global flags', () => {
+    expect(
+      extractPrefixedSubcommand(['--api-key', 'bu_test', '--provider', 'openai', 'task', 'list'])
+    ).toEqual({
+      command: 'task',
+      argv: ['list'],
+      debug: false,
+      forwardedArgs: [],
+    });
+  });
+
   it('extracts run subcommands after leading global flags', () => {
     expect(
       extractPrefixedSubcommand(['--debug', 'run', '--remote', '--wait', 'Collect', 'data'])
@@ -220,6 +231,40 @@ describe('CLI argument parsing', () => {
       debug: true,
       forwardedArgs: [],
     });
+  });
+
+  it('dispatches api-key-prefixed task subcommands through main', async () => {
+    let output = '';
+    const stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(((chunk: string | Uint8Array) => {
+        output += String(chunk);
+        return true;
+      }) as any);
+    const listTasksSpy = vi
+      .spyOn(CloudManagementClient.prototype, 'list_tasks')
+      .mockResolvedValue({
+        items: [
+          {
+            id: 'task-prefixed',
+            status: 'finished',
+            task: 'Collect data',
+          },
+        ],
+        totalItems: 1,
+        pageNumber: 1,
+        pageSize: 10,
+      } as any);
+
+    try {
+      await main(['--api-key', 'bu_test', 'task', 'list']);
+    } finally {
+      stdoutSpy.mockRestore();
+      listTasksSpy.mockRestore();
+    }
+
+    expect(output).toContain('Tasks (1):');
+    expect(output).toContain('task-pre');
   });
 
   it('ignores task text after -- when detecting cloud run flags', () => {
