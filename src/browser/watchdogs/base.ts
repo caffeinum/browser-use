@@ -10,6 +10,24 @@ type WatchdogHandler = (event: EventPayload) => unknown | Promise<unknown>;
 const resolveEventType = (eventTypeRef: EventTypeReference<EventPayload>) =>
   typeof eventTypeRef === 'string' ? eventTypeRef : eventTypeRef.name;
 
+const LIFECYCLE_EVENT_NAMES = new Set([
+  'BrowserStartEvent',
+  'BrowserStopEvent',
+  'BrowserStoppedEvent',
+  'BrowserLaunchEvent',
+  'BrowserKillEvent',
+  'BrowserConnectedEvent',
+  'BrowserReconnectingEvent',
+  'BrowserReconnectedEvent',
+  'BrowserErrorEvent',
+]);
+
+const createConnectionError = (message: string) => {
+  const error = new Error(message);
+  error.name = 'ConnectionError';
+  return error;
+};
+
 export interface BaseWatchdogInit {
   browser_session: BrowserSession;
   event_bus?: EventBus;
@@ -67,7 +85,30 @@ export abstract class BaseWatchdog {
         continue;
       }
       const bound = method.bind(this) as WatchdogHandler;
-      this.event_bus.on(event_type, bound, { handler_id });
+      const wrapped: WatchdogHandler = async (event) => {
+        if (
+          !LIFECYCLE_EVENT_NAMES.has(event_type) &&
+          this.browser_session.should_gate_watchdog_events &&
+          !this.browser_session.is_cdp_connected
+        ) {
+          if (this.browser_session.is_reconnecting) {
+            await this.browser_session.wait_for_reconnect();
+            if (!this.browser_session.is_cdp_connected) {
+              throw createConnectionError(
+                `[${this.constructor.name}.${methodName}] Reconnection failed; browser connection is still unavailable`
+              );
+            }
+          } else {
+            this.browser_session.logger.debug(
+              `[${this.constructor.name}.${methodName}] Skipped because browser connection is not available`
+            );
+            return null;
+          }
+        }
+
+        return await bound(event);
+      };
+      this.event_bus.on(event_type, wrapped, { handler_id });
       this._registeredHandlers.push({ event_type, handler_id });
       registeredEventTypes.add(event_type);
     }

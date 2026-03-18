@@ -534,6 +534,58 @@ export class BrowserConnectedEvent extends BrowserEvent<void> {
   }
 }
 
+export class BrowserReconnectingEvent extends BrowserEvent<void> {
+  cdp_url: string;
+  attempt: number;
+  max_attempts: number;
+
+  constructor(
+    init: EventBusEventInit<void> & {
+      cdp_url: string;
+      attempt: number;
+      max_attempts: number;
+    }
+  ) {
+    super('BrowserReconnectingEvent', {
+      ...init,
+      event_timeout: resolveEventTimeout(
+        'BrowserReconnectingEvent',
+        30,
+        init.event_timeout
+      ),
+    });
+    this.cdp_url = init.cdp_url;
+    this.attempt = init.attempt;
+    this.max_attempts = init.max_attempts;
+  }
+}
+
+export class BrowserReconnectedEvent extends BrowserEvent<void> {
+  cdp_url: string;
+  attempt: number;
+  downtime_seconds: number;
+
+  constructor(
+    init: EventBusEventInit<void> & {
+      cdp_url: string;
+      attempt: number;
+      downtime_seconds: number;
+    }
+  ) {
+    super('BrowserReconnectedEvent', {
+      ...init,
+      event_timeout: resolveEventTimeout(
+        'BrowserReconnectedEvent',
+        30,
+        init.event_timeout
+      ),
+    });
+    this.cdp_url = init.cdp_url;
+    this.attempt = init.attempt;
+    this.downtime_seconds = init.downtime_seconds;
+  }
+}
+
 export class BrowserStoppedEvent extends BrowserEvent<void> {
   reason: string | null;
 
@@ -1017,6 +1069,8 @@ export const BROWSER_EVENT_CLASSES = [
   BrowserLaunchEvent,
   BrowserKillEvent,
   BrowserConnectedEvent,
+  BrowserReconnectingEvent,
+  BrowserReconnectedEvent,
   BrowserStoppedEvent,
   TabCreatedEvent,
   TabClosedEvent,

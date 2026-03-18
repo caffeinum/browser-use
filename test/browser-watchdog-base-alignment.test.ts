@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { BrowserSession } from '../src/browser/session.js';
 import { BrowserStopEvent, NavigateToUrlEvent } from '../src/browser/events.js';
 import { BaseWatchdog } from '../src/browser/watchdogs/base.js';
+import { EventDispatchError } from '../src/event-bus.js';
 
 class TestWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [NavigateToUrlEvent, BrowserStopEvent];
@@ -64,5 +65,54 @@ describe('browser watchdog base alignment', () => {
     expect(() => watchdog.attach_to_session()).toThrow(
       'attach_to_session() called twice'
     );
+  });
+
+  it('waits for reconnecting sessions before invoking non-lifecycle handlers', async () => {
+    const session = new BrowserSession({
+      browser_context: {
+        pages: () => [],
+      } as any,
+    });
+    const watchdog = new TestWatchdog({ browser_session: session });
+    session.attach_watchdog(watchdog);
+
+    let connected = false;
+    vi.spyOn(session, 'is_cdp_connected', 'get').mockImplementation(
+      () => connected
+    );
+    vi.spyOn(session, 'is_reconnecting', 'get').mockReturnValue(true);
+    const waitSpy = vi
+      .spyOn(session, 'wait_for_reconnect')
+      .mockImplementation(async () => {
+        connected = true;
+      });
+
+    await session.event_bus.dispatch_or_throw(
+      new NavigateToUrlEvent({ url: 'https://reconnect.test' })
+    );
+
+    expect(waitSpy).toHaveBeenCalledTimes(1);
+    expect(watchdog.handled).toEqual(['https://reconnect.test']);
+  });
+
+  it('fails dispatch when reconnection completes without restoring the connection', async () => {
+    const session = new BrowserSession({
+      browser_context: {
+        pages: () => [],
+      } as any,
+    });
+    const watchdog = new TestWatchdog({ browser_session: session });
+    session.attach_watchdog(watchdog);
+
+    vi.spyOn(session, 'is_cdp_connected', 'get').mockReturnValue(false);
+    vi.spyOn(session, 'is_reconnecting', 'get').mockReturnValue(true);
+    vi.spyOn(session, 'wait_for_reconnect').mockResolvedValue();
+
+    await expect(
+      session.event_bus.dispatch_or_throw(
+        new NavigateToUrlEvent({ url: 'https://still-disconnected.test' })
+      )
+    ).rejects.toBeInstanceOf(EventDispatchError);
+    expect(watchdog.handled).toEqual([]);
   });
 });

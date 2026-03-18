@@ -39,7 +39,10 @@ import {
 import {
   AgentFocusChangedEvent,
   BrowserConnectedEvent,
+  BrowserErrorEvent,
   BrowserLaunchEvent,
+  BrowserReconnectedEvent,
+  BrowserReconnectingEvent,
   BrowserStartEvent,
   BrowserStoppedEvent,
   BrowserStopEvent,
@@ -85,6 +88,18 @@ const PLAYWRIGHT_OPTION_KEY_OVERRIDES: Record<string, string> = {
   extra_http_headers: 'extraHTTPHeaders',
 };
 const EMPTY_DOM_RETRY_DELAY_MS = 250;
+const REMOTE_RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const;
+const REMOTE_RECONNECT_ATTEMPT_TIMEOUT_MS = 15_000;
+
+type BrowserEventEmitterLike = Browser & {
+  on?: (event: string, listener: (...args: any[]) => void) => void;
+  off?: (event: string, listener: (...args: any[]) => void) => void;
+  removeListener?: (
+    event: string,
+    listener: (...args: any[]) => void
+  ) => void;
+  isConnected?: () => boolean;
+};
 
 export interface BrowserSessionInit {
   id?: string;
@@ -318,6 +333,14 @@ export class BrowserSession {
   private _watchdogs: Set<BaseWatchdog> = new Set();
   private _defaultWatchdogsAttached = false;
   private _captchaWatchdog: CaptchaWatchdog | null = null;
+  readonly RECONNECT_WAIT_TIMEOUT = 54;
+  private _reconnecting = false;
+  private _reconnectTask: Promise<void> | null = null;
+  private _reconnectWaitPromise: Promise<void> = Promise.resolve();
+  private _resolveReconnectWait: (() => void) | null = null;
+  private _intentionalStop = false;
+  private _disconnectAwareBrowser: BrowserEventEmitterLike | null = null;
+  private _browserDisconnectHandler: (() => void) | null = null;
 
   constructor(init: BrowserSessionInit = {}) {
     const sourceProfileConfig = init.browser_profile
@@ -1202,6 +1225,82 @@ export class BrowserSession {
     return this._stoppingPromise !== null;
   }
 
+  get is_reconnecting(): boolean {
+    return this._reconnecting;
+  }
+
+  get should_gate_watchdog_events(): boolean {
+    return Boolean(
+      this.initialized ||
+        this.browser ||
+        this.browser_context ||
+        this.cdp_url ||
+        this.wss_url ||
+        this._reconnecting
+    );
+  }
+
+  get is_cdp_connected(): boolean {
+    try {
+      if (this.browser) {
+        const browser = this.browser as BrowserEventEmitterLike;
+        if (
+          typeof browser.isConnected === 'function' &&
+          !browser.isConnected()
+        ) {
+          return false;
+        }
+      }
+
+      if (this.browser_context) {
+        const contextBrowser = (this.browser_context as any).browser?.();
+        if (
+          contextBrowser &&
+          typeof contextBrowser.isConnected === 'function' &&
+          !contextBrowser.isConnected()
+        ) {
+          return false;
+        }
+        return true;
+      }
+
+      return Boolean(this.browser);
+    } catch {
+      return false;
+    }
+  }
+
+  async wait_for_reconnect(timeoutSeconds: number = this.RECONNECT_WAIT_TIMEOUT) {
+    if (!this._reconnecting) {
+      return;
+    }
+
+    const timeoutMs =
+      Number.isFinite(timeoutSeconds) && timeoutSeconds > 0
+        ? timeoutSeconds * 1000
+        : this.RECONNECT_WAIT_TIMEOUT * 1000;
+
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    try {
+      await Promise.race([
+        this._reconnectWaitPromise,
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(
+              new Error(
+                `Reconnection wait timed out after ${Math.round(timeoutMs / 1000)}s`
+              )
+            );
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
+  }
+
   claim_agent(
     agentId: string,
     mode: 'exclusive' | 'shared' = 'exclusive'
@@ -1476,6 +1575,352 @@ export class BrowserSession {
     await this.set_extra_headers(configuredHeaders);
   }
 
+  private _usesRemoteBrowserConnection() {
+    return Boolean(this.cdp_url || this.wss_url);
+  }
+
+  private async _connectToConfiguredBrowser(playwright: any) {
+    const connectOptions = this._toPlaywrightOptions(
+      this.browser_profile.kwargs_for_connect()
+    ) as Record<string, unknown> | undefined;
+
+    if (this.cdp_url) {
+      return await playwright.chromium.connectOverCDP(
+        this.cdp_url,
+        connectOptions ?? {}
+      );
+    }
+
+    if (this.wss_url) {
+      return await playwright.chromium.connect(
+        this.wss_url,
+        connectOptions ?? {}
+      );
+    }
+
+    throw new Error(
+      'Cannot connect to a remote browser without cdp_url or wss_url'
+    );
+  }
+
+  private async _ensureBrowserContextFromBrowser(browser: Browser | null) {
+    const existingContexts =
+      (typeof browser?.contexts === 'function' ? browser.contexts() : []) ?? [];
+    if (existingContexts.length > 0) {
+      return existingContexts[0] ?? null;
+    }
+    if (typeof browser?.newContext === 'function') {
+      const contextOptions = this._toPlaywrightOptions(
+        this.browser_profile.kwargs_for_new_context()
+      );
+      return await browser.newContext(
+        (contextOptions as Record<string, unknown>) ?? {}
+      );
+    }
+    return null;
+  }
+
+  private _beginReconnectWait() {
+    this._reconnectWaitPromise = new Promise<void>((resolve) => {
+      this._resolveReconnectWait = resolve;
+    });
+  }
+
+  private _endReconnectWait() {
+    this._resolveReconnectWait?.();
+    this._resolveReconnectWait = null;
+    this._reconnectWaitPromise = Promise.resolve();
+  }
+
+  private _detachRemoteDisconnectHandler() {
+    if (!this._disconnectAwareBrowser || !this._browserDisconnectHandler) {
+      this._disconnectAwareBrowser = null;
+      this._browserDisconnectHandler = null;
+      return;
+    }
+
+    if (typeof this._disconnectAwareBrowser.off === 'function') {
+      this._disconnectAwareBrowser.off(
+        'disconnected',
+        this._browserDisconnectHandler
+      );
+    } else if (
+      typeof this._disconnectAwareBrowser.removeListener === 'function'
+    ) {
+      this._disconnectAwareBrowser.removeListener(
+        'disconnected',
+        this._browserDisconnectHandler
+      );
+    }
+
+    this._disconnectAwareBrowser = null;
+    this._browserDisconnectHandler = null;
+  }
+
+  private _attachRemoteDisconnectHandler(browser: Browser | null) {
+    this._detachRemoteDisconnectHandler();
+
+    if (!this._usesRemoteBrowserConnection()) {
+      return;
+    }
+
+    const browserWithEvents = browser as BrowserEventEmitterLike | null;
+    if (!browserWithEvents || typeof browserWithEvents.on !== 'function') {
+      return;
+    }
+
+    const onDisconnected = () => {
+      this._handleUnexpectedRemoteDisconnect();
+    };
+
+    browserWithEvents.on('disconnected', onDisconnected);
+    this._disconnectAwareBrowser = browserWithEvents;
+    this._browserDisconnectHandler = onDisconnected;
+  }
+
+  private _handleUnexpectedRemoteDisconnect() {
+    if (
+      this._intentionalStop ||
+      this._reconnecting ||
+      !this._usesRemoteBrowserConnection()
+    ) {
+      return;
+    }
+
+    this.logger.warning(
+      'Remote browser connection closed unexpectedly; attempting to reconnect'
+    );
+    this._recordRecentEvent('browser_disconnected', {
+      url: this.currentUrl,
+    });
+
+    const reconnectTask = this._auto_reconnect();
+    this._reconnectTask = reconnectTask;
+    void reconnectTask.finally(() => {
+      if (this._reconnectTask === reconnectTask) {
+        this._reconnectTask = null;
+      }
+    });
+  }
+
+  private async _restorePagesAfterReconnect(
+    preferredUrl: string | null,
+    preferredTabIndex: number
+  ) {
+    if (!this.browser_context) {
+      this.agent_current_page = null;
+      this.human_current_page = null;
+      return;
+    }
+
+    let pages = this.browser_context.pages?.() ?? [];
+    if (!pages.length && typeof this.browser_context.newPage === 'function') {
+      const createdPage = await this.browser_context.newPage();
+      if (createdPage) {
+        pages = this.browser_context.pages?.() ?? [createdPage];
+      }
+    }
+
+    this.tabPages = new Map();
+    this.agent_current_page = null;
+    this.human_current_page = null;
+    this._syncTabsWithBrowserPages();
+
+    if (!pages.length) {
+      this.currentTabIndex = 0;
+      this.currentUrl = normalize_url(preferredUrl ?? 'about:blank');
+      this.currentTitle = this.currentUrl;
+      if (!this._tabs.length) {
+        this._tabs = [
+          this._createTabInfo({
+            page_id: this._tabCounter++,
+            url: this.currentUrl,
+            title: this.currentTitle,
+          }),
+        ];
+      }
+      this._syncSessionManagerFromTabs();
+      return;
+    }
+
+    const normalizedPreferredUrl =
+      typeof preferredUrl === 'string' && preferredUrl.trim().length > 0
+        ? normalize_url(preferredUrl)
+        : null;
+    const pageByUrl =
+      normalizedPreferredUrl == null
+        ? null
+        : pages.find((page) => {
+            try {
+              return normalize_url(page.url()) === normalizedPreferredUrl;
+            } catch {
+              return false;
+            }
+          }) ?? null;
+    const clampedIndex =
+      preferredTabIndex >= 0 && preferredTabIndex < pages.length
+        ? preferredTabIndex
+        : 0;
+    const nextPage = pageByUrl ?? pages[clampedIndex] ?? pages[0] ?? null;
+    const nextTabIndex = nextPage
+      ? this._tabs.findIndex(
+          (tab) => this.tabPages.get(tab.page_id) === nextPage
+        )
+      : -1;
+
+    if (nextTabIndex >= 0) {
+      this.currentTabIndex = nextTabIndex;
+    }
+
+    this._setActivePage(nextPage);
+    this.human_current_page = nextPage;
+    await this._syncCurrentTabFromPage(nextPage);
+  }
+
+  async reconnect(options: {
+    preferred_url?: string | null;
+    preferred_tab_index?: number;
+  } = {}): Promise<void> {
+    if (!this._usesRemoteBrowserConnection()) {
+      throw new Error('Cannot reconnect without a remote browser connection');
+    }
+
+    const preferredUrl =
+      typeof options.preferred_url === 'string'
+        ? options.preferred_url
+        : this.currentUrl;
+    const preferredTabIndex =
+      typeof options.preferred_tab_index === 'number'
+        ? options.preferred_tab_index
+        : this.currentTabIndex;
+
+    this._detachRemoteDisconnectHandler();
+    this.cachedBrowserState = null;
+    this.currentPageLoadingStatus = null;
+    this.browser = null;
+    this.browser_context = null;
+    this.agent_current_page = null;
+    this.human_current_page = null;
+    this._dialogHandlersAttached = new WeakSet<Page>();
+    this.session_manager.clear();
+
+    const playwright = (this.playwright as any) ?? (await async_playwright());
+    this.playwright = playwright;
+    this.browser = await this._connectToConfiguredBrowser(playwright);
+    this.ownsBrowserResources = false;
+    this.browser_context = await this._ensureBrowserContextFromBrowser(
+      this.browser
+    );
+
+    await this._applyConfiguredExtraHttpHeaders();
+    await this._restorePagesAfterReconnect(preferredUrl, preferredTabIndex);
+    this._attachRemoteDisconnectHandler(this.browser);
+    this.initialized = true;
+    this._recordRecentEvent('browser_reconnected', {
+      url: this.currentUrl,
+    });
+  }
+
+  private async _auto_reconnect(maxAttempts: number = 3) {
+    if (this._reconnecting || !this._usesRemoteBrowserConnection()) {
+      return;
+    }
+
+    this._reconnecting = true;
+    this._beginReconnectWait();
+    const startTime = Date.now();
+    const preferredUrl = this.currentUrl;
+    const preferredTabIndex = this.currentTabIndex;
+
+    try {
+      await this.event_bus.dispatch(
+        new BrowserStoppedEvent({
+          reason: 'connection_lost',
+        })
+      );
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        if (this._intentionalStop) {
+          return;
+        }
+
+        await this.event_bus.dispatch(
+          new BrowserReconnectingEvent({
+            cdp_url: this.cdp_url ?? this.wss_url ?? 'remote',
+            attempt,
+            max_attempts: maxAttempts,
+          })
+        );
+
+        try {
+          await Promise.race([
+            this.reconnect({
+              preferred_url: preferredUrl,
+              preferred_tab_index: preferredTabIndex,
+            }),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                reject(
+                  new Error(
+                    `Reconnect attempt timed out after ${Math.round(
+                      REMOTE_RECONNECT_ATTEMPT_TIMEOUT_MS / 1000
+                    )}s`
+                  )
+                );
+              }, REMOTE_RECONNECT_ATTEMPT_TIMEOUT_MS);
+            }),
+          ]);
+
+          if (this._intentionalStop) {
+            return;
+          }
+
+          await this.event_bus.dispatch(
+            new BrowserConnectedEvent({
+              cdp_url: this.cdp_url ?? this.wss_url ?? 'remote',
+            })
+          );
+          await this.event_bus.dispatch(
+            new BrowserReconnectedEvent({
+              cdp_url: this.cdp_url ?? this.wss_url ?? 'remote',
+              attempt,
+              downtime_seconds: (Date.now() - startTime) / 1000,
+            })
+          );
+          return;
+        } catch (error) {
+          this.logger.warning(
+            `Reconnect attempt ${attempt}/${maxAttempts} failed: ${(error as Error).message}`
+          );
+          if (attempt >= maxAttempts) {
+            break;
+          }
+
+          const delayMs =
+            REMOTE_RECONNECT_DELAYS_MS[attempt - 1] ??
+            REMOTE_RECONNECT_DELAYS_MS[
+              REMOTE_RECONNECT_DELAYS_MS.length - 1
+            ];
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+
+      await this.event_bus.dispatch(
+        new BrowserErrorEvent({
+          error_type: 'ReconnectionFailed',
+          message: `Failed to reconnect after ${maxAttempts} attempts (${((Date.now() - startTime) / 1000).toFixed(1)}s)`,
+          details: {
+            cdp_url: this.cdp_url ?? this.wss_url ?? 'remote',
+            max_attempts: maxAttempts,
+          },
+        })
+      );
+    } finally {
+      this._reconnecting = false;
+      this._endReconnectWait();
+    }
+  }
+
   private _isSandboxLaunchError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
     return (
@@ -1553,6 +1998,7 @@ export class BrowserSession {
 
   async start() {
     this.attach_default_watchdogs();
+    this._intentionalStop = false;
 
     if (this.initialized) {
       return this;
@@ -1599,16 +2045,10 @@ export class BrowserSession {
         this.playwright = playwright;
 
         if (this.cdp_url) {
-          this.browser = await playwright.chromium.connectOverCDP(this.cdp_url);
+          this.browser = await this._connectToConfiguredBrowser(playwright);
           this.ownsBrowserResources = false;
         } else if (this.wss_url) {
-          const connectOptions = this._toPlaywrightOptions(
-            this.browser_profile.kwargs_for_connect()
-          );
-          this.browser = await playwright.chromium.connect(
-            this.wss_url,
-            (connectOptions as Record<string, unknown>) ?? {}
-          );
+          this.browser = await this._connectToConfiguredBrowser(playwright);
           this.ownsBrowserResources = false;
         } else {
           const launchOptions = this._toPlaywrightOptions(
@@ -1638,15 +2078,10 @@ export class BrowserSession {
           : []) ?? [];
       if (existingContexts.length > 0) {
         this.browser_context = existingContexts[0] ?? null;
-      } else if (typeof this.browser?.newContext === 'function') {
-        const contextOptions = this._toPlaywrightOptions(
-          this.browser_profile.kwargs_for_new_context()
-        );
-        this.browser_context = await this.browser.newContext(
-          (contextOptions as Record<string, unknown>) ?? {}
-        );
       } else {
-        this.browser_context = null;
+        this.browser_context = await this._ensureBrowserContextFromBrowser(
+          this.browser
+        );
       }
     }
 
@@ -1680,6 +2115,7 @@ export class BrowserSession {
     this.logger.debug(
       `Started ${this.describe()} with profile ${this.browser_profile.toString()}`
     );
+    this._attachRemoteDisconnectHandler(this.browser);
     await this.event_bus.dispatch(
       new BrowserConnectedEvent({
         cdp_url: this.cdp_url ?? this.wss_url ?? 'playwright',
@@ -1719,7 +2155,7 @@ export class BrowserSession {
     // Connect to browser via CDP
     try {
       const playwright = await import('playwright');
-      const browser = await playwright.chromium.connectOverCDP(cdpUrl);
+      const browser = await this._connectToConfiguredBrowser(playwright);
 
       this.browser = browser as any;
       this.playwright = playwright;
@@ -1750,6 +2186,7 @@ export class BrowserSession {
 
       // We don't own this browser since we're connecting to existing one
       this.ownsBrowserResources = false;
+      this._attachRemoteDisconnectHandler(this.browser);
 
       this.initialized = true;
       this.logger.info(`Successfully connected to browser PID ${browserPid}`);
@@ -1792,6 +2229,11 @@ export class BrowserSession {
 
   private async _shutdown_browser_session() {
     this.initialized = false;
+    this._intentionalStop = true;
+    this._reconnecting = false;
+    this._endReconnectWait();
+    this._reconnectTask = null;
+    this._detachRemoteDisconnectHandler();
     this.attachedAgentId = null;
     this.attachedSharedAgentIds.clear();
 
