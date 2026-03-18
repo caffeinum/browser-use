@@ -568,11 +568,37 @@ const connectDirectSession = async (
     return session;
   };
 
+  const cleanupDisconnectedState = async (currentState: DirectModeState) => {
+    if (currentState.mode === 'remote' && currentState.session_id) {
+      try {
+        await environment
+          .cloud_client_factory()
+          .stop_browser(currentState.session_id);
+      } catch {
+        // Best-effort cleanup for stale remote sessions.
+      }
+      return;
+    }
+
+    if (
+      currentState.mode === 'local' &&
+      typeof currentState.browser_pid === 'number' &&
+      currentState.browser_pid > 0
+    ) {
+      try {
+        await environment.kill_process(currentState.browser_pid);
+      } catch {
+        // Ignore cleanup errors for stale local browser processes.
+      }
+    }
+  };
+
   if (state.cdp_url) {
     try {
       const session = await connectWithState(state);
       return { session, state };
     } catch {
+      await cleanupDisconnectedState(state);
       clear_direct_state(environment.state_file);
       state = {};
     }

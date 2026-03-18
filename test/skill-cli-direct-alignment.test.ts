@@ -123,6 +123,140 @@ describe('skill-cli direct alignment', () => {
     }
   });
 
+  it('cleans up stale local direct-mode state before relaunching', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const killProcessSpy = vi.fn(async () => {});
+    const localLauncher = vi.fn(async () => ({
+      cdp_url: 'http://127.0.0.1:9333',
+      browser_pid: 456,
+      user_data_dir: '/tmp/browser-use-direct-next',
+    }));
+    const staleSession = {
+      start: vi.fn(async () => {
+        throw new Error('connection refused');
+      }),
+    };
+    const freshSession = {
+      start: vi.fn(async () => {}),
+      navigate_to: vi.fn(async () => {}),
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        browser_pid: 321,
+        user_data_dir: '/tmp/browser-use-direct-stale',
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(['open', 'example.com'], {
+        state_file: stateFile,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        kill_process: killProcessSpy,
+        local_launcher: localLauncher,
+        session_factory: ({ cdp_url }) =>
+          (cdp_url === 'http://127.0.0.1:9222'
+            ? staleSession
+            : freshSession) as any,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(killProcessSpy).toHaveBeenCalledWith(321);
+      expect(localLauncher).toHaveBeenCalledTimes(1);
+      expect(load_direct_state(stateFile)).toMatchObject({
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9333',
+        browser_pid: 456,
+        active_url: 'https://example.com',
+      });
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('stops stale remote direct-mode sessions before opening a new remote browser', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const stopBrowserSpy = vi.fn(async () => {});
+    const createBrowserSpy = vi.fn(async () => ({
+      id: 'session-new',
+      cdpUrl: 'wss://cloud.example/devtools/browser/new',
+    }));
+    const staleSession = {
+      start: vi.fn(async () => {
+        throw new Error('socket closed');
+      }),
+    };
+    const freshSession = {
+      start: vi.fn(async () => {}),
+      navigate_to: vi.fn(async () => {}),
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'remote',
+        cdp_url: 'wss://cloud.example/devtools/browser/old',
+        session_id: 'session-old',
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(
+        ['--remote', 'open', 'example.com'],
+        {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          cloud_client_factory: () =>
+            ({
+              create_browser: createBrowserSpy,
+              stop_browser: stopBrowserSpy,
+            }) as any,
+          session_factory: ({ cdp_url }) =>
+            (cdp_url === 'wss://cloud.example/devtools/browser/old'
+              ? staleSession
+              : freshSession) as any,
+        }
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stopBrowserSpy).toHaveBeenCalledWith('session-old');
+      expect(createBrowserSpy).toHaveBeenCalledTimes(1);
+      expect(load_direct_state(stateFile)).toMatchObject({
+        mode: 'remote',
+        cdp_url: 'wss://cloud.example/devtools/browser/new',
+        session_id: 'session-new',
+        active_url: 'https://example.com',
+      });
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('stops cloud sessions on close and clears persisted state', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
     const stateFile = path.join(tempDir, 'state.json');
