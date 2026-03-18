@@ -143,6 +143,8 @@ describe('cli cloud profile alignment', () => {
       get_cookies: vi.fn(async () => [
         { name: 'sid', value: '1', domain: '.youtube.com', path: '/' },
         { name: 'prefs', value: '2', domain: '.youtube.com', path: '/' },
+        { name: 'studio', value: '3', domain: '.studio.youtube.com', path: '/' },
+        { name: 'trap', value: '4', domain: '.notyoutube.com', path: '/' },
         { name: 'other', value: '3', domain: '.example.com', path: '/' },
       ]),
     }));
@@ -199,7 +201,7 @@ describe('cli cloud profile alignment', () => {
       )
     ).toBe(0);
 
-    expect(stdout.read()).toContain('Cookies by domain (3 total):');
+    expect(stdout.read()).toContain('Cookies by domain (5 total):');
     expect(stdout.read()).toContain('youtube.com: 2');
     expect(stdout.read()).toContain('"profile_id": "profile-cloud-1"');
     expect(client.create_profile).toHaveBeenCalledWith({
@@ -211,6 +213,10 @@ describe('cli cloud profile alignment', () => {
     expect(remoteAddCookies).toHaveBeenCalledWith([
       expect.objectContaining({ name: 'sid' }),
       expect.objectContaining({ name: 'prefs' }),
+      expect.objectContaining({ name: 'studio' }),
     ]);
+    expect(remoteAddCookies).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: 'trap' })])
+    );
   });
 });

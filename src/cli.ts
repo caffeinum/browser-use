@@ -2015,7 +2015,13 @@ const cookieMatchesDomainFilter = (
   }
   const cookieDomain = normalizeProfileCookieDomain(cookie.domain);
   const normalizedFilter = normalizeProfileCookieDomain(domainFilter);
-  return Boolean(cookieDomain && normalizedFilter && cookieDomain.includes(normalizedFilter));
+  return Boolean(
+    cookieDomain &&
+      normalizedFilter &&
+      (cookieDomain === normalizedFilter ||
+        cookieDomain.endsWith(`.${normalizedFilter}`) ||
+        normalizedFilter.endsWith(`.${cookieDomain}`))
+  );
 };
 
 export const runProfileCommand = async (
