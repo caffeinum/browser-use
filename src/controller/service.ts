@@ -1282,7 +1282,7 @@ export class Controller<Context = unknown> {
     const contentLogger = this.logger;
 
     const extractStructuredDescription =
-      "LLM extracts structured data from page markdown. Use when: on right page, know what to extract, haven't called before on same page+query. Can't get interactive elements. Set extract_links=True for URLs. Use start_from_char if previous extraction was truncated to extract data further down the page.";
+      "LLM extracts structured data from page markdown. Use when: on right page, know what to extract, haven't called before on same page+query. Can't get interactive elements. Set extract_links=True for URLs. Use start_from_char if previous extraction was truncated to extract data further down the page. When paginating across pages, pass already_collected with item identifiers (names/URLs) from prior pages to avoid duplicates.";
 
     type ExtractStructuredAction = z.infer<
       typeof ExtractStructuredDataActionSchema
@@ -1450,6 +1450,11 @@ export class Controller<Context = unknown> {
 
       content = sanitize_surrogates(content);
       const sanitizedQuery = sanitize_surrogates(params.query);
+      const alreadyCollected = Array.isArray(params.already_collected)
+        ? params.already_collected
+            .map((item) => sanitize_surrogates(String(item)).trim())
+            .filter(Boolean)
+        : [];
 
       const parseJsonFromCompletion = (completion: string) => {
         const trimmed = completion.trim();
@@ -1486,13 +1491,22 @@ You will be given a query, a JSON Schema, and the markdown of a webpage that has
 - Your response MUST conform to the provided JSON Schema exactly.
 - If a required field's value cannot be found on the page, use null (if the schema allows it) or an empty string / empty array as appropriate.
 - If the content was truncated, extract what is available from the visible portion.
+- If <already_collected> items are provided, skip any items whose name/title/URL matches those listed. Do not include duplicates.
 </instructions>`.trim();
         const schemaJson = JSON.stringify(effectiveOutputSchema, null, 2);
+        const alreadyCollectedSection =
+          alreadyCollected.length > 0
+            ? `\n\n<already_collected>\nSkip items whose name/title/URL matches any of these already-collected identifiers:\n${alreadyCollected
+                .slice(0, 100)
+                .map((item) => `- ${item}`)
+                .join('\n')}\n</already_collected>`
+            : '';
         const prompt =
           `<query>\n${sanitizedQuery}\n</query>\n\n` +
           `<output_schema>\n${schemaJson}\n</output_schema>\n\n` +
           `<content_stats>\n${statsSummary}\n</content_stats>\n\n` +
-          `<webpage_content>\n${content}\n</webpage_content>`;
+          `<webpage_content>\n${content}\n</webpage_content>` +
+          alreadyCollectedSection;
 
         const response = await (page_extraction_llm as any).ainvoke(
           [new SystemMessage(systemPrompt), new UserMessage(prompt)],
@@ -1576,6 +1590,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
 - If the information relevant to the query is not available in the page, your response should mention that.
 - If the query asks for all items, products, etc., make sure to directly list all of them.
 - If the content was truncated and you need more information, note that the user can use start_from_char parameter to continue from where truncation occurred.
+- If <already_collected> items are provided, exclude any results whose name/title/URL matches those already collected. Do not include duplicates.
 </instructions>
 
 <output>
@@ -1585,7 +1600,13 @@ You will be given a query and the markdown of a webpage that has been filtered t
       const prompt =
         `<query>\n${sanitizedQuery}\n</query>\n\n` +
         `<content_stats>\n${statsSummary}\n</content_stats>\n\n` +
-        `<webpage_content>\n${content}\n</webpage_content>`;
+        `<webpage_content>\n${content}\n</webpage_content>` +
+        (alreadyCollected.length > 0
+          ? `\n\n<already_collected>\nSkip items whose name/title/URL matches any of these already-collected identifiers:\n${alreadyCollected
+              .slice(0, 100)
+              .map((item) => `- ${item}`)
+              .join('\n')}\n</already_collected>`
+          : '');
       const response = await (page_extraction_llm as any).ainvoke(
         [new SystemMessage(systemPrompt), new UserMessage(prompt)],
         undefined,

@@ -121,6 +121,7 @@ export const ExtractStructuredDataActionSchema = z.object({
   extract_links: z.boolean().default(false),
   start_from_char: z.number().int().default(0),
   output_schema: z.record(z.string(), z.unknown()).nullable().optional(),
+  already_collected: z.array(z.string()).default([]),
 });
 export type ExtractStructuredDataAction = z.infer<
   typeof ExtractStructuredDataActionSchema

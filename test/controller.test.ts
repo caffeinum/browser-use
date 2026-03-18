@@ -3176,6 +3176,7 @@ describe('Regression Coverage', () => {
     expect(prompt).toContain('extract_structured_data');
     expect(prompt).toContain("haven't called before on same page+query");
     expect(prompt).toContain('Use start_from_char');
+    expect(prompt).toContain('already_collected');
   });
 
   it('extract_structured_data rejects responses that violate output_schema', async () => {
@@ -3284,6 +3285,59 @@ describe('Regression Coverage', () => {
     expect(userPrompt).toContain('"name"');
     expect(result.error).toBeNull();
     expect(result.extracted_content).toContain('{"name":"Alice","age":30}');
+  });
+
+  it('extract_structured_data includes already_collected guidance in structured prompts', async () => {
+    const controller = new Controller();
+    const pageExtractionLlm = {
+      ainvoke: vi.fn(async () => ({
+        completion: '{"items":["New Item"]}',
+      })),
+    };
+    const page = {
+      content: vi.fn(async () => '<html><body>New Item</body></html>'),
+      frames: vi.fn(() => []),
+      url: vi.fn(() => 'https://example.com/items'),
+    };
+    const browserSession = {
+      get_current_page: vi.fn(async () => page),
+      agent_current_page: {
+        url: vi.fn(() => 'https://example.com/items'),
+      },
+    };
+
+    await controller.registry.execute_action(
+      'extract_structured_data',
+      {
+        query: 'Extract items',
+        output_schema: {
+          type: 'object',
+          properties: {
+            items: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['items'],
+        },
+        already_collected: ['Old Item', 'Existing URL'],
+      },
+      {
+        browser_session: browserSession as any,
+        page_extraction_llm: pageExtractionLlm as any,
+        file_system: {
+          save_extracted_content: vi.fn(async () => '/tmp/saved.txt'),
+        } as any,
+      }
+    );
+
+    const messages =
+      ((
+        pageExtractionLlm.ainvoke.mock.calls[0] as unknown[] | undefined
+      )?.[0] as Array<{ text?: string }> | undefined) ?? [];
+    const systemPrompt = messages[0]?.text ?? '';
+    const userPrompt = messages[1]?.text ?? '';
+    expect(systemPrompt).toContain('<already_collected>');
+    expect(userPrompt).toContain('<already_collected>');
+    expect(userPrompt).toContain('Old Item');
+    expect(userPrompt).toContain('Existing URL');
   });
 
   it('extract_structured_data fills optional fields with python-aligned defaults', async () => {
