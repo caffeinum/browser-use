@@ -13,6 +13,7 @@ import {
   loadCliHistory,
   normalizeCliHistory,
   parseCliArgs,
+  runDoctorChecks,
   saveCliHistory,
   shouldStartInteractiveMode,
 } from '../src/cli.js';
@@ -182,6 +183,7 @@ describe('CLI argument parsing', () => {
   it('renders usage help text', () => {
     const usage = getCliUsage();
     expect(usage).toContain('browser-use --mcp');
+    expect(usage).toContain('browser-use doctor');
     expect(usage).toContain('--provider <name>');
     expect(usage).toContain('--model <model>');
     expect(usage).toContain('--headless');
@@ -419,5 +421,47 @@ describe('CLI model routing', () => {
     expect(() => getLlmFromCliArgs(args)).toThrow(
       /Use ChatOCIRaw directly/
     );
+  });
+});
+
+describe('CLI doctor checks', () => {
+  it('reports a healthy environment when all checks pass', async () => {
+    const report = await runDoctorChecks({
+      version: '1.2.3',
+      browser_executable: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      api_key: 'test-api-key',
+      cloudflared_path: '/usr/local/bin/cloudflared',
+      fetch_impl: (async () =>
+        ({
+          ok: true,
+          status: 200,
+        }) as Response) as typeof fetch,
+    });
+
+    expect(report.status).toBe('healthy');
+    expect(report.summary).toContain('5/5 checks passed');
+    expect(report.checks.package.message).toContain('1.2.3');
+    expect(report.checks.browser.status).toBe('ok');
+    expect(report.checks.api_key.status).toBe('ok');
+    expect(report.checks.cloudflared.status).toBe('ok');
+    expect(report.checks.network.status).toBe('ok');
+  });
+
+  it('reports missing dependencies without throwing', async () => {
+    const report = await runDoctorChecks({
+      version: '1.2.3',
+      browser_executable: null,
+      api_key: null,
+      cloudflared_path: null,
+      fetch_impl: (async () => {
+        throw new Error('offline');
+      }) as typeof fetch,
+    });
+
+    expect(report.status).toBe('issues_found');
+    expect(report.checks.browser.status).toBe('warning');
+    expect(report.checks.api_key.status).toBe('missing');
+    expect(report.checks.cloudflared.status).toBe('missing');
+    expect(report.checks.network.status).toBe('warning');
   });
 });

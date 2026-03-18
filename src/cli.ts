@@ -2,6 +2,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { stdin, stdout } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { Agent } from './agent/service.js';
@@ -9,7 +10,7 @@ import {
   BrowserProfile,
   type BrowserProfileOptions,
 } from './browser/profile.js';
-import { BrowserSession } from './browser/session.js';
+import { BrowserSession, systemChrome } from './browser/session.js';
 import { CONFIG } from './config.js';
 import { ChatOpenAI } from './llm/openai/chat.js';
 import { ChatAnthropic } from './llm/anthropic/chat.js';
@@ -931,6 +932,7 @@ const runInteractiveMode = async (
 
 export const getCliUsage = () => `Usage:
   browser-use                    # interactive mode (TTY)
+  browser-use doctor
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -955,6 +957,171 @@ Options:
   --proxy-password <value>    Proxy password
   --cdp-url <url>             Connect to an existing Chromium instance via CDP
   --debug                     Enable debug logging`;
+
+export interface CliDoctorCheck {
+  status: 'ok' | 'warning' | 'missing' | 'error';
+  message: string;
+  note?: string;
+  fix?: string;
+}
+
+export interface CliDoctorReport {
+  status: 'healthy' | 'issues_found';
+  checks: Record<string, CliDoctorCheck>;
+  summary: string;
+}
+
+export interface RunDoctorChecksOptions {
+  version?: string;
+  browser_executable?: string | null;
+  api_key?: string | null;
+  cloudflared_path?: string | null;
+  fetch_impl?: typeof fetch;
+}
+
+const summarizeDoctorChecks = (checks: Record<string, CliDoctorCheck>) => {
+  const values = Object.values(checks);
+  const total = values.length;
+  const ok = values.filter((check) => check.status === 'ok').length;
+  const warning = values.filter((check) => check.status === 'warning').length;
+  const missing = values.filter((check) => check.status === 'missing').length;
+  const error = values.filter((check) => check.status === 'error').length;
+
+  const parts = [`${ok}/${total} checks passed`];
+  if (warning > 0) {
+    parts.push(`${warning} warnings`);
+  }
+  if (missing > 0) {
+    parts.push(`${missing} missing`);
+  }
+  if (error > 0) {
+    parts.push(`${error} errors`);
+  }
+  return parts.join(', ');
+};
+
+const findSystemBinary = (binary: string) => {
+  const command = process.platform === 'win32' ? 'where' : 'which';
+  const result = spawnSync(command, [binary], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (result.status !== 0) {
+    return null;
+  }
+  const firstLine = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return firstLine ?? null;
+};
+
+export const runDoctorChecks = async (
+  options: RunDoctorChecksOptions = {}
+): Promise<CliDoctorReport> => {
+  const fetchImpl = options.fetch_impl ?? fetch;
+  const checks: Record<string, CliDoctorCheck> = {
+    package: {
+      status: 'ok',
+      message: `browser-use ${options.version ?? get_browser_use_version()}`,
+    },
+    browser: (() => {
+      const executable =
+        options.browser_executable !== undefined
+          ? options.browser_executable
+          : systemChrome.findExecutable();
+      if (executable) {
+        return {
+          status: 'ok',
+          message: `Chrome detected at ${executable}`,
+        };
+      }
+      return {
+        status: 'warning',
+        message: 'Chrome executable not detected',
+        note: 'Local browser launch may fail until Chrome or Chromium is installed.',
+      };
+    })(),
+    api_key: (() => {
+      const apiKey =
+        options.api_key !== undefined
+          ? options.api_key
+          : (process.env.BROWSER_USE_API_KEY ?? null);
+      if (typeof apiKey === 'string' && apiKey.trim().length > 0) {
+        return {
+          status: 'ok',
+          message: 'BROWSER_USE_API_KEY is configured',
+        };
+      }
+      return {
+        status: 'missing',
+        message: 'BROWSER_USE_API_KEY is not configured',
+        note: 'Required for browser-use cloud browser features.',
+      };
+    })(),
+    cloudflared: (() => {
+      const binaryPath =
+        options.cloudflared_path !== undefined
+          ? options.cloudflared_path
+          : findSystemBinary('cloudflared');
+      if (binaryPath) {
+        return {
+          status: 'ok',
+          message: `cloudflared detected at ${binaryPath}`,
+        };
+      }
+      return {
+        status: 'missing',
+        message: 'cloudflared not found',
+        note: 'Tunnel features remain unavailable until cloudflared is installed.',
+      };
+    })(),
+    network: {
+      status: 'warning',
+      message: 'Network connectivity check inconclusive',
+      note: 'Some remote features may not work offline.',
+    },
+  };
+
+  try {
+    const response = await fetchImpl('https://api.github.com', {
+      method: 'HEAD',
+    });
+    if (response.ok || response.status < 500) {
+      checks.network = {
+        status: 'ok',
+        message: 'Network connectivity OK',
+      };
+    }
+  } catch {
+    checks.network = {
+      status: 'warning',
+      message: 'Network connectivity check inconclusive',
+      note: 'Some remote features may not work offline.',
+    };
+  }
+
+  const allOk = Object.values(checks).every((check) => check.status === 'ok');
+  return {
+    status: allOk ? 'healthy' : 'issues_found',
+    checks,
+    summary: summarizeDoctorChecks(checks),
+  };
+};
+
+const printDoctorReport = (report: CliDoctorReport) => {
+  console.log(`status: ${report.status}`);
+  console.log(`summary: ${report.summary}`);
+  for (const [name, check] of Object.entries(report.checks)) {
+    console.log(`${name}: ${check.status} - ${check.message}`);
+    if (check.note) {
+      console.log(`  note: ${check.note}`);
+    }
+    if (check.fix) {
+      console.log(`  fix: ${check.fix}`);
+    }
+  }
+};
 
 async function runMcpServer() {
   const server = new MCPServer('browser-use', get_browser_use_version());
@@ -999,6 +1166,12 @@ export async function main(argv: string[] = process.argv.slice(2)) {
 
   if (args.mcp) {
     await runMcpServer();
+    return;
+  }
+
+  if (args.prompt == null && args.positional[0] === 'doctor') {
+    const report = await runDoctorChecks();
+    printDoctorReport(report);
     return;
   }
 
