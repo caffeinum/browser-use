@@ -161,4 +161,139 @@ describe('skill-cli direct alignment', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('supports advanced direct-mode browser controls', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const waitForFunction = vi.fn(async () => {});
+    const locator = {
+      hover: vi.fn(async () => {}),
+      dblclick: vi.fn(async () => {}),
+      click: vi.fn(async () => {}),
+    };
+    const session = {
+      start: vi.fn(async () => {}),
+      tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
+      active_tab: { target_id: 'target-1', url: 'https://example.com' },
+      switch_to_tab: vi.fn(async () => {}),
+      close_tab: vi.fn(async () => {}),
+      go_forward: vi.fn(async () => {}),
+      wait_for_element: vi.fn(async () => {}),
+      select_dropdown_option: vi.fn(async () => ['Option A']),
+      get_dom_element_by_index: vi.fn(async () => ({ index: 4 })),
+      get_locate_element: vi.fn(async () => locator),
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+        waitForFunction,
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      expect(
+        await run_direct_command(['forward'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['switch', '1'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['close-tab'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['select', '4', 'Option A'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['wait', 'selector', '#app', '2500'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['wait', 'text', 'Ready'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['hover', '4'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['dblclick', '4'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['rightclick', '4'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+
+      expect(session.go_forward).toHaveBeenCalledTimes(1);
+      expect(session.switch_to_tab).toHaveBeenCalledWith(1);
+      expect(session.close_tab).toHaveBeenCalledWith('target-1');
+      expect(session.select_dropdown_option).toHaveBeenCalledWith(
+        { index: 4 },
+        'Option A'
+      );
+      expect(session.wait_for_element).toHaveBeenCalledWith('#app', 2500);
+      expect(waitForFunction).toHaveBeenCalledTimes(1);
+      expect(locator.hover).toHaveBeenCalledWith({ timeout: 5000 });
+      expect(locator.dblclick).toHaveBeenCalledWith({ timeout: 5000 });
+      expect(locator.click).toHaveBeenCalledWith({
+        button: 'right',
+        timeout: 5000,
+      });
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

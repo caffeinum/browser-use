@@ -30,6 +30,11 @@ interface DirectSessionLike {
   tabs?: Array<{ target_id?: string | null; url?: string | null }>;
   active_tab?: { target_id?: string | null; url?: string | null } | null;
   event_bus?: { stop?: () => Promise<void> | void } | null;
+  browser_context?: {
+    cookies?: (urls?: string[]) => Promise<any[]>;
+    addCookies?: (cookies: any[]) => Promise<unknown>;
+    clearCookies?: () => Promise<unknown>;
+  } | null;
   detach_all_watchdogs?: () => void;
   start: () => Promise<unknown>;
   navigate_to?: (url: string) => Promise<unknown>;
@@ -44,6 +49,7 @@ interface DirectSessionLike {
   }>;
   get_page_info?: () => Promise<any>;
   get_dom_element_by_index?: (index: number) => Promise<any>;
+  get_locate_element?: (node: any) => Promise<any>;
   _click_element_node?: (node: any) => Promise<unknown>;
   click_coordinates?: (
     x: number,
@@ -62,9 +68,14 @@ interface DirectSessionLike {
     amount: number
   ) => Promise<unknown>;
   go_back?: () => Promise<unknown>;
+  go_forward?: () => Promise<unknown>;
   get_page_html?: () => Promise<string>;
   execute_javascript?: (script: string) => Promise<unknown>;
   switch_to_tab?: (identifier: number | string) => Promise<unknown>;
+  close_tab?: (identifier: number | string) => Promise<unknown>;
+  select_dropdown_option?: (node: any, value: string) => Promise<unknown>;
+  wait_for_element?: (selector: string, timeout: number) => Promise<unknown>;
+  get_cookies?: () => Promise<any[]>;
 }
 
 export interface DirectCliEnvironment {
@@ -136,7 +147,16 @@ Commands:
   screenshot [path]       Take screenshot
   scroll [up|down]        Scroll page
   back                    Go back in history
+  forward                 Go forward in history
+  switch <tab>            Switch to tab index or target id
+  close-tab [tab]         Close a tab
   keys <keys>             Send keyboard keys
+  select <index> <value>  Select dropdown option
+  wait selector <css>     Wait for a selector
+  wait text <text>        Wait for text
+  hover <index>           Hover element by DOM index
+  dblclick <index>        Double-click element by DOM index
+  rightclick <index>      Right-click element by DOM index
   html [selector]         Get page HTML or a CSS selector
   eval <js>               Execute JavaScript
   close                   Close the active direct-mode browser
@@ -252,6 +272,21 @@ const cleanupDirectSession = async (session: DirectSessionLike) => {
   } catch {
     // Ignore event bus cleanup failures.
   }
+};
+
+const requireDirectNodeByIndex = async (
+  session: DirectSessionLike,
+  indexValue: string | undefined
+) => {
+  const index = Number(indexValue ?? Number.NaN);
+  if (!Number.isFinite(index)) {
+    throw new Error('Missing index');
+  }
+  const node = await session.get_dom_element_by_index?.(index);
+  if (!node) {
+    throw new Error(`Element index ${index} not found - run "state" first`);
+  }
+  return { index, node };
 };
 
 const restoreActiveTab = async (
@@ -470,12 +505,10 @@ export const run_direct_command = async (
         numericArgs.length === 1 &&
         Number.isFinite(numericArgs[0] ?? Number.NaN)
       ) {
-        const node = await session.get_dom_element_by_index?.(numericArgs[0]!);
-        if (!node) {
-          throw new Error(
-            `Element index ${numericArgs[0]} not found - run "state" first`
-          );
-        }
+        const { node } = await requireDirectNodeByIndex(
+          session,
+          String(numericArgs[0])
+        );
         await session._click_element_node?.(node);
         writeLine(environment.stdout, `Clicked element [${numericArgs[0]}]`);
       } else {
@@ -494,10 +527,7 @@ export const run_direct_command = async (
       if (!Number.isFinite(index) || !text) {
         throw new Error('Usage: input <index> <text>');
       }
-      const node = await session.get_dom_element_by_index?.(index);
-      if (!node) {
-        throw new Error(`Element index ${index} not found - run "state" first`);
-      }
+      const { node } = await requireDirectNodeByIndex(session, String(index));
       await session._input_text_element_node?.(node, text, { clear: true });
       writeLine(environment.stdout, `Typed "${text}" into element [${index}]`);
     } else if (command === 'screenshot') {
@@ -532,6 +562,35 @@ export const run_direct_command = async (
     } else if (command === 'back') {
       await session.go_back?.();
       writeLine(environment.stdout, 'Navigated back');
+    } else if (command === 'forward') {
+      await session.go_forward?.();
+      writeLine(environment.stdout, 'Navigated forward');
+    } else if (command === 'switch') {
+      const rawIdentifier = args[1]?.trim();
+      if (!rawIdentifier) {
+        throw new Error('Usage: switch <tab>');
+      }
+      const numericIdentifier = Number(rawIdentifier);
+      const identifier = Number.isFinite(numericIdentifier)
+        ? numericIdentifier
+        : rawIdentifier;
+      await session.switch_to_tab?.(identifier);
+      writeLine(environment.stdout, `Switched to tab: ${rawIdentifier}`);
+    } else if (command === 'close-tab') {
+      const rawIdentifier = args[1]?.trim();
+      const numericIdentifier =
+        rawIdentifier && rawIdentifier.length > 0 ? Number(rawIdentifier) : NaN;
+      const identifier =
+        rawIdentifier && rawIdentifier.length > 0
+          ? Number.isFinite(numericIdentifier)
+            ? numericIdentifier
+            : rawIdentifier
+          : session.active_tab?.target_id ?? null;
+      if (identifier === null) {
+        throw new Error('Usage: close-tab [tab]');
+      }
+      await session.close_tab?.(identifier);
+      writeLine(environment.stdout, `Closed tab: ${identifier}`);
     } else if (command === 'keys') {
       const keys = args.slice(1).join(' ').trim();
       if (!keys) {
@@ -539,6 +598,77 @@ export const run_direct_command = async (
       }
       await session.send_keys?.(keys);
       writeLine(environment.stdout, `Sent keys: ${keys}`);
+    } else if (command === 'select') {
+      const index = args[1];
+      const value = args.slice(2).join(' ').trim();
+      if (!index || !value) {
+        throw new Error('Usage: select <index> <value>');
+      }
+      const { node, index: numericIndex } = await requireDirectNodeByIndex(
+        session,
+        index
+      );
+      await session.select_dropdown_option?.(node, value);
+      writeLine(
+        environment.stdout,
+        `Selected "${value}" for element [${numericIndex}]`
+      );
+    } else if (command === 'wait') {
+      const waitCommand = args[1] ?? '';
+      if (waitCommand === 'selector') {
+        const selector = args[2]?.trim();
+        const timeout = Number(args[3] ?? 5000);
+        if (!selector) {
+          throw new Error('Usage: wait selector <css> [timeout]');
+        }
+        await session.wait_for_element?.(selector, timeout);
+        writeLine(
+          environment.stdout,
+          `Waited for selector "${selector}" (${timeout}ms)`
+        );
+      } else if (waitCommand === 'text') {
+        const text = args.slice(2).join(' ').trim();
+        if (!text) {
+          throw new Error('Usage: wait text <text>');
+        }
+        const page = await session.get_current_page?.();
+        if (!page?.waitForFunction) {
+          throw new Error('No active page available for wait text');
+        }
+        await page.waitForFunction(
+          (needle: string) =>
+            document.body?.innerText?.includes(needle) ?? false,
+          text,
+          { timeout: 5000 }
+        );
+        writeLine(environment.stdout, `Waited for text "${text}"`);
+      } else {
+        throw new Error('Usage: wait selector <css> | wait text <text>');
+      }
+    } else if (command === 'hover') {
+      const { node, index } = await requireDirectNodeByIndex(session, args[1]);
+      const locator = await session.get_locate_element?.(node);
+      if (!locator?.hover) {
+        throw new Error('Hover is not available for this element');
+      }
+      await locator.hover({ timeout: 5000 });
+      writeLine(environment.stdout, `Hovered element [${index}]`);
+    } else if (command === 'dblclick') {
+      const { node, index } = await requireDirectNodeByIndex(session, args[1]);
+      const locator = await session.get_locate_element?.(node);
+      if (!locator?.dblclick) {
+        throw new Error('Double-click is not available for this element');
+      }
+      await locator.dblclick({ timeout: 5000 });
+      writeLine(environment.stdout, `Double-clicked element [${index}]`);
+    } else if (command === 'rightclick') {
+      const { node, index } = await requireDirectNodeByIndex(session, args[1]);
+      const locator = await session.get_locate_element?.(node);
+      if (!locator?.click) {
+        throw new Error('Right-click is not available for this element');
+      }
+      await locator.click({ button: 'right', timeout: 5000 });
+      writeLine(environment.stdout, `Right-clicked element [${index}]`);
     } else if (command === 'html') {
       const selector = args.slice(1).join(' ').trim();
       if (!selector) {
