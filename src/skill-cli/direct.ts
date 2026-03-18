@@ -157,6 +157,13 @@ Commands:
   hover <index>           Hover element by DOM index
   dblclick <index>        Double-click element by DOM index
   rightclick <index>      Right-click element by DOM index
+  get title               Get page title
+  get html [selector]     Get page HTML or a CSS selector
+  get text <index>        Get element text
+  get value <index>       Get element value
+  get attributes <index>  Get element attributes
+  get bbox <index>        Get element bounding box
+  extract <query>         Explain that extraction requires agent mode
   html [selector]         Get page HTML or a CSS selector
   eval <js>               Execute JavaScript
   close                   Close the active direct-mode browser
@@ -287,6 +294,68 @@ const requireDirectNodeByIndex = async (
     throw new Error(`Element index ${index} not found - run "state" first`);
   }
   return { index, node };
+};
+
+const readDirectNodeData = async (
+  session: DirectSessionLike,
+  node: any,
+  kind: 'text' | 'value' | 'attributes' | 'bbox'
+) => {
+  if (!node?.xpath) {
+    throw new Error('DOM element does not include an XPath selector');
+  }
+
+  const page = await session.get_current_page?.();
+  if (!page?.evaluate) {
+    throw new Error('No active page available');
+  }
+
+  return await page.evaluate(
+    ({ xpath, dataKind }: { xpath: string; dataKind: string }) => {
+      const element = document.evaluate(
+        xpath,
+        document,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      ).singleNodeValue as HTMLElement | null;
+      if (!element) {
+        return null;
+      }
+
+      if (dataKind === 'text') {
+        return element.textContent?.trim() ?? '';
+      }
+      if (dataKind === 'value') {
+        return 'value' in element
+          ? String((element as HTMLInputElement).value ?? '')
+          : null;
+      }
+      if (dataKind === 'attributes') {
+        return Object.fromEntries(
+          Array.from(element.attributes).map((attribute) => [
+            attribute.name,
+            attribute.value,
+          ])
+        );
+      }
+      if (dataKind === 'bbox') {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+          left: rect.left,
+        };
+      }
+      return null;
+    },
+    { xpath: node.xpath, dataKind: kind }
+  );
 };
 
 const restoreActiveTab = async (
@@ -669,6 +738,65 @@ export const run_direct_command = async (
       }
       await locator.click({ button: 'right', timeout: 5000 });
       writeLine(environment.stdout, `Right-clicked element [${index}]`);
+    } else if (command === 'get') {
+      const subcommand = args[1] ?? '';
+      if (subcommand === 'title') {
+        const page = await session.get_current_page?.();
+        if (!page?.title) {
+          throw new Error('No active page available for get title');
+        }
+        writeLine(environment.stdout, await page.title());
+      } else if (subcommand === 'html') {
+        const selector = args.slice(2).join(' ').trim();
+        if (!selector) {
+          writeLine(environment.stdout, (await session.get_page_html?.()) ?? '');
+        } else {
+          const page = await session.get_current_page?.();
+          if (!page?.evaluate) {
+            throw new Error('No active page available for get html');
+          }
+          const html = await page.evaluate((targetSelector: string) => {
+            const element = document.querySelector(targetSelector);
+            return element ? element.outerHTML : null;
+          }, selector);
+          if (typeof html !== 'string' || html.length === 0) {
+            throw new Error(`No element found for selector: ${selector}`);
+          }
+          writeLine(environment.stdout, html);
+        }
+      } else if (
+        subcommand === 'text' ||
+        subcommand === 'value' ||
+        subcommand === 'attributes' ||
+        subcommand === 'bbox'
+      ) {
+        const { node } = await requireDirectNodeByIndex(session, args[2]);
+        const value = await readDirectNodeData(session, node, subcommand);
+        if (value == null) {
+          throw new Error(`Unable to retrieve ${subcommand} for element`);
+        }
+        writeLine(
+          environment.stdout,
+          typeof value === 'string' ? value : JSON.stringify(value)
+        );
+      } else {
+        throw new Error(
+          'Usage: get title | get html [selector] | get text <index> | get value <index> | get attributes <index> | get bbox <index>'
+        );
+      }
+    } else if (command === 'extract') {
+      const query = args.slice(1).join(' ').trim();
+      if (!query) {
+        throw new Error('Missing query');
+      }
+      writeLine(
+        environment.stdout,
+        JSON.stringify({
+          query,
+          error:
+            'extract requires agent mode - use: browser-use run "extract ..."',
+        })
+      );
     } else if (command === 'html') {
       const selector = args.slice(1).join(' ').trim();
       if (!selector) {

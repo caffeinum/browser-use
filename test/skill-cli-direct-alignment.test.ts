@@ -296,4 +296,124 @@ describe('skill-cli direct alignment', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('supports direct-mode get commands and extract placeholder output', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const session = {
+      start: vi.fn(async () => {}),
+      tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
+      switch_to_tab: vi.fn(async () => {}),
+      get_dom_element_by_index: vi.fn(async () => ({
+        index: 5,
+        xpath: '//*[@data-id="target"]',
+      })),
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+        title: vi.fn(async () => 'Example Title'),
+        evaluate: vi.fn(
+          async (
+            _fn: unknown,
+            input:
+              | string
+              | {
+                  xpath: string;
+                  dataKind: string;
+                }
+          ) => {
+            if (typeof input === 'string') {
+              return `<div class="target">${input}</div>`;
+            }
+            if (input.dataKind === 'text') {
+              return 'Visible text';
+            }
+            if (input.dataKind === 'attributes') {
+              return { 'data-id': 'target' };
+            }
+            if (input.dataKind === 'bbox') {
+              return { x: 1, y: 2, width: 3, height: 4 };
+            }
+            return null;
+          }
+        ),
+      })),
+      get_page_html: vi.fn(async () => '<html></html>'),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      expect(
+        await run_direct_command(['get', 'title'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['get', 'html', '.target'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['get', 'text', '5'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['get', 'attributes', '5'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['get', 'bbox', '5'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+      expect(
+        await run_direct_command(['extract', 'Extract profile'], {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        })
+      ).toBe(0);
+
+      const output = stdout.read();
+      expect(output).toContain('Example Title');
+      expect(output).toContain('<div class="target">.target</div>');
+      expect(output).toContain('Visible text');
+      expect(output).toContain('"data-id":"target"');
+      expect(output).toContain('"width":3');
+      expect(output).toContain('extract requires agent mode');
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

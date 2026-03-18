@@ -46,11 +46,73 @@ export class SkillCliServer {
     return node;
   }
 
+  private async _read_node_data(
+    browser_session: any,
+    node: any,
+    kind: 'text' | 'value' | 'attributes' | 'bbox'
+  ) {
+    if (!node?.xpath) {
+      throw new Error('DOM element does not include an XPath selector');
+    }
+
+    const page = await browser_session.get_current_page();
+    if (!page?.evaluate) {
+      throw new Error('No active page available');
+    }
+
+    return await page.evaluate(
+      ({ xpath, dataKind }: { xpath: string; dataKind: string }) => {
+        const element = document.evaluate(
+          xpath,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue as HTMLElement | null;
+        if (!element) {
+          return null;
+        }
+
+        if (dataKind === 'text') {
+          return element.textContent?.trim() ?? '';
+        }
+        if (dataKind === 'value') {
+          return 'value' in element
+            ? String((element as HTMLInputElement).value ?? '')
+            : null;
+        }
+        if (dataKind === 'attributes') {
+          return Object.fromEntries(
+            Array.from(element.attributes).map((attribute) => [
+              attribute.name,
+              attribute.value,
+            ])
+          );
+        }
+        if (dataKind === 'bbox') {
+          const rect = element.getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            left: rect.left,
+          };
+        }
+        return null;
+      },
+      { xpath: node.xpath, dataKind: kind }
+    );
+  }
+
   private async _handle_browser_action(
     action: string,
     sessionName: string,
     params: Record<string, unknown>
-  ) {
+  ): Promise<any> {
     const session = await this.registry.get_or_create_session(sessionName);
     const browser_session = session.browser_session;
 
@@ -329,6 +391,65 @@ export class SkillCliServer {
       }
       return {
         result: await browser_session.execute_javascript(script),
+      };
+    }
+
+    if (action === 'extract') {
+      const query = String(params.query ?? '').trim();
+      if (!query) {
+        throw new Error('Missing query');
+      }
+      return {
+        query,
+        error: 'extract requires agent mode - use: browser-use run "extract ..."',
+      };
+    }
+
+    if (action === 'get_title') {
+      const page = await browser_session.get_current_page?.();
+      if (!page?.title) {
+        throw new Error('No active page available for get_title');
+      }
+      return {
+        title: await page.title(),
+      };
+    }
+
+    if (action === 'get_html') {
+      const selector =
+        typeof params.selector === 'string' ? params.selector.trim() : '';
+      return selector
+        ? await this._handle_browser_action('html', sessionName, { selector })
+        : await this._handle_browser_action('html', sessionName, {});
+    }
+
+    if (
+      action === 'get_text' ||
+      action === 'get_value' ||
+      action === 'get_attributes' ||
+      action === 'get_bbox'
+    ) {
+      const node = await this._require_node_by_index(
+        browser_session,
+        params.index
+      );
+      if ('error' in node) {
+        return node;
+      }
+
+      const kind = action.replace('get_', '') as
+        | 'text'
+        | 'value'
+        | 'attributes'
+        | 'bbox';
+      const value = await this._read_node_data(browser_session, node, kind);
+      if (value == null) {
+        throw new Error(`Unable to retrieve ${kind} for element`);
+      }
+
+      return {
+        index: Number(params.index),
+        [kind]: value,
       };
     }
 

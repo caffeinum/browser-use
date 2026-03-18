@@ -428,4 +428,74 @@ describe('skill-cli alignment', () => {
     expect((evaluated.data as any).result).toEqual({ ok: true });
     expect(evalSpy).toHaveBeenCalledWith('({ ok: true })');
   });
+
+  it('supports get and extract actions', async () => {
+    const session = new BrowserSession();
+    const node = { xpath: '//*[@data-id="target"]' } as any;
+    vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue(node);
+    vi.spyOn(session, 'get_current_page').mockResolvedValue({
+      title: vi.fn(async () => 'Example Title'),
+      evaluate: vi.fn(
+        async (
+          _fn: unknown,
+          input: { xpath: string; dataKind: string }
+        ) => {
+          if (input.dataKind === 'text') {
+            return 'Visible text';
+          }
+          if (input.dataKind === 'attributes') {
+            return { 'data-id': 'target' };
+          }
+          return null;
+        }
+      ),
+    } as any);
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    const getTitle = await server.handle_request(
+      new Request({
+        id: 'r28',
+        action: 'get_title',
+        session: 'default',
+      })
+    );
+    const getText = await server.handle_request(
+      new Request({
+        id: 'r29',
+        action: 'get_text',
+        session: 'default',
+        params: { index: 4 },
+      })
+    );
+    const getAttributes = await server.handle_request(
+      new Request({
+        id: 'r30',
+        action: 'get_attributes',
+        session: 'default',
+        params: { index: 4 },
+      })
+    );
+    const extract = await server.handle_request(
+      new Request({
+        id: 'r31',
+        action: 'extract',
+        session: 'default',
+        params: { query: 'Extract name' },
+      })
+    );
+
+    expect(getTitle.success).toBe(true);
+    expect((getTitle.data as any).title).toBe('Example Title');
+    expect(getText.success).toBe(true);
+    expect((getText.data as any).text).toBe('Visible text');
+    expect(getAttributes.success).toBe(true);
+    expect((getAttributes.data as any).attributes).toEqual({
+      'data-id': 'target',
+    });
+    expect(extract.success).toBe(false);
+    expect(String(extract.error)).toContain('extract requires agent mode');
+  });
 });
