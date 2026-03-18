@@ -66,6 +66,54 @@ describe('cli cloud run alignment', () => {
     expect(stderr.read()).toBe('');
   });
 
+  it('parses inline cloud run flag values', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(async () => ({
+        id: 'session-4',
+      })),
+      create_task: vi.fn(async () => ({
+        id: 'task-4',
+        sessionId: 'session-4',
+      })),
+      get_task: vi.fn(),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      [
+        '--remote',
+        '--profile=profile-inline',
+        '--proxy-country=us',
+        '--llm=gpt-4o',
+        'Collect',
+        'inline',
+        'flags',
+      ],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(client.create_session).toHaveBeenCalledWith({
+      profileId: 'profile-inline',
+      proxyCountryCode: 'us',
+      startUrl: null,
+    });
+    expect(client.create_task).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task: 'Collect inline flags',
+        llm: 'gpt-4o',
+        sessionId: 'session-4',
+      })
+    );
+    expect(stdout.read()).toContain('Task started: task-4');
+    expect(stderr.read()).toBe('');
+  });
+
   it('waits for task completion and streams status changes', async () => {
     const stdout = createWritable();
     const stderr = createWritable();

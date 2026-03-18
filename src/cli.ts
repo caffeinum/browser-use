@@ -2412,8 +2412,32 @@ const CLOUD_RUN_FLAGS = new Set([
   '--profile',
 ]);
 
+const CLOUD_RUN_VALUE_FLAGS = new Set([
+  '--llm',
+  '--session-id',
+  '--proxy-country',
+  '--start-url',
+  '--structured-output',
+  '--judge-ground-truth',
+  '--max-steps',
+  '--profile',
+  '--metadata',
+  '--secret',
+  '--allowed-domain',
+  '--skill-id',
+]);
+
 const hasCloudRunFlags = (argv: string[]) =>
-  argv.some((arg) => CLOUD_RUN_FLAGS.has(arg) || arg.startsWith('--llm='));
+  argv.some((arg) => {
+    if (CLOUD_RUN_FLAGS.has(arg)) {
+      return true;
+    }
+    const separator = arg.indexOf('=');
+    if (separator <= 0) {
+      return false;
+    }
+    return CLOUD_RUN_VALUE_FLAGS.has(arg.slice(0, separator));
+  });
 
 const parseKeyValuePairs = (values: string[]) => {
   const result: Record<string, string> = {};
@@ -2452,7 +2476,11 @@ const parseCloudRunArgs = (argv: string[]) => {
   };
 
   for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index] ?? '';
+    const rawArg = argv[index] ?? '';
+    const separator = rawArg.indexOf('=');
+    const hasInlineValue = separator > 0;
+    const arg = hasInlineValue ? rawArg.slice(0, separator) : rawArg;
+    const inlineValue = hasInlineValue ? rawArg.slice(separator + 1).trim() : '';
     if (arg === '--remote') {
       flags.remote = true;
       continue;
@@ -2499,7 +2527,7 @@ const parseCloudRunArgs = (argv: string[]) => {
       arg === '--allowed-domain' ||
       arg === '--skill-id'
     ) {
-      const next = argv[index + 1]?.trim();
+      const next = hasInlineValue ? inlineValue : argv[index + 1]?.trim();
       if (!next) {
         throw new Error(`Missing value for ${arg}`);
       }
@@ -2528,10 +2556,12 @@ const parseCloudRunArgs = (argv: string[]) => {
       } else {
         flags.skill_id.push(next);
       }
-      index += 1;
+      if (!hasInlineValue) {
+        index += 1;
+      }
       continue;
     }
-    flags.task_parts.push(arg);
+    flags.task_parts.push(rawArg);
   }
 
   return flags;
