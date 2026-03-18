@@ -9,6 +9,7 @@ import { ChatGoogle } from './google/chat.js';
 import { ChatGroq } from './groq/chat.js';
 import { ChatLiteLLM } from './litellm/chat.js';
 import { ChatMistral } from './mistral/chat.js';
+import { ChatOCIRaw } from './oci-raw/chat.js';
 import { ChatOllama } from './ollama/chat.js';
 import { ChatOpenAI } from './openai/chat.js';
 import { ChatOpenRouter } from './openrouter/chat.js';
@@ -28,7 +29,8 @@ type ResolvedProvider =
   | 'mistral'
   | 'cerebras'
   | 'vercel'
-  | 'litellm';
+  | 'litellm'
+  | 'oci';
 
 const AVAILABLE_PROVIDERS = [
   'openai',
@@ -45,6 +47,7 @@ const AVAILABLE_PROVIDERS = [
   'cerebras',
   'vercel',
   'litellm',
+  'oci',
 ] as const;
 
 const MISTRAL_ALIAS_MAP: Record<string, string> = {
@@ -173,6 +176,9 @@ const inferProviderFromModel = (model: string): ResolvedProvider | null => {
   if (lower.startsWith('litellm:')) {
     return 'litellm';
   }
+  if (lower.startsWith('oci:')) {
+    return 'oci';
+  }
   if (
     lower.startsWith('mistral-') ||
     lower.startsWith('codestral') ||
@@ -235,6 +241,9 @@ const normalizeModelForProvider = (
   }
   if (provider === 'litellm' && lower.startsWith('litellm:')) {
     return model.slice('litellm:'.length);
+  }
+  if (provider === 'oci' && lower.startsWith('oci:')) {
+    return model.slice('oci:'.length);
   }
   if (provider === 'aws' && lower.startsWith('bedrock:')) {
     return model.slice('bedrock:'.length);
@@ -314,6 +323,10 @@ const buildProviderModel = (
         baseURL:
           process.env.LITELLM_API_BASE ?? process.env.LITELLM_BASE_URL,
       });
+    case 'oci':
+      return new ChatOCIRaw({
+        model,
+      });
     case 'aws':
       return new ChatBedrockConverse({
         model,
@@ -366,17 +379,15 @@ export const getLlmByName = (modelName: string): BaseChatModel => {
   const separator = normalizedName.indexOf('_');
   if (separator > 0) {
     const provider = normalizedName.slice(0, separator);
-    if (provider === 'oci') {
-      throw new Error(
-        'OCI models require manual configuration. Use ChatOCIRaw directly with your OCI credentials.'
-      );
-    }
     const modelPart = normalizedName.slice(separator + 1);
     if (provider === 'bu') {
       return buildProviderModel(
         'browser-use',
         `bu-${modelPart.replace(/_/g, '-')}`
       );
+    }
+    if (provider === 'oci') {
+      return buildProviderModel('oci', modelPart);
     }
     if (provider === 'browser-use') {
       return buildProviderModel('browser-use', modelPart.replace(/_/g, '/'));

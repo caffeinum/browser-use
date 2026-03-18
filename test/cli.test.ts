@@ -40,6 +40,9 @@ const MANAGED_ENV_KEYS = [
   'AWS_PROFILE',
   'OLLAMA_MODEL',
   'OLLAMA_HOST',
+  'OCI_SERVICE_ENDPOINT',
+  'OCI_COMPARTMENT_ID',
+  'OCI_MODEL_ID',
   'BROWSER_USE_API_KEY',
   'BROWSER_USE_CONFIG_DIR',
   'BROWSER_USE_CLI_FORCE_INTERACTIVE',
@@ -435,11 +438,31 @@ describe('CLI model routing', () => {
     expect(llm.model).toBe('bu-2-0');
   });
 
-  it('returns ChatOCIRaw guidance for oci-prefixed models', () => {
+  it('routes oci-prefixed model names to ChatOCIRaw', () => {
+    process.env.OCI_SERVICE_ENDPOINT =
+      'https://inference.generativeai.example.oraclecloud.com';
+    process.env.OCI_COMPARTMENT_ID = 'ocid1.compartment.oc1..example';
     const args = parseCliArgs(['--model', 'oci:meta/llama-3.1', '-p', 'x']);
-    expect(() => getLlmFromCliArgs(args)).toThrow(
-      /Use ChatOCIRaw directly/
-    );
+    const llm = getLlmFromCliArgs(args);
+    expect(llm.provider).toBe('oci-raw');
+    expect(llm.model).toBe('meta/llama-3.1');
+  });
+
+  it('supports explicit OCI provider selection with --model', () => {
+    process.env.OCI_SERVICE_ENDPOINT =
+      'https://inference.generativeai.example.oraclecloud.com';
+    process.env.OCI_COMPARTMENT_ID = 'ocid1.compartment.oc1..example';
+    const args = parseCliArgs([
+      '--provider',
+      'oci',
+      '--model',
+      'ocid1.generativeaimodel.oc1.region.example',
+      '-p',
+      'x',
+    ]);
+    const llm = getLlmFromCliArgs(args);
+    expect(llm.provider).toBe('oci-raw');
+    expect(llm.model).toBe('ocid1.generativeaimodel.oc1.region.example');
   });
 });
 

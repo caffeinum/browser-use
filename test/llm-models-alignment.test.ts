@@ -12,6 +12,8 @@ describe('LLM models factory alignment', () => {
   const originalGoogleApiKey = process.env.GOOGLE_API_KEY;
   const originalLiteLlmApiKey = process.env.LITELLM_API_KEY;
   const originalLiteLlmApiBase = process.env.LITELLM_API_BASE;
+  const originalOciServiceEndpoint = process.env.OCI_SERVICE_ENDPOINT;
+  const originalOciCompartmentId = process.env.OCI_COMPARTMENT_ID;
 
   beforeEach(() => {
     process.env.BROWSER_USE_API_KEY = 'test-bu-key';
@@ -24,6 +26,9 @@ describe('LLM models factory alignment', () => {
     process.env.GOOGLE_API_KEY = 'test-google-key';
     process.env.LITELLM_API_KEY = 'test-litellm-key';
     process.env.LITELLM_API_BASE = 'https://litellm.example.com';
+    process.env.OCI_SERVICE_ENDPOINT =
+      'https://inference.generativeai.example.oraclecloud.com';
+    process.env.OCI_COMPARTMENT_ID = 'ocid1.compartment.oc1..example';
   });
 
   afterEach(() => {
@@ -76,6 +81,16 @@ describe('LLM models factory alignment', () => {
       delete process.env.LITELLM_API_BASE;
     } else {
       process.env.LITELLM_API_BASE = originalLiteLlmApiBase;
+    }
+    if (originalOciServiceEndpoint === undefined) {
+      delete process.env.OCI_SERVICE_ENDPOINT;
+    } else {
+      process.env.OCI_SERVICE_ENDPOINT = originalOciServiceEndpoint;
+    }
+    if (originalOciCompartmentId === undefined) {
+      delete process.env.OCI_COMPARTMENT_ID;
+    } else {
+      process.env.OCI_COMPARTMENT_ID = originalOciCompartmentId;
     }
   });
 
@@ -145,9 +160,9 @@ describe('LLM models factory alignment', () => {
     );
   });
 
-  it('returns explicit guidance for OCI-prefixed model names', () => {
-    expect(() => getLlmByName('oci_meta_llama')).toThrow(
-      /OCI models require manual configuration/
-    );
+  it('builds OCI models through the shared model factory', () => {
+    const llm = getLlmByName('oci_ocid1.generativeaimodel.oc1.region.example');
+    expect(llm.provider).toBe('oci-raw');
+    expect(llm.model).toBe('ocid1.generativeaimodel.oc1.region.example');
   });
 });

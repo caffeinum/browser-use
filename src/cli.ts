@@ -24,6 +24,7 @@ import { ChatOpenRouter } from './llm/openrouter/chat.js';
 import { ChatAzure } from './llm/azure/chat.js';
 import { ChatOllama } from './llm/ollama/chat.js';
 import { ChatMistral } from './llm/mistral/chat.js';
+import { ChatOCIRaw } from './llm/oci-raw/chat.js';
 import { ChatCerebras } from './llm/cerebras/chat.js';
 import { ChatVercel } from './llm/vercel/chat.js';
 import { ChatAnthropicBedrock } from './llm/aws/chat-anthropic.js';
@@ -676,9 +677,9 @@ const createLlmForProvider = (
         baseURL: process.env.VERCEL_BASE_URL,
       });
     case 'oci':
-      throw new Error(
-        'OCI models require manual configuration in TypeScript runtime. Use ChatOCIRaw directly with your OCI credentials and endpoint setup.'
-      );
+      return new ChatOCIRaw({
+        model,
+      });
     case 'ollama': {
       const host = process.env.OLLAMA_HOST || 'http://localhost:11434';
       return new ChatOllama(model, host);
