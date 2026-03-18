@@ -973,6 +973,7 @@ export const getCliUsage = () => `Usage:
   browser-use task <list|status|stop|logs>
   browser-use session <list|get|stop|create|share>
   browser-use profile <list|get|create|delete>
+  browser-use run --remote <task>
   browser-use <task>
   browser-use -p "<task>"
   browser-use [options] <task>
@@ -1065,6 +1066,16 @@ export interface RunProfileCommandOptions {
   profile_lister?: () => Array<{ directory: string; name: string }>;
   stdout?: WritableLike;
   stderr?: WritableLike;
+}
+
+export interface RunCloudTaskCommandOptions {
+  client?: Pick<
+    CloudManagementClient,
+    'create_task' | 'create_session' | 'get_task'
+  >;
+  stdout?: WritableLike;
+  stderr?: WritableLike;
+  sleep_impl?: (ms: number) => Promise<void>;
 }
 
 export const runInstallCommand = (
@@ -2078,6 +2089,239 @@ export const runProfileCommand = async (
   }
 };
 
+const CLOUD_RUN_FLAGS = new Set([
+  '--remote',
+  '--llm',
+  '--session-id',
+  '--proxy-country',
+  '--wait',
+  '--stream',
+  '--flash',
+  '--thinking',
+  '--vision',
+  '--no-vision',
+  '--start-url',
+  '--metadata',
+  '--secret',
+  '--allowed-domain',
+  '--skill-id',
+  '--structured-output',
+  '--judge',
+  '--judge-ground-truth',
+  '--max-steps',
+  '--profile',
+]);
+
+const hasCloudRunFlags = (argv: string[]) =>
+  argv.some((arg) => CLOUD_RUN_FLAGS.has(arg) || arg.startsWith('--llm='));
+
+const parseKeyValuePairs = (values: string[]) => {
+  const result: Record<string, string> = {};
+  values.forEach((value) => {
+    const separator = value.indexOf('=');
+    if (separator <= 0) {
+      return;
+    }
+    result[value.slice(0, separator)] = value.slice(separator + 1);
+  });
+  return Object.keys(result).length > 0 ? result : null;
+};
+
+const parseCloudRunArgs = (argv: string[]) => {
+  const flags = {
+    remote: false,
+    wait: false,
+    stream: false,
+    flash: false,
+    thinking: false,
+    vision: null as boolean | 'auto' | null,
+    llm: null as string | null,
+    session_id: null as string | null,
+    proxy_country: null as string | null,
+    start_url: null as string | null,
+    structured_output: null as string | null,
+    judge: false,
+    judge_ground_truth: null as string | null,
+    max_steps: null as number | null,
+    profile: null as string | null,
+    metadata: [] as string[],
+    secret: [] as string[],
+    allowed_domain: [] as string[],
+    skill_id: [] as string[],
+    task_parts: [] as string[],
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? '';
+    if (arg === '--remote') {
+      flags.remote = true;
+      continue;
+    }
+    if (arg === '--wait') {
+      flags.wait = true;
+      continue;
+    }
+    if (arg === '--stream') {
+      flags.stream = true;
+      continue;
+    }
+    if (arg === '--flash') {
+      flags.flash = true;
+      continue;
+    }
+    if (arg === '--thinking') {
+      flags.thinking = true;
+      continue;
+    }
+    if (arg === '--vision') {
+      flags.vision = true;
+      continue;
+    }
+    if (arg === '--no-vision') {
+      flags.vision = false;
+      continue;
+    }
+    if (arg === '--judge') {
+      flags.judge = true;
+      continue;
+    }
+    if (
+      arg === '--llm' ||
+      arg === '--session-id' ||
+      arg === '--proxy-country' ||
+      arg === '--start-url' ||
+      arg === '--structured-output' ||
+      arg === '--judge-ground-truth' ||
+      arg === '--max-steps' ||
+      arg === '--profile' ||
+      arg === '--metadata' ||
+      arg === '--secret' ||
+      arg === '--allowed-domain' ||
+      arg === '--skill-id'
+    ) {
+      const next = argv[index + 1]?.trim();
+      if (!next) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+      if (arg === '--llm') {
+        flags.llm = next;
+      } else if (arg === '--session-id') {
+        flags.session_id = next;
+      } else if (arg === '--proxy-country') {
+        flags.proxy_country = next;
+      } else if (arg === '--start-url') {
+        flags.start_url = next;
+      } else if (arg === '--structured-output') {
+        flags.structured_output = next;
+      } else if (arg === '--judge-ground-truth') {
+        flags.judge_ground_truth = next;
+      } else if (arg === '--max-steps') {
+        flags.max_steps = parsePositiveInt('--max-steps', next);
+      } else if (arg === '--profile') {
+        flags.profile = next;
+      } else if (arg === '--metadata') {
+        flags.metadata.push(next);
+      } else if (arg === '--secret') {
+        flags.secret.push(next);
+      } else if (arg === '--allowed-domain') {
+        flags.allowed_domain.push(next);
+      } else {
+        flags.skill_id.push(next);
+      }
+      index += 1;
+      continue;
+    }
+    flags.task_parts.push(arg);
+  }
+
+  return flags;
+};
+
+export const runCloudTaskCommand = async (
+  argv: string[],
+  options: RunCloudTaskCommandOptions = {}
+) => {
+  const client = options.client ?? new CloudManagementClient();
+  const output = options.stdout ?? process.stdout;
+  const errorOutput = options.stderr ?? process.stderr;
+  const sleepImpl =
+    options.sleep_impl ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+
+  try {
+    const flags = parseCloudRunArgs(argv);
+    const task = flags.task_parts.join(' ').trim();
+    if (!task) {
+      throw new Error('Usage: browser-use run --remote <task>');
+    }
+
+    let sessionId = flags.session_id;
+    if (!sessionId && (flags.profile || flags.proxy_country)) {
+      const session = await client.create_session({
+        profileId: flags.profile,
+        proxyCountryCode: flags.proxy_country,
+        startUrl: flags.start_url,
+      });
+      sessionId = session.id;
+      writeLine(output, `Created cloud session: ${sessionId}`);
+    }
+
+    const created = await client.create_task({
+      task,
+      llm: flags.llm,
+      sessionId,
+      startUrl: flags.start_url,
+      maxSteps: flags.max_steps,
+      structuredOutput: flags.structured_output,
+      metadata: parseKeyValuePairs(flags.metadata),
+      secrets: parseKeyValuePairs(flags.secret),
+      allowedDomains:
+        flags.allowed_domain.length > 0 ? flags.allowed_domain : null,
+      flashMode: flags.flash,
+      thinking: flags.thinking,
+      vision: flags.vision,
+      judge: flags.judge,
+      judgeGroundTruth: flags.judge_ground_truth,
+      skillIds: flags.skill_id.length > 0 ? flags.skill_id : null,
+    });
+
+    if (!flags.wait) {
+      writeLine(
+        output,
+        `Task started: ${created.id} (session: ${created.sessionId})`
+      );
+      writeLine(
+        output,
+        `Use "browser-use task status ${created.id}" to check progress.`
+      );
+      return 0;
+    }
+
+    let lastStatus: string | null = null;
+    while (true) {
+      const taskView = await client.get_task(created.id);
+      if (flags.stream && taskView.status !== lastStatus) {
+        writeLine(output, `Status: ${taskView.status}`);
+        lastStatus = taskView.status;
+      }
+      if (
+        taskView.status === 'finished' ||
+        taskView.status === 'stopped' ||
+        taskView.status === 'failed'
+      ) {
+        writeLine(output, `Task ${taskView.status}: ${taskView.id}`);
+        if (taskView.output) {
+          writeLine(output, taskView.output);
+        }
+        return 0;
+      }
+      await sleepImpl(1000);
+    }
+  } catch (error) {
+    writeLine(errorOutput, `Error: ${(error as Error).message}`);
+    return 1;
+  }
+};
+
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
   message: string;
@@ -2286,6 +2530,18 @@ async function runMcpServer() {
 }
 
 export async function main(argv: string[] = process.argv.slice(2)) {
+  if (argv[0] === 'run') {
+    if (!hasCloudRunFlags(argv.slice(1))) {
+      await main(argv.slice(1));
+      return;
+    }
+    const exitCode = await runCloudTaskCommand(argv.slice(1));
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+    }
+    return;
+  }
+
   if (argv[0] === 'task') {
     const exitCode = await runTaskCommand(argv.slice(1));
     if (exitCode !== 0) {
