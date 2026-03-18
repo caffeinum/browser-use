@@ -2446,6 +2446,53 @@ const hasCloudRunFlags = (argv: string[]) =>
     return CLOUD_RUN_VALUE_FLAGS.has(arg.slice(0, separator));
   });
 
+type PrefixedSubcommand = {
+  command: 'run' | 'task' | 'session' | 'profile';
+  argv: string[];
+  debug: boolean;
+  forwardedArgs: string[];
+};
+
+export const extractPrefixedSubcommand = (
+  argv: string[]
+): PrefixedSubcommand | null => {
+  const forwardedArgs: string[] = [];
+  let debug = false;
+  let index = 0;
+
+  while (index < argv.length) {
+    const arg = argv[index] ?? '';
+    if (arg === '--debug') {
+      debug = true;
+      index += 1;
+      continue;
+    }
+    if (arg === '--json') {
+      forwardedArgs.push(arg);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  const command = argv[index];
+  if (
+    command !== 'run' &&
+    command !== 'task' &&
+    command !== 'session' &&
+    command !== 'profile'
+  ) {
+    return null;
+  }
+
+  return {
+    command,
+    argv: argv.slice(index + 1),
+    debug,
+    forwardedArgs,
+  };
+};
+
 const parseKeyValuePairs = (values: string[]) => {
   const result: Record<string, string> = {};
   values.forEach((value) => {
@@ -2670,6 +2717,11 @@ export const runCloudTaskCommand = async (
   }
 };
 
+const enableDebugLogging = () => {
+  process.env.BROWSER_USE_LOGGING_LEVEL = 'debug';
+  setupLogging({ logLevel: 'debug', forceSetup: true });
+};
+
 export interface CliDoctorCheck {
   status: 'ok' | 'warning' | 'missing' | 'error';
   message: string;
@@ -2878,36 +2930,42 @@ async function runMcpServer() {
 }
 
 export async function main(argv: string[] = process.argv.slice(2)) {
-  if (argv[0] === 'run') {
-    if (!hasCloudRunFlags(argv.slice(1))) {
-      await main(argv.slice(1));
+  const prefixedSubcommand = extractPrefixedSubcommand(argv);
+  if (prefixedSubcommand) {
+    if (prefixedSubcommand.debug) {
+      enableDebugLogging();
+    }
+
+    if (prefixedSubcommand.command === 'run') {
+      if (!hasCloudRunFlags(prefixedSubcommand.argv)) {
+        await main([...prefixedSubcommand.forwardedArgs, ...prefixedSubcommand.argv]);
+        return;
+      }
+      const exitCode = await runCloudTaskCommand(prefixedSubcommand.argv);
+      if (exitCode !== 0) {
+        process.exit(exitCode);
+      }
       return;
     }
-    const exitCode = await runCloudTaskCommand(argv.slice(1));
-    if (exitCode !== 0) {
-      process.exit(exitCode);
-    }
-    return;
-  }
 
-  if (argv[0] === 'task') {
-    const exitCode = await runTaskCommand(argv.slice(1));
-    if (exitCode !== 0) {
-      process.exit(exitCode);
+    const subcommandArgv = [...prefixedSubcommand.forwardedArgs, ...prefixedSubcommand.argv];
+    if (prefixedSubcommand.command === 'task') {
+      const exitCode = await runTaskCommand(subcommandArgv);
+      if (exitCode !== 0) {
+        process.exit(exitCode);
+      }
+      return;
     }
-    return;
-  }
 
-  if (argv[0] === 'session') {
-    const exitCode = await runSessionCommand(argv.slice(1));
-    if (exitCode !== 0) {
-      process.exit(exitCode);
+    if (prefixedSubcommand.command === 'session') {
+      const exitCode = await runSessionCommand(subcommandArgv);
+      if (exitCode !== 0) {
+        process.exit(exitCode);
+      }
+      return;
     }
-    return;
-  }
 
-  if (argv[0] === 'profile') {
-    const exitCode = await runProfileCommand(argv.slice(1));
+    const exitCode = await runProfileCommand(subcommandArgv);
     if (exitCode !== 0) {
       process.exit(exitCode);
     }
@@ -2935,8 +2993,7 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   }
 
   if (args.debug) {
-    process.env.BROWSER_USE_LOGGING_LEVEL = 'debug';
-    setupLogging({ logLevel: 'debug', forceSetup: true });
+    enableDebugLogging();
   }
 
   if (args.mcp) {

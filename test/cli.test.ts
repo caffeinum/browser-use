@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CLI_HISTORY_LIMIT,
   buildBrowserProfileFromCliArgs,
+  extractPrefixedSubcommand,
   getCliHistoryPath,
   getCliUsage,
   getLlmFromCliArgs,
@@ -194,6 +195,28 @@ describe('CLI argument parsing', () => {
     expect(() => parseCliArgs(['--prompt', 'task one', 'task two'])).toThrow(
       'Use either positional task text or --prompt, not both.'
     );
+  });
+
+  it('extracts task subcommands after leading global flags', () => {
+    expect(
+      extractPrefixedSubcommand(['--json', '--debug', 'task', 'list', '--limit', '5'])
+    ).toEqual({
+      command: 'task',
+      argv: ['list', '--limit', '5'],
+      debug: true,
+      forwardedArgs: ['--json'],
+    });
+  });
+
+  it('extracts run subcommands after leading global flags', () => {
+    expect(
+      extractPrefixedSubcommand(['--debug', 'run', '--remote', '--wait', 'Collect', 'data'])
+    ).toEqual({
+      command: 'run',
+      argv: ['--remote', '--wait', 'Collect', 'data'],
+      debug: true,
+      forwardedArgs: [],
+    });
   });
 
   it('renders usage help text', () => {
