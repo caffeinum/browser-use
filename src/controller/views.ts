@@ -104,6 +104,15 @@ export const ScreenshotActionSchema = z.object({
 });
 export type ScreenshotAction = z.infer<typeof ScreenshotActionSchema>;
 
+export const SaveAsPdfActionSchema = z.object({
+  file_name: z.string().optional(),
+  print_background: z.boolean().default(true),
+  landscape: z.boolean().default(false),
+  scale: z.number().min(0.1).max(2.0).default(1.0),
+  paper_format: z.string().default('Letter'),
+});
+export type SaveAsPdfAction = z.infer<typeof SaveAsPdfActionSchema>;
+
 export const EvaluateActionSchema = z.object({
   code: z.string(),
 });

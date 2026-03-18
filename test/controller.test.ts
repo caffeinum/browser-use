@@ -2486,6 +2486,54 @@ describe('Regression Coverage', () => {
     }
   });
 
+  it('save_as_pdf writes PDF output and deduplicates filenames', async () => {
+    const controller = new Controller();
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-pdf-'));
+    fs.writeFileSync(path.join(tempDir, 'Quarterly-Report.pdf'), 'existing');
+
+    const browserSession = {
+      get_current_page: vi.fn(async () => ({
+        title: vi.fn(async () => 'Quarterly Report'),
+        url: vi.fn(() => 'https://example.com/quarterly-report'),
+      })),
+      get_or_create_cdp_session: vi.fn(async () => ({
+        send: vi.fn(async (method: string) => {
+          if (method !== 'Page.printToPDF') {
+            throw new Error(`Unexpected method: ${method}`);
+          }
+          return {
+            data: Buffer.from('%PDF-1.4 generated').toString('base64'),
+          };
+        }),
+      })),
+    };
+    const fileSystem = {
+      get_dir: vi.fn(() => tempDir),
+    };
+
+    try {
+      const result = await controller.registry.execute_action(
+        'save_as_pdf',
+        {},
+        {
+          browser_session: browserSession as any,
+          file_system: fileSystem as any,
+        }
+      );
+
+      expect(browserSession.get_or_create_cdp_session).toHaveBeenCalledTimes(1);
+      expect(result.error).toBeNull();
+      expect(result.attachments).toHaveLength(1);
+      expect(result.attachments?.[0]).toMatch(/Quarterly-Report \(1\)\.pdf$/);
+      expect(fs.existsSync(result.attachments?.[0] as string)).toBe(true);
+      expect(result.extracted_content).toContain(
+        'Saved page as PDF: Quarterly-Report (1).pdf'
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('extract_structured_data propagates abort during iframe extraction', async () => {
     const controller = new Controller();
     const abortController = new AbortController();

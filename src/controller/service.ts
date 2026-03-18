@@ -48,6 +48,7 @@ import {
   SearchPageActionSchema,
   SearchGoogleActionSchema,
   ScreenshotActionSchema,
+  SaveAsPdfActionSchema,
   StructuredOutputActionSchema,
   SwitchTabActionSchema,
   UploadFileActionSchema,
@@ -117,6 +118,25 @@ const createAbortError = (reason?: unknown) => {
 
 const isAbortError = (error: unknown): boolean => {
   return error instanceof Error && error.name === 'AbortError';
+};
+
+const resolveUniqueOutputPath = async (
+  directory: string,
+  fileName: string
+): Promise<string> => {
+  const parsed = path.parse(fileName);
+  let candidate = path.join(directory, fileName);
+  let counter = 1;
+
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(
+      directory,
+      `${parsed.name} (${counter})${parsed.ext}`
+    );
+    counter += 1;
+  }
+
+  return candidate;
 };
 
 const throwIfAborted = (signal?: AbortSignal | null) => {
@@ -2898,6 +2918,7 @@ Context: ${context}`;
 
   private registerUtilityActions() {
     type ScreenshotAction = z.infer<typeof ScreenshotActionSchema>;
+    type SaveAsPdfAction = z.infer<typeof SaveAsPdfActionSchema>;
     this.registry.action(
       'Take a screenshot of the current viewport. If file_name is provided, saves to that file and returns the path. Otherwise, screenshot is included in the next browser_state observation.',
       { param_model: ScreenshotActionSchema }
@@ -2945,6 +2966,95 @@ Context: ${context}`;
         metadata: {
           include_screenshot: true,
         },
+      });
+    });
+
+    this.registry.action(
+      'Save the current page as a PDF file. Returns the file path of the saved PDF. Use this to capture the full page content as a printable document.',
+      { param_model: SaveAsPdfActionSchema }
+    )(async function save_as_pdf(
+      params: SaveAsPdfAction,
+      { browser_session, file_system, signal }
+    ) {
+      if (!browser_session) throw new Error('Browser session missing');
+      throwIfAborted(signal);
+
+      const paperSizes: Record<string, { width: number; height: number }> = {
+        letter: { width: 8.5, height: 11 },
+        legal: { width: 8.5, height: 14 },
+        a4: { width: 8.27, height: 11.69 },
+        a3: { width: 11.69, height: 16.54 },
+        tabloid: { width: 11, height: 17 },
+      };
+
+      const page = await browser_session.get_current_page?.();
+      if (!page) {
+        throw new BrowserError('No active page available for save_as_pdf.');
+      }
+
+      const paperKey = String(params.paper_format ?? 'Letter').toLowerCase();
+      const paperSize = paperSizes[paperKey] ?? paperSizes.letter;
+      const cdpSession = await browser_session.get_or_create_cdp_session?.(page);
+      if (!cdpSession?.send) {
+        throw new BrowserError('CDP session unavailable for save_as_pdf.');
+      }
+
+      const result = await cdpSession.send('Page.printToPDF', {
+        printBackground: params.print_background,
+        landscape: params.landscape,
+        scale: params.scale,
+        paperWidth: paperSize.width,
+        paperHeight: paperSize.height,
+        preferCSSPageSize: true,
+      });
+
+      const pdfData =
+        result && typeof result.data === 'string' ? result.data : null;
+      if (!pdfData) {
+        throw new BrowserError('CDP Page.printToPDF returned no data.');
+      }
+
+      const fsInstance = file_system ?? new FileSystem(process.cwd(), false);
+
+      let fileName = params.file_name?.trim();
+      if (!fileName) {
+        try {
+          const titlePromise =
+            typeof page.title === 'function' ? page.title() : Promise.resolve('');
+          const pageTitle = await Promise.race([
+            titlePromise,
+            new Promise<string>((_, reject) => {
+              setTimeout(() => reject(new Error('timeout')), 2000);
+            }),
+          ]);
+          const safeTitle = String(pageTitle)
+            .replace(/[^\w\s-]+/g, '')
+            .trim()
+            .slice(0, 50);
+          fileName = safeTitle || 'page';
+        } catch {
+          fileName = 'page';
+        }
+      }
+
+      if (!fileName.toLowerCase().endsWith('.pdf')) {
+        fileName = `${fileName}.pdf`;
+      }
+      fileName = FileSystem.sanitize_filename(fileName);
+
+      const filePath = await resolveUniqueOutputPath(
+        fsInstance.get_dir(),
+        fileName
+      );
+      await fsp.writeFile(filePath, Buffer.from(pdfData, 'base64'));
+      const fileSize = (await fsp.stat(filePath)).size;
+      const baseName = path.basename(filePath);
+      const msg = `Saved page as PDF: ${baseName} (${fileSize.toLocaleString()} bytes)`;
+
+      return new ActionResult({
+        extracted_content: msg,
+        long_term_memory: `${msg}. Full path: ${filePath}`,
+        attachments: [filePath],
       });
     });
 
