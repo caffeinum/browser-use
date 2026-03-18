@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserSession } from '../src/browser/session.js';
 import {
@@ -111,5 +114,143 @@ describe('skill-cli alignment', () => {
     );
     expect(closed.success).toBe(true);
     expect(stopSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('supports hover, double-click, and right-click actions', async () => {
+    const session = new BrowserSession();
+    const locator = {
+      hover: vi.fn(async () => {}),
+      dblclick: vi.fn(async () => {}),
+      click: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue({} as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    const hover = await server.handle_request(
+      new Request({
+        id: 'r7',
+        action: 'hover',
+        session: 'default',
+        params: { index: 1 },
+      })
+    );
+    const dblclick = await server.handle_request(
+      new Request({
+        id: 'r8',
+        action: 'dblclick',
+        session: 'default',
+        params: { index: 1 },
+      })
+    );
+    const rightclick = await server.handle_request(
+      new Request({
+        id: 'r9',
+        action: 'rightclick',
+        session: 'default',
+        params: { index: 1 },
+      })
+    );
+
+    expect(hover.success).toBe(true);
+    expect(dblclick.success).toBe(true);
+    expect(rightclick.success).toBe(true);
+    expect(locator.hover).toHaveBeenCalledWith({ timeout: 5000 });
+    expect(locator.dblclick).toHaveBeenCalledWith({ timeout: 5000 });
+    expect(locator.click).toHaveBeenCalledWith({
+      button: 'right',
+      timeout: 5000,
+    });
+  });
+
+  it('supports wait and cookie commands', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-skill-'));
+    const cookiesPath = path.join(tempDir, 'cookies.json');
+    const session = new BrowserSession();
+    const waitForElementSpy = vi
+      .spyOn(session, 'wait_for_element')
+      .mockResolvedValue();
+    vi.spyOn(session, 'get_current_page').mockResolvedValue({
+      waitForFunction: vi.fn(async () => {}),
+      url: () => 'https://example.com',
+    } as any);
+    vi.spyOn(session, 'get_cookies').mockResolvedValue([
+      { name: 'sid', value: '123' } as any,
+    ]);
+    (session as any).browser_context = {
+      addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
+      cookies: vi.fn(async () => [{ name: 'sid', value: '123' }]),
+    };
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    try {
+      const waitSelector = await server.handle_request(
+        new Request({
+          id: 'r10',
+          action: 'wait_selector',
+          session: 'default',
+          params: { selector: '#app', timeout: 2500 },
+        })
+      );
+      const waitText = await server.handle_request(
+        new Request({
+          id: 'r11',
+          action: 'wait_text',
+          session: 'default',
+          params: { text: 'Ready', timeout: 2500 },
+        })
+      );
+      const cookiesGet = await server.handle_request(
+        new Request({
+          id: 'r12',
+          action: 'cookies_get',
+          session: 'default',
+        })
+      );
+      const cookiesExport = await server.handle_request(
+        new Request({
+          id: 'r13',
+          action: 'cookies_export',
+          session: 'default',
+          params: { file: cookiesPath },
+        })
+      );
+      const cookiesImport = await server.handle_request(
+        new Request({
+          id: 'r14',
+          action: 'cookies_import',
+          session: 'default',
+          params: { file: cookiesPath },
+        })
+      );
+      const cookiesClear = await server.handle_request(
+        new Request({
+          id: 'r15',
+          action: 'cookies_clear',
+          session: 'default',
+        })
+      );
+
+      expect(waitSelector.success).toBe(true);
+      expect(waitText.success).toBe(true);
+      expect(waitForElementSpy).toHaveBeenCalledWith('#app', 2500);
+      expect(cookiesGet.success).toBe(true);
+      expect((cookiesGet.data as any).count).toBe(1);
+      expect(cookiesExport.success).toBe(true);
+      expect(fs.existsSync(cookiesPath)).toBe(true);
+      expect(cookiesImport.success).toBe(true);
+      expect((session as any).browser_context.addCookies).toHaveBeenCalled();
+      expect(cookiesClear.success).toBe(true);
+      expect((session as any).browser_context.clearCookies).toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
