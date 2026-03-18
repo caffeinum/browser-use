@@ -8,6 +8,7 @@ import {
   extractPrefixedSubcommand,
   getCliHistoryPath,
   getCliUsage,
+  hasCloudRunFlags,
   getLlmFromCliArgs,
   isInteractiveExitCommand,
   isInteractiveHelpCommand,
@@ -219,6 +220,14 @@ describe('CLI argument parsing', () => {
       debug: true,
       forwardedArgs: [],
     });
+  });
+
+  it('ignores task text after -- when detecting cloud run flags', () => {
+    expect(hasCloudRunFlags(['--', '--wait', 'for', 'selector'])).toBe(false);
+    expect(
+      hasCloudRunFlags(['--remote', '--', '--wait', 'for', 'selector'])
+    ).toBe(true);
+    expect(hasCloudRunFlags(['Collect', '--', '--llm=gpt-4o'])).toBe(false);
   });
 
   it('dispatches json-prefixed task subcommands through main', async () => {

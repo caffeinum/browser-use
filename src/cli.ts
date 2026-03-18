@@ -2466,17 +2466,21 @@ const CLOUD_RUN_VALUE_FLAGS = new Set([
   '--skill-id',
 ]);
 
-const hasCloudRunFlags = (argv: string[]) =>
-  argv.some((arg) => {
+export const hasCloudRunFlags = (argv: string[]) => {
+  for (const arg of argv) {
+    if (arg === '--') {
+      break;
+    }
     if (CLOUD_RUN_FLAGS.has(arg)) {
       return true;
     }
     const separator = arg.indexOf('=');
-    if (separator <= 0) {
-      return false;
+    if (separator > 0 && CLOUD_RUN_VALUE_FLAGS.has(arg.slice(0, separator))) {
+      return true;
     }
-    return CLOUD_RUN_VALUE_FLAGS.has(arg.slice(0, separator));
-  });
+  }
+  return false;
+};
 
 type PrefixedSubcommand = {
   command: 'run' | 'task' | 'session' | 'profile';
