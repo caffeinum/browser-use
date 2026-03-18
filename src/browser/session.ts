@@ -80,6 +80,7 @@ const execFileAsync = promisify(execFile);
 const PLAYWRIGHT_OPTION_KEY_OVERRIDES: Record<string, string> = {
   extra_http_headers: 'extraHTTPHeaders',
 };
+const EMPTY_DOM_RETRY_DELAY_MS = 250;
 
 export interface BrowserSessionInit {
   id?: string;
@@ -1884,6 +1885,42 @@ export class BrowserSession {
           `Failed to build DOM tree: ${(error as Error).message}`
         );
         domState = createEmptyDomState();
+      }
+
+      const liveUrl =
+        typeof page.url === 'function'
+          ? normalize_url(page.url())
+          : this.currentUrl;
+      const shouldRetryEmptyDom =
+        Object.keys(domState.selector_map).length === 0 &&
+        !this._is_new_tab_page(liveUrl) &&
+        !liveUrl.toLowerCase().endsWith('.pdf');
+
+      if (shouldRetryEmptyDom) {
+        this.logger.debug(`Empty DOM detected for ${liveUrl}; retrying once`);
+        await this._waitWithAbort(EMPTY_DOM_RETRY_DELAY_MS, signal);
+
+        try {
+          const retryDomService = new DomService(page, this.logger);
+          const retriedDomState = await this._withAbort(
+            retryDomService.get_clickable_elements(
+              this.browser_profile.highlight_elements,
+              -1,
+              this.browser_profile.viewport_expansion
+            ),
+            signal
+          );
+          if (Object.keys(retriedDomState.selector_map).length > 0) {
+            domState = retriedDomState;
+          }
+        } catch (error) {
+          if (this._isAbortError(error)) {
+            throw error;
+          }
+          this.logger.debug(
+            `Retry after empty DOM failed: ${(error as Error).message}`
+          );
+        }
       }
     }
 

@@ -1046,6 +1046,83 @@ describe('BrowserSession Basic Operations', () => {
     }
   });
 
+  it('retries DOM extraction once when recovery initially returns an empty DOM', async () => {
+    const emptyDom = new DOMState(
+      new DOMElementNode(true, null, 'body', '/html/body', {}, []),
+      {}
+    );
+    const buttonNode = new DOMElementNode(
+      true,
+      null,
+      'button',
+      '/html/body/button[1]',
+      {},
+      [new DOMTextNode(true, null, 'Retry button')]
+    );
+    buttonNode.highlight_index = 1;
+    const populatedDom = new DOMState(
+      new DOMElementNode(true, null, 'body', '/html/body', {}, [buttonNode]),
+      { 1: buttonNode }
+    );
+    const clickableSpy = vi
+      .spyOn(DomService.prototype, 'get_clickable_elements')
+      .mockResolvedValueOnce(emptyDom)
+      .mockResolvedValueOnce(populatedDom);
+
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({}),
+      });
+      const waitSpy = vi
+        .spyOn(session as any, '_waitWithAbort')
+        .mockResolvedValue(undefined);
+
+      const evaluate = vi.fn(async (script: unknown) => {
+        const source =
+          typeof script === 'function' ? script.toString() : String(script);
+        if (source.includes('getEntriesByType')) {
+          return [];
+        }
+        if (source.includes('viewportWidth') && source.includes('pageHeight')) {
+          return {
+            viewportWidth: 1280,
+            viewportHeight: 720,
+            scrollX: 0,
+            scrollY: 0,
+            pageWidth: 1280,
+            pageHeight: 720,
+          };
+        }
+        return null;
+      });
+
+      const fakePage = {
+        url: () => 'https://example.com/retry-dom',
+        title: vi.fn(async () => 'Retry DOM'),
+        evaluate,
+        on: vi.fn(),
+        off: vi.fn(),
+      } as any;
+
+      session.update_current_page(
+        fakePage,
+        'Retry DOM',
+        'https://example.com/retry-dom'
+      );
+      (session as any).initialized = true;
+
+      const summary = await session.get_browser_state_with_recovery({
+        include_screenshot: false,
+      });
+
+      expect(clickableSpy).toHaveBeenCalledTimes(2);
+      expect(waitSpy).toHaveBeenCalledWith(250, null);
+      expect(summary.selector_map[1]?.tag_name).toBe('button');
+    } finally {
+      clickableSpy.mockRestore();
+    }
+  });
+
   it('passes profile highlight and viewport settings to recovery DOM extraction', async () => {
     const minimalDom = new DOMState(
       new DOMElementNode(true, null, 'body', '/html/body', {}, []),
