@@ -294,6 +294,32 @@ describe('cli cloud run alignment', () => {
     expect(stderr.read()).toContain('Missing value for option: --llm');
   });
 
+  it('rejects malformed metadata pairs instead of dropping them silently', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(),
+      create_task: vi.fn(),
+      get_task: vi.fn(),
+      update_session: vi.fn(),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      ['--remote', '--metadata', 'trace_id', 'Collect', 'data'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(client.create_task).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain(
+      'Invalid value for --metadata: expected KEY=VALUE'
+    );
+  });
+
   it('allows task text that starts with dashes after --', async () => {
     const stdout = createWritable();
     const stderr = createWritable();

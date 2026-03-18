@@ -2750,14 +2750,18 @@ export const extractPrefixedSubcommand = (
   };
 };
 
-const parseKeyValuePairs = (values: string[]) => {
+const parseKeyValuePairs = (values: string[], option: string) => {
   const result: Record<string, string> = {};
   values.forEach((value) => {
     const separator = value.indexOf('=');
     if (separator <= 0) {
-      return;
+      throw new Error(`Invalid value for ${option}: expected KEY=VALUE`);
     }
-    result[value.slice(0, separator)] = value.slice(separator + 1);
+    const key = value.slice(0, separator).trim();
+    if (!key) {
+      throw new Error(`Invalid value for ${option}: expected KEY=VALUE`);
+    }
+    result[key] = value.slice(separator + 1);
   });
   return Object.keys(result).length > 0 ? result : null;
 };
@@ -2921,8 +2925,8 @@ export const runCloudTaskCommand = async (
       startUrl: flags.start_url,
       maxSteps: flags.max_steps,
       structuredOutput: flags.structured_output,
-      metadata: parseKeyValuePairs(flags.metadata),
-      secrets: parseKeyValuePairs(flags.secret),
+      metadata: parseKeyValuePairs(flags.metadata, '--metadata'),
+      secrets: parseKeyValuePairs(flags.secret, '--secret'),
       allowedDomains:
         flags.allowed_domain.length > 0 ? flags.allowed_domain : null,
       flashMode: flags.flash,
