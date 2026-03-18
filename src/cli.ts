@@ -1538,6 +1538,17 @@ const printTaskStep = (
   writeLine(stream, `  ${stepNumber}. ${shortMemory}`);
 };
 
+const requireCommandTarget = (
+  value: string | undefined,
+  usage: string
+): string => {
+  const target = value?.trim();
+  if (!target || target.startsWith('-')) {
+    throw new Error(usage);
+  }
+  return target;
+};
+
 const parseTaskCommandFlags = (argv: string[]) => {
   const flags = {
     json: false,
@@ -1651,10 +1662,10 @@ export const runTaskCommand = async (
     }
 
     if (subcommand === 'status') {
-      const taskId = argv[1]?.trim();
-      if (!taskId) {
-        throw new Error('Usage: browser-use task status <task-id>');
-      }
+      const taskId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use task status <task-id>'
+      );
       const flags = parseTaskCommandFlags(argv.slice(2));
       const task = await client.get_task(taskId);
       if (flags.json) {
@@ -1704,10 +1715,10 @@ export const runTaskCommand = async (
     }
 
     if (subcommand === 'stop') {
-      const taskId = argv[1]?.trim();
-      if (!taskId) {
-        throw new Error('Usage: browser-use task stop <task-id>');
-      }
+      const taskId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use task stop <task-id>'
+      );
       const flags = parseTaskCommandFlags(argv.slice(2));
       await client.update_task(taskId, 'stop');
       if (flags.json) {
@@ -1719,10 +1730,10 @@ export const runTaskCommand = async (
     }
 
     if (subcommand === 'logs') {
-      const taskId = argv[1]?.trim();
-      if (!taskId) {
-        throw new Error('Usage: browser-use task logs <task-id>');
-      }
+      const taskId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use task logs <task-id>'
+      );
       const flags = parseTaskCommandFlags(argv.slice(2));
       const result = await client.get_task_logs(taskId);
       if (flags.json) {
@@ -1852,10 +1863,10 @@ export const runSessionCommand = async (
     }
 
     if (subcommand === 'get') {
-      const sessionId = argv[1]?.trim();
-      if (!sessionId) {
-        throw new Error('Usage: browser-use session get <session-id>');
-      }
+      const sessionId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use session get <session-id>'
+      );
       const flags = parseSessionCommandFlags(argv.slice(2));
       const session = await client.get_session(sessionId);
       if (flags.json) {
@@ -1875,7 +1886,6 @@ export const runSessionCommand = async (
 
     if (subcommand === 'stop') {
       const flags = parseSessionCommandFlags(argv.slice(1));
-      const sessionId = argv[1]?.trim();
       if (flags.all) {
         const sessions = await client.list_sessions({
           pageSize: 100,
@@ -1895,9 +1905,10 @@ export const runSessionCommand = async (
         }
         return 0;
       }
-      if (!sessionId) {
-        throw new Error('Usage: browser-use session stop <session-id> | --all');
-      }
+      const sessionId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use session stop <session-id> | --all'
+      );
       await client.update_session(sessionId, 'stop');
       if (flags.json) {
         writeLine(output, JSON.stringify({ stopped: sessionId }, null, 2));
@@ -1938,10 +1949,10 @@ export const runSessionCommand = async (
     }
 
     if (subcommand === 'share') {
-      const sessionId = argv[1]?.trim();
-      if (!sessionId) {
-        throw new Error('Usage: browser-use session share <session-id> [--delete]');
-      }
+      const sessionId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use session share <session-id> [--delete]'
+      );
       const flags = parseSessionCommandFlags(argv.slice(2));
       if (flags.delete) {
         await client.delete_session_public_share(sessionId);
@@ -2112,10 +2123,10 @@ export const runProfileCommand = async (
     }
 
     if (subcommand === 'get') {
-      const profileId = argv[1]?.trim();
-      if (!profileId) {
-        throw new Error('Usage: browser-use profile get <profile-id> [--remote]');
-      }
+      const profileId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use profile get <profile-id> [--remote]'
+      );
       const flags = parseProfileCommandFlags(argv.slice(2));
       if (flags.remote) {
         const profile = await client.get_profile(profileId);
@@ -2164,10 +2175,10 @@ export const runProfileCommand = async (
     }
 
     if (subcommand === 'delete') {
-      const profileId = argv[1]?.trim();
-      if (!profileId) {
-        throw new Error('Usage: browser-use profile delete <profile-id> --remote');
-      }
+      const profileId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use profile delete <profile-id> --remote'
+      );
       const flags = parseProfileCommandFlags(argv.slice(2));
       if (!flags.remote) {
         throw new Error('Profile delete is only supported with --remote');
@@ -2182,10 +2193,10 @@ export const runProfileCommand = async (
     }
 
     if (subcommand === 'cookies') {
-      const profileId = argv[1]?.trim();
-      if (!profileId) {
-        throw new Error('Usage: browser-use profile cookies <profile-id>');
-      }
+      const profileId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use profile cookies <profile-id>'
+      );
       const flags = parseProfileCommandFlags(argv.slice(2));
       if (flags.remote) {
         throw new Error('Profile cookies is only supported for local Chrome profiles');
@@ -2382,12 +2393,10 @@ export const runProfileCommand = async (
     }
 
     if (subcommand === 'update') {
-      const profileId = argv[1]?.trim();
-      if (!profileId) {
-        throw new Error(
-          'Usage: browser-use profile update <profile-id> --remote --name <name>'
-        );
-      }
+      const profileId = requireCommandTarget(
+        argv[1],
+        'Usage: browser-use profile update <profile-id> --remote --name <name>'
+      );
       const flags = parseProfileCommandFlags(argv.slice(2));
       if (!flags.remote) {
         throw new Error('Profile update is only supported with --remote');

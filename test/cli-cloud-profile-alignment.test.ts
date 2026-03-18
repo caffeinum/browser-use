@@ -293,4 +293,28 @@ describe('cli cloud profile alignment', () => {
     ).toBe(1);
     expect(stderr.read()).toContain('Unknown option: --fromm');
   });
+
+  it('rejects missing profile ids instead of treating flags as ids', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_profiles: vi.fn(),
+      get_profile: vi.fn(),
+      create_profile: vi.fn(),
+      update_profile: vi.fn(),
+      delete_profile: vi.fn(),
+    };
+
+    expect(
+      await runProfileCommand(['get', '--remote'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(client.get_profile).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain(
+      'Usage: browser-use profile get <profile-id> [--remote]'
+    );
+  });
 });

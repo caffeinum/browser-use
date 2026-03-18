@@ -166,4 +166,25 @@ describe('cli cloud task alignment', () => {
     ).toBe(1);
     expect(stderr.read()).toContain('Unknown option: --statuss');
   });
+
+  it('rejects missing task ids instead of treating flags as ids', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      list_tasks: vi.fn(),
+      get_task: vi.fn(),
+      update_task: vi.fn(),
+      get_task_logs: vi.fn(),
+    };
+
+    expect(
+      await runTaskCommand(['status', '--json'], {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      })
+    ).toBe(1);
+    expect(client.get_task).not.toHaveBeenCalled();
+    expect(stderr.read()).toContain('Usage: browser-use task status <task-id>');
+  });
 });
