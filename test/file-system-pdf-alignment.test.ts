@@ -47,7 +47,7 @@ describe('FileSystem PDF external read alignment', () => {
       expect(result.message).toContain('--- Page 2 ---');
       expect(result.message).toContain('Revenue increased by 12%');
       expect(result.message).not.toContain(
-        'Use read_long_content with a specific goal'
+        'Use extract with start_from_char to read further into the file.'
       );
     } finally {
       mockedPdfPages = [];
@@ -75,7 +75,7 @@ describe('FileSystem PDF external read alignment', () => {
       expect(result.message).toContain('[Showing');
       expect(result.message).toContain('Skipped pages:');
       expect(result.message).toContain(
-        'Use read_long_content with a specific goal'
+        'Use extract with start_from_char to read further into the file.'
       );
       expect(result.message).toContain('[...truncated]');
     } finally {

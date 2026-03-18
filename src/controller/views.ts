@@ -159,13 +159,6 @@ export const ReadFileActionSchema = z.object({
 });
 export type ReadFileAction = z.infer<typeof ReadFileActionSchema>;
 
-export const ReadLongContentActionSchema = z.object({
-  goal: z.string(),
-  source: z.string().default('page'),
-  context: z.string().default(''),
-});
-export type ReadLongContentAction = z.infer<typeof ReadLongContentActionSchema>;
-
 export const WriteFileActionSchema = z.object({
   file_name: z.string(),
   content: z.string(),

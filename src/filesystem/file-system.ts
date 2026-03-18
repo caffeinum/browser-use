@@ -840,7 +840,7 @@ export class FileSystem {
             truncationNote =
               `\n\n[Showing ${pagesIncluded.length} of ${numPages} pages. ` +
               `Skipped pages: [${skippedPreview}${skippedSuffix}]. ` +
-              'Use read_long_content with a specific goal to find relevant sections.]';
+              'Use extract with start_from_char to read further into the file.]';
           }
 
           result.message =
