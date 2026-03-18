@@ -61,6 +61,10 @@ import {
 } from './dvd-screensaver.js';
 import { SessionManager } from './session-manager.js';
 import { AboutBlankWatchdog } from './watchdogs/aboutblank-watchdog.js';
+import {
+  CaptchaWatchdog,
+  type CaptchaWaitResult,
+} from './watchdogs/captcha-watchdog.js';
 import { CDPSessionWatchdog } from './watchdogs/cdp-session-watchdog.js';
 import { CrashWatchdog } from './watchdogs/crash-watchdog.js';
 import { DefaultActionWatchdog } from './watchdogs/default-action-watchdog.js';
@@ -313,6 +317,7 @@ export class BrowserSession {
   private readonly _maxRecentEvents = 100;
   private _watchdogs: Set<BaseWatchdog> = new Set();
   private _defaultWatchdogsAttached = false;
+  private _captchaWatchdog: CaptchaWatchdog | null = null;
 
   constructor(init: BrowserSessionInit = {}) {
     const sourceProfileConfig = init.browser_profile
@@ -425,6 +430,9 @@ export class BrowserSession {
     }
     watchdog.attach_to_session();
     this._watchdogs.add(watchdog);
+    if (watchdog instanceof CaptchaWatchdog) {
+      this._captchaWatchdog = watchdog;
+    }
   }
 
   attach_watchdogs(watchdogs: BaseWatchdog[]) {
@@ -439,6 +447,9 @@ export class BrowserSession {
     }
     watchdog.detach_from_session();
     this._watchdogs.delete(watchdog);
+    if (watchdog === this._captchaWatchdog) {
+      this._captchaWatchdog = null;
+    }
   }
 
   detach_all_watchdogs() {
@@ -446,6 +457,7 @@ export class BrowserSession {
       this.detach_watchdog(watchdog);
     }
     this._defaultWatchdogsAttached = false;
+    this._captchaWatchdog = null;
   }
 
   get_watchdogs() {
@@ -494,6 +506,11 @@ export class BrowserSession {
       new DefaultActionWatchdog({ browser_session: this }),
     ];
 
+    if (this.browser_profile.config.captcha_solver) {
+      this._captchaWatchdog = new CaptchaWatchdog({ browser_session: this });
+      watchdogs.push(this._captchaWatchdog);
+    }
+
     const configuredHarPath = this.browser_profile.config.record_har_path;
     if (
       typeof configuredHarPath === 'string' &&
@@ -504,6 +521,12 @@ export class BrowserSession {
 
     this.attach_watchdogs(watchdogs);
     this._defaultWatchdogsAttached = true;
+  }
+
+  async wait_if_captcha_solving(
+    timeoutSeconds?: number
+  ): Promise<CaptchaWaitResult | null> {
+    return this._captchaWatchdog?.wait_if_captcha_solving(timeoutSeconds) ?? null;
   }
 
   private _formatTabId(pageId: number): string {

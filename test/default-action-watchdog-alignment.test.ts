@@ -19,6 +19,7 @@ import {
 } from '../src/browser/events.js';
 import { DOMElementNode, DOMTextNode } from '../src/dom/views.js';
 import { AboutBlankWatchdog } from '../src/browser/watchdogs/aboutblank-watchdog.js';
+import { CaptchaWatchdog } from '../src/browser/watchdogs/captcha-watchdog.js';
 import { DefaultActionWatchdog } from '../src/browser/watchdogs/default-action-watchdog.js';
 import { CDPSessionWatchdog } from '../src/browser/watchdogs/cdp-session-watchdog.js';
 import { CrashWatchdog } from '../src/browser/watchdogs/crash-watchdog.js';
@@ -41,7 +42,7 @@ describe('default action watchdog alignment', () => {
     session.attach_default_watchdogs();
 
     const watchdogs = session.get_watchdogs();
-    expect(watchdogs).toHaveLength(13);
+    expect(watchdogs).toHaveLength(14);
     expect(
       watchdogs.some((watchdog) => watchdog instanceof LocalBrowserWatchdog)
     ).toBe(true);
@@ -81,6 +82,9 @@ describe('default action watchdog alignment', () => {
     expect(
       watchdogs.some((watchdog) => watchdog instanceof DefaultActionWatchdog)
     ).toBe(true);
+    expect(
+      watchdogs.some((watchdog) => watchdog instanceof CaptchaWatchdog)
+    ).toBe(true);
   });
 
   it('attaches HarRecordingWatchdog when record_har_path is configured', () => {
@@ -93,7 +97,7 @@ describe('default action watchdog alignment', () => {
     session.attach_default_watchdogs();
 
     const watchdogs = session.get_watchdogs();
-    expect(watchdogs).toHaveLength(14);
+    expect(watchdogs).toHaveLength(15);
     expect(
       watchdogs.some((watchdog) => watchdog instanceof HarRecordingWatchdog)
     ).toBe(true);

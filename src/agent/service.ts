@@ -2633,6 +2633,8 @@ export class Agent<
     this._throwIfAborted(signal);
     await this._restore_shared_pinned_tab_if_needed();
     this._throwIfAborted(signal);
+    await this.browser_session.wait_if_captcha_solving?.();
+    this._throwIfAborted(signal);
 
     this._log_first_step_startup();
 

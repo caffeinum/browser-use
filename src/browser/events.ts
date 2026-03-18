@@ -536,6 +536,70 @@ export class BrowserStoppedEvent extends BrowserEvent<void> {
   }
 }
 
+export class CaptchaSolverStartedEvent extends BrowserEvent<void> {
+  target_id: TargetID;
+  vendor: string;
+  url: string;
+  started_at: number;
+
+  constructor(
+    init: EventBusEventInit<void> & {
+      target_id: TargetID;
+      vendor: string;
+      url: string;
+      started_at: number;
+    }
+  ) {
+    super('CaptchaSolverStartedEvent', {
+      ...init,
+      event_timeout: resolveEventTimeout(
+        'CaptchaSolverStartedEvent',
+        5,
+        init.event_timeout
+      ),
+    });
+    this.target_id = init.target_id;
+    this.vendor = init.vendor;
+    this.url = init.url;
+    this.started_at = init.started_at;
+  }
+}
+
+export class CaptchaSolverFinishedEvent extends BrowserEvent<void> {
+  target_id: TargetID;
+  vendor: string;
+  url: string;
+  duration_ms: number;
+  finished_at: number;
+  success: boolean;
+
+  constructor(
+    init: EventBusEventInit<void> & {
+      target_id: TargetID;
+      vendor: string;
+      url: string;
+      duration_ms: number;
+      finished_at: number;
+      success: boolean;
+    }
+  ) {
+    super('CaptchaSolverFinishedEvent', {
+      ...init,
+      event_timeout: resolveEventTimeout(
+        'CaptchaSolverFinishedEvent',
+        5,
+        init.event_timeout
+      ),
+    });
+    this.target_id = init.target_id;
+    this.vendor = init.vendor;
+    this.url = init.url;
+    this.duration_ms = init.duration_ms;
+    this.finished_at = init.finished_at;
+    this.success = init.success;
+  }
+}
+
 export class TabCreatedEvent extends BrowserEvent<void> {
   target_id: TargetID;
   url: string;

@@ -388,6 +388,7 @@ export interface BrowserProfileSpecificOptions {
   block_ip_addresses: boolean;
   keep_alive: Nullable<boolean>;
   enable_default_extensions: boolean;
+  captcha_solver: boolean;
   window_size: Nullable<ViewportSize>;
   window_height: Nullable<number>;
   window_width: Nullable<number>;
@@ -485,6 +486,7 @@ const DEFAULT_BROWSER_PROFILE_OPTIONS: BrowserProfileOptions = {
   block_ip_addresses: false,
   keep_alive: null,
   enable_default_extensions: getEnableDefaultExtensionsDefault(),
+  captcha_solver: true,
   window_size: null,
   window_height: null,
   window_width: null,
