@@ -181,6 +181,11 @@
       "import": "./dist/skill-cli/index.js",
       "default": "./dist/skill-cli/index.js"
     },
+    "./skill-cli/direct": {
+      "types": "./dist/skill-cli/direct.d.ts",
+      "import": "./dist/skill-cli/direct.js",
+      "default": "./dist/skill-cli/direct.js"
+    },
     "./skills": {
       "types": "./dist/skills/index.d.ts",
       "import": "./dist/skills/index.js",
@@ -245,7 +250,8 @@
     "./dist/*": "./dist/*"
   },
   "bin": {
-    "browser-use": "./dist/cli.js"
+    "browser-use": "./dist/cli.js",
+    "browser-use-direct": "./dist/skill-cli/direct.js"
   },
   "type": "module",
   "files": [
