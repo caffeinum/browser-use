@@ -1096,7 +1096,7 @@ export interface RunProfileCommandOptions {
 export interface RunCloudTaskCommandOptions {
   client?: Pick<
     CloudManagementClient,
-    'create_task' | 'create_session' | 'get_task'
+    'create_task' | 'create_session' | 'get_task' | 'update_session'
   >;
   stdout?: WritableLike;
   stderr?: WritableLike;
@@ -2576,6 +2576,8 @@ export const runCloudTaskCommand = async (
   const errorOutput = options.stderr ?? process.stderr;
   const sleepImpl =
     options.sleep_impl ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  let autoCreatedSessionId: string | null = null;
+  let taskCreated = false;
 
   try {
     const flags = parseCloudRunArgs(argv);
@@ -2592,6 +2594,7 @@ export const runCloudTaskCommand = async (
         startUrl: flags.start_url,
       });
       sessionId = session.id;
+      autoCreatedSessionId = session.id;
       writeLine(output, `Created cloud session: ${sessionId}`);
     }
 
@@ -2613,6 +2616,7 @@ export const runCloudTaskCommand = async (
       judgeGroundTruth: flags.judge_ground_truth,
       skillIds: flags.skill_id.length > 0 ? flags.skill_id : null,
     });
+    taskCreated = true;
 
     if (!flags.wait) {
       writeLine(
@@ -2647,6 +2651,13 @@ export const runCloudTaskCommand = async (
       await sleepImpl(1000);
     }
   } catch (error) {
+    if (autoCreatedSessionId && !taskCreated) {
+      try {
+        await client.update_session(autoCreatedSessionId, 'stop');
+      } catch {
+        // Ignore cleanup failures.
+      }
+    }
     writeLine(errorOutput, `Error: ${(error as Error).message}`);
     return 1;
   }

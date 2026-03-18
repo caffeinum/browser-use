@@ -28,6 +28,7 @@ describe('cli cloud run alignment', () => {
         sessionId: 'session-1',
       })),
       get_task: vi.fn(),
+      update_session: vi.fn(),
     };
 
     const exitCode = await runCloudTaskCommand(
@@ -78,6 +79,7 @@ describe('cli cloud run alignment', () => {
         sessionId: 'session-4',
       })),
       get_task: vi.fn(),
+      update_session: vi.fn(),
     };
 
     const exitCode = await runCloudTaskCommand(
@@ -135,6 +137,7 @@ describe('cli cloud run alignment', () => {
           status: 'finished',
           output: 'done',
         }),
+      update_session: vi.fn(),
     };
 
     const exitCode = await runCloudTaskCommand(
@@ -169,6 +172,7 @@ describe('cli cloud run alignment', () => {
         status: 'failed',
         output: 'boom',
       })),
+      update_session: vi.fn(),
     };
 
     const exitCode = await runCloudTaskCommand(
@@ -185,5 +189,39 @@ describe('cli cloud run alignment', () => {
     expect(stdout.read()).toContain('Task failed: task-3');
     expect(stdout.read()).toContain('boom');
     expect(stderr.read()).toBe('');
+  });
+
+  it('stops auto-created sessions when task creation fails', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(async () => ({
+        id: 'session-cleanup',
+      })),
+      create_task: vi.fn(async () => {
+        throw new Error('create task failed');
+      }),
+      get_task: vi.fn(),
+      update_session: vi.fn(async () => ({
+        id: 'session-cleanup',
+        status: 'stopped',
+      })),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      ['--remote', '--profile', 'profile-1', 'Broken', 'task'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(client.update_session).toHaveBeenCalledWith(
+      'session-cleanup',
+      'stop'
+    );
+    expect(stderr.read()).toContain('create task failed');
   });
 });
