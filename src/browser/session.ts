@@ -91,6 +91,13 @@ const EMPTY_DOM_RETRY_DELAY_MS = 250;
 const REMOTE_RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const;
 const REMOTE_RECONNECT_ATTEMPT_TIMEOUT_MS = 15_000;
 
+type SystemChromeVariant =
+  | 'chrome'
+  | 'chrome-canary'
+  | 'chrome-beta'
+  | 'chrome-unstable'
+  | 'chromium';
+
 type BrowserEventEmitterLike = Browser & {
   on?: (event: string, listener: (...args: any[]) => void) => void;
   off?: (event: string, listener: (...args: any[]) => void) => void;
@@ -128,6 +135,31 @@ const cloneBrowserProfileConfig = (profile: BrowserProfile) =>
   typeof structuredClone === 'function'
     ? structuredClone(profile.config)
     : JSON.parse(JSON.stringify(profile.config));
+
+const detectSystemChromeVariant = (executablePath: string | null | undefined): SystemChromeVariant => {
+  const normalizedPath = String(executablePath ?? '')
+    .trim()
+    .toLowerCase();
+  if (!normalizedPath) {
+    return 'chrome';
+  }
+  if (normalizedPath.includes('chromium')) {
+    return 'chromium';
+  }
+  if (
+    normalizedPath.includes('chrome canary') ||
+    normalizedPath.includes('chrome sxs')
+  ) {
+    return 'chrome-canary';
+  }
+  if (normalizedPath.includes('google-chrome-beta')) {
+    return 'chrome-beta';
+  }
+  if (normalizedPath.includes('google-chrome-unstable')) {
+    return 'chrome-unstable';
+  }
+  return 'chrome';
+};
 
 export const systemChrome = {
   findExecutable(): string | null {
@@ -193,23 +225,46 @@ export const systemChrome = {
     return null;
   },
 
-  getUserDataDir(): string | null {
+  getUserDataDir(
+    executablePath: string | null = systemChrome.findExecutable()
+  ): string | null {
+    const variant = detectSystemChromeVariant(executablePath);
     if (process.platform === 'darwin') {
-      return path.join(
+      const applicationSupportDir = path.join(
         os.homedir(),
         'Library',
-        'Application Support',
-        'Google',
-        'Chrome'
+        'Application Support'
       );
+      if (variant === 'chromium') {
+        return path.join(applicationSupportDir, 'Chromium');
+      }
+      if (variant === 'chrome-canary') {
+        return path.join(applicationSupportDir, 'Google', 'Chrome Canary');
+      }
+      return path.join(applicationSupportDir, 'Google', 'Chrome');
     }
     if (process.platform === 'linux') {
+      if (variant === 'chromium') {
+        return path.join(os.homedir(), '.config', 'chromium');
+      }
+      if (variant === 'chrome-beta') {
+        return path.join(os.homedir(), '.config', 'google-chrome-beta');
+      }
+      if (variant === 'chrome-unstable') {
+        return path.join(os.homedir(), '.config', 'google-chrome-unstable');
+      }
       return path.join(os.homedir(), '.config', 'google-chrome');
     }
     if (process.platform === 'win32') {
       const localAppData =
         process.env.LOCALAPPDATA ??
         path.join(os.homedir(), 'AppData', 'Local');
+      if (variant === 'chromium') {
+        return path.join(localAppData, 'Chromium', 'User Data');
+      }
+      if (variant === 'chrome-canary') {
+        return path.join(localAppData, 'Google', 'Chrome SxS', 'User Data');
+      }
       return path.join(localAppData, 'Google', 'Chrome', 'User Data');
     }
     return null;
@@ -403,7 +458,7 @@ export class BrowserSession {
       );
     }
 
-    const userDataDir = systemChrome.getUserDataDir();
+    const userDataDir = systemChrome.getUserDataDir(executablePath);
     if (!userDataDir) {
       throw new Error(
         'Could not detect Chrome profile directory for your platform.\n' +
@@ -448,7 +503,9 @@ export class BrowserSession {
   }
 
   static list_chrome_profiles(): ChromeProfileInfo[] {
-    return systemChrome.listProfiles();
+    const executablePath = systemChrome.findExecutable();
+    const userDataDir = systemChrome.getUserDataDir(executablePath);
+    return systemChrome.listProfiles(userDataDir);
   }
 
   attach_watchdog(watchdog: BaseWatchdog) {

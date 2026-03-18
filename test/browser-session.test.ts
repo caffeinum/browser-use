@@ -70,6 +70,51 @@ import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
 describe('BrowserSession Basic Operations', () => {
+  const chromiumExecutablePath =
+    process.platform === 'darwin'
+      ? '/Applications/Chromium.app/Contents/MacOS/Chromium'
+      : process.platform === 'linux'
+        ? '/usr/bin/chromium'
+        : 'C:\\Users\\tester\\AppData\\Local\\Chromium\\Application\\chrome.exe';
+
+  const chromiumUserDataDir =
+    process.platform === 'darwin'
+      ? path.join(os.homedir(), 'Library', 'Application Support', 'Chromium')
+      : process.platform === 'linux'
+        ? path.join(os.homedir(), '.config', 'chromium')
+        : path.join(
+            process.env.LOCALAPPDATA ??
+              path.join(os.homedir(), 'AppData', 'Local'),
+            'Chromium',
+            'User Data'
+          );
+
+  const canaryExecutablePath =
+    process.platform === 'darwin'
+      ? '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'
+      : process.platform === 'linux'
+        ? '/usr/bin/google-chrome-unstable'
+        : 'C:\\Users\\tester\\AppData\\Local\\Google\\Chrome SxS\\Application\\chrome.exe';
+
+  const canaryUserDataDir =
+    process.platform === 'darwin'
+      ? path.join(
+          os.homedir(),
+          'Library',
+          'Application Support',
+          'Google',
+          'Chrome Canary'
+        )
+      : process.platform === 'linux'
+        ? path.join(os.homedir(), '.config', 'google-chrome-unstable')
+        : path.join(
+            process.env.LOCALAPPDATA ??
+              path.join(os.homedir(), 'AppData', 'Local'),
+            'Google',
+            'Chrome SxS',
+            'User Data'
+          );
+
   it('creates browser session with profile', () => {
     const profile = new BrowserProfile({
       headless: true,
@@ -109,6 +154,12 @@ describe('BrowserSession Basic Operations', () => {
   });
 
   it('exposes Chrome profile listing via BrowserSession', () => {
+    const findExecutableSpy = vi
+      .spyOn(systemChrome, 'findExecutable')
+      .mockReturnValue(chromiumExecutablePath);
+    const getUserDataDirSpy = vi
+      .spyOn(systemChrome, 'getUserDataDir')
+      .mockReturnValue('/tmp/chromium-user-data');
     const listProfilesSpy = vi
       .spyOn(systemChrome, 'listProfiles')
       .mockReturnValue([{ directory: 'Default', name: 'Default Profile' }]);
@@ -117,10 +168,26 @@ describe('BrowserSession Basic Operations', () => {
       expect(BrowserSession.list_chrome_profiles()).toEqual([
         { directory: 'Default', name: 'Default Profile' },
       ]);
+      expect(getUserDataDirSpy).toHaveBeenCalledWith(chromiumExecutablePath);
+      expect(listProfilesSpy).toHaveBeenCalledWith('/tmp/chromium-user-data');
       expect(listProfilesSpy).toHaveBeenCalledTimes(1);
     } finally {
+      findExecutableSpy.mockRestore();
+      getUserDataDirSpy.mockRestore();
       listProfilesSpy.mockRestore();
     }
+  });
+
+  it('maps Chromium executables to the matching user data directory', () => {
+    expect(systemChrome.getUserDataDir(chromiumExecutablePath)).toBe(
+      chromiumUserDataDir
+    );
+  });
+
+  it('maps Canary executables to the matching user data directory', () => {
+    expect(systemChrome.getUserDataDir(canaryExecutablePath)).toBe(
+      canaryUserDataDir
+    );
   });
 
   it('builds BrowserSession.from_system_chrome from detected profile data', () => {
@@ -151,6 +218,9 @@ describe('BrowserSession Basic Operations', () => {
         'Profile 4'
       );
       expect(session.browser_profile.config.headless).toBe(true);
+      expect(getUserDataDirSpy).toHaveBeenCalledWith(
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+      );
       expect(listProfilesSpy).toHaveBeenCalledWith('/tmp/chrome-user-data');
     } finally {
       findExecutableSpy.mockRestore();
