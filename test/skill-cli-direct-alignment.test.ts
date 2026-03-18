@@ -126,6 +126,7 @@ describe('skill-cli direct alignment', () => {
   it('cleans up stale local direct-mode state before relaunching', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
     const stateFile = path.join(tempDir, 'state.json');
+    const staleUserDataDir = path.join(tempDir, 'stale-profile');
     const stdout = createWritable();
     const stderr = createWritable();
     const killProcessSpy = vi.fn(async () => {});
@@ -154,10 +155,12 @@ describe('skill-cli direct alignment', () => {
         mode: 'local',
         cdp_url: 'http://127.0.0.1:9222',
         browser_pid: 321,
-        user_data_dir: '/tmp/browser-use-direct-stale',
+        user_data_dir: staleUserDataDir,
+        owns_user_data_dir: true,
       },
       stateFile
     );
+    fs.mkdirSync(staleUserDataDir, { recursive: true });
 
     try {
       const exitCode = await run_direct_command(['open', 'example.com'], {
@@ -174,6 +177,7 @@ describe('skill-cli direct alignment', () => {
 
       expect(exitCode).toBe(0);
       expect(killProcessSpy).toHaveBeenCalledWith(321);
+      expect(fs.existsSync(staleUserDataDir)).toBe(false);
       expect(localLauncher).toHaveBeenCalledTimes(1);
       expect(load_direct_state(stateFile)).toMatchObject({
         mode: 'local',
@@ -183,6 +187,85 @@ describe('skill-cli direct alignment', () => {
       });
       expect(stderr.read()).toBe('');
     } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('removes owned local direct-mode profiles on close', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const userDataDir = path.join(tempDir, 'owned-profile');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const killProcessSpy = vi.fn(async () => {});
+    fs.mkdirSync(userDataDir, { recursive: true });
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        browser_pid: 321,
+        user_data_dir: userDataDir,
+        owns_user_data_dir: true,
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(['close'], {
+        state_file: stateFile,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        kill_process: killProcessSpy,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(killProcessSpy).toHaveBeenCalledWith(321);
+      expect(fs.existsSync(userDataDir)).toBe(false);
+      expect(fs.existsSync(stateFile)).toBe(false);
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps user-managed local profiles on close', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const stateFile = path.join(tempDir, 'state.json');
+    const userDataDir = path.join(tempDir, 'user-profile');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const killProcessSpy = vi.fn(async () => {});
+    fs.mkdirSync(userDataDir, { recursive: true });
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        browser_pid: 321,
+        user_data_dir: userDataDir,
+        owns_user_data_dir: false,
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(['close'], {
+        state_file: stateFile,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        kill_process: killProcessSpy,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(killProcessSpy).toHaveBeenCalledWith(321);
+      expect(fs.existsSync(userDataDir)).toBe(true);
+      expect(fs.existsSync(stateFile)).toBe(false);
+      expect(stderr.read()).toBe('');
+    } finally {
+      fs.rmSync(userDataDir, { recursive: true, force: true });
       clear_direct_state(stateFile);
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

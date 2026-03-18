@@ -14,6 +14,7 @@ export interface DirectModeState {
   session_id?: string | null;
   browser_pid?: number | null;
   user_data_dir?: string | null;
+  owns_user_data_dir?: boolean | null;
   active_url?: string | null;
 }
 
@@ -180,6 +181,7 @@ export interface DirectCliEnvironment {
     cdp_url: string;
     browser_pid?: number | null;
     user_data_dir?: string | null;
+    owns_user_data_dir?: boolean | null;
   }>;
   kill_process?: (pid: number) => void | Promise<void>;
 }
@@ -212,6 +214,17 @@ export const save_direct_state = (
 
 export const clear_direct_state = (state_file: string = DIRECT_STATE_FILE) => {
   fs.rmSync(state_file, { force: true });
+};
+
+const cleanupOwnedDirectUserDataDir = (state: DirectModeState) => {
+  if (!state.owns_user_data_dir || !state.user_data_dir) {
+    return;
+  }
+  try {
+    fs.rmSync(state.user_data_dir, { recursive: true, force: true });
+  } catch {
+    // Ignore cleanup failures for ephemeral direct-mode profiles.
+  }
 };
 
 const normalizeDirectUrl = (input: string) => {
@@ -319,8 +332,10 @@ const defaultLocalLauncher = async (options: { state: DirectModeState }) => {
   }
 
   const port = await getFreePort();
+  const reusingUserDataDir =
+    options.state.user_data_dir && options.state.user_data_dir.trim().length > 0;
   const userDataDir =
-    options.state.user_data_dir && options.state.user_data_dir.trim().length > 0
+    reusingUserDataDir
       ? options.state.user_data_dir
       : fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
 
@@ -346,6 +361,7 @@ const defaultLocalLauncher = async (options: { state: DirectModeState }) => {
       cdp_url,
       browser_pid: child.pid ?? null,
       user_data_dir: userDataDir,
+      owns_user_data_dir: !reusingUserDataDir,
     };
   } catch (error) {
     if (typeof child.pid === 'number' && child.pid > 0) {
@@ -591,6 +607,7 @@ const connectDirectSession = async (
         // Ignore cleanup errors for stale local browser processes.
       }
     }
+    cleanupOwnedDirectUserDataDir(currentState);
   };
 
   if (state.cdp_url) {
@@ -631,6 +648,7 @@ const connectDirectSession = async (
     cdp_url: localLaunch.cdp_url,
     browser_pid: localLaunch.browser_pid ?? null,
     user_data_dir: localLaunch.user_data_dir ?? null,
+    owns_user_data_dir: localLaunch.owns_user_data_dir ?? null,
     active_url: null,
   };
   save_direct_state(state, environment.state_file);
@@ -713,6 +731,7 @@ export const run_direct_command = async (
         // Ignore close errors for an already-exited browser.
       }
     }
+    cleanupOwnedDirectUserDataDir(state);
 
     clear_direct_state(environment.state_file);
     writeLine(environment.stdout, 'Browser closed');
