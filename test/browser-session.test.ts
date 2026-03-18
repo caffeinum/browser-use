@@ -1061,6 +1061,49 @@ describe('BrowserSession Basic Operations', () => {
     expect(cdpSession.detach).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards screenshot clip regions to CDP captureScreenshot', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+    const fakePage = {
+      url: () => 'https://example.com',
+      bringToFront: vi.fn(async () => {}),
+    } as any;
+    const cdpSession = {
+      send: vi.fn(async () => ({ data: 'ZmFrZS1pbWFnZS1iNjQ=' })),
+      detach: vi.fn(async () => {}),
+    } as any;
+
+    (session as any).browser_context = {} as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue(
+      cdpSession
+    );
+
+    const screenshot = await session.take_screenshot(false, {
+      x: 10,
+      y: 20,
+      width: 300,
+      height: 200,
+    });
+
+    expect(screenshot).toBe('ZmFrZS1pbWFnZS1iNjQ=');
+    expect(cdpSession.send).toHaveBeenCalledWith(
+      'Page.captureScreenshot',
+      expect.objectContaining({
+        captureBeyondViewport: false,
+        clip: {
+          x: 10,
+          y: 20,
+          width: 300,
+          height: 200,
+          scale: 1,
+        },
+      })
+    );
+    expect(cdpSession.detach).toHaveBeenCalledTimes(1);
+  });
+
   it('starts and stops browser session', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

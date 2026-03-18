@@ -6,9 +6,14 @@ export class ScreenshotWatchdog extends BaseWatchdog {
 
   async on_ScreenshotEvent(event: ScreenshotEvent) {
     try {
-      return await this.browser_session.take_screenshot(event.full_page);
-    } finally {
       await this.browser_session.remove_highlights();
+    } catch {
+      // Highlight cleanup is best-effort and should not block screenshots.
     }
+
+    return await this.browser_session.take_screenshot(
+      event.full_page,
+      event.clip
+    );
   }
 }

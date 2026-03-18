@@ -3467,11 +3467,22 @@ export class BrowserSession {
   // ==================== Screenshots ====================
 
   /**
-   * Take a screenshot of the current page
+   * Take a screenshot of the current page.
    * @param full_page Whether to capture the full scrollable page
+   * @param clip Optional clip region for partial screenshots
    * @returns Base64 encoded PNG screenshot
    */
-  async take_screenshot(full_page: boolean = false): Promise<string | null> {
+  async take_screenshot(
+    full_page: boolean = false,
+    clip:
+      | {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        }
+      | null = null
+  ): Promise<string | null> {
     const page = await this.get_current_page();
     if (!page) {
       throw new Error('No page available for screenshot');
@@ -3511,13 +3522,24 @@ export class BrowserSession {
       cdp_session = await this.get_or_create_cdp_session(page);
 
       // Capture screenshot via CDP
+      const screenshotParams: Record<string, unknown> = {
+        captureBeyondViewport: full_page,
+        fromSurface: true,
+        format: 'png',
+      };
+      if (clip) {
+        screenshotParams.clip = {
+          x: clip.x,
+          y: clip.y,
+          width: clip.width,
+          height: clip.height,
+          scale: 1,
+        };
+      }
+
       const screenshot_response = await cdp_session.send(
         'Page.captureScreenshot',
-        {
-          captureBeyondViewport: full_page,
-          fromSurface: true,
-          format: 'png',
-        }
+        screenshotParams
       );
 
       const screenshot_b64 = screenshot_response.data;
