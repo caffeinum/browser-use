@@ -7,6 +7,19 @@ export interface SkillCliServerOptions {
   registry?: SessionRegistry;
 }
 
+type BrowserCookieInit = {
+  name: string;
+  value: string;
+  url?: string;
+  domain?: string;
+  path?: string;
+  expires?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'Strict' | 'Lax' | 'None';
+  partitionKey?: string;
+};
+
 export class SkillCliServer {
   readonly registry: SessionRegistry;
 
@@ -195,7 +208,7 @@ export class SkillCliServer {
       const currentPage = await browser_session.get_current_page?.();
       const currentUrl =
         typeof currentPage?.url === 'function' ? currentPage.url() : '';
-      const cookie = {
+      const cookie: BrowserCookieInit = {
         name,
         value,
         url:
@@ -207,7 +220,7 @@ export class SkillCliServer {
         path: typeof params.path === 'string' ? params.path : '/',
         secure: Boolean(params.secure),
         httpOnly: Boolean(params.http_only),
-      } as Record<string, unknown>;
+      };
 
       if (!cookie.url && !cookie.domain && currentUrl) {
         cookie.url = currentUrl;
@@ -249,12 +262,25 @@ export class SkillCliServer {
       }
       const filePath = path.resolve(file);
       const raw = await fsp.readFile(filePath, 'utf8');
-      const cookies = JSON.parse(raw);
+      const cookies = JSON.parse(raw) as unknown;
       if (!Array.isArray(cookies)) {
         throw new Error('Cookie import file must contain a JSON array');
       }
-      await browser_session.browser_context.addCookies(cookies);
-      return { file: filePath, imported: cookies.length };
+      const importedCookies = cookies.map((cookie) => {
+        if (!cookie || typeof cookie !== 'object') {
+          throw new Error('Each imported cookie must be a JSON object');
+        }
+        const typedCookie = cookie as Partial<BrowserCookieInit>;
+        if (
+          typeof typedCookie.name !== 'string' ||
+          typeof typedCookie.value !== 'string'
+        ) {
+          throw new Error('Each imported cookie must include string name/value');
+        }
+        return typedCookie as BrowserCookieInit;
+      });
+      await browser_session.browser_context.addCookies(importedCookies);
+      return { file: filePath, imported: importedCookies.length };
     }
 
     if (action === 'close') {

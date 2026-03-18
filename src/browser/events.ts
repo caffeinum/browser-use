@@ -237,12 +237,26 @@ export class CloseTabEvent extends BrowserEvent<void> {
 
 export class ScreenshotEvent extends BrowserEvent<string> {
   full_page: boolean;
-  clip: Record<string, number> | null;
+  clip:
+    | {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }
+    | null;
 
   constructor(
     init: EventBusEventInit<string> & {
       full_page?: boolean;
-      clip?: Record<string, number> | null;
+      clip?:
+        | {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+          }
+        | null;
     } = {}
   ) {
     super('ScreenshotEvent', {
