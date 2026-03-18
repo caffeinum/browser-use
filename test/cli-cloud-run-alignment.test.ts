@@ -106,4 +106,36 @@ describe('cli cloud run alignment', () => {
     expect(stdout.read()).toContain('done');
     expect(stderr.read()).toBe('');
   });
+
+  it('returns a non-zero exit code when the remote task fails', async () => {
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const client = {
+      create_session: vi.fn(),
+      create_task: vi.fn(async () => ({
+        id: 'task-3',
+        sessionId: 'session-3',
+      })),
+      get_task: vi.fn(async () => ({
+        id: 'task-3',
+        status: 'failed',
+        output: 'boom',
+      })),
+    };
+
+    const exitCode = await runCloudTaskCommand(
+      ['--remote', '--wait', 'Fail', 'task'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        sleep_impl: async () => {},
+      }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stdout.read()).toContain('Task failed: task-3');
+    expect(stdout.read()).toContain('boom');
+    expect(stderr.read()).toBe('');
+  });
 });

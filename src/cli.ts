@@ -2612,7 +2612,7 @@ export const runCloudTaskCommand = async (
         if (taskView.output) {
           writeLine(output, taskView.output);
         }
-        return 0;
+        return taskView.status === 'finished' ? 0 : 1;
       }
       await sleepImpl(1000);
     }
