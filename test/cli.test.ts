@@ -414,10 +414,10 @@ describe('CLI model routing', () => {
     expect(llm.model).toBe('bu-2-0');
   });
 
-  it('returns explicit OCI configuration guidance for oci-prefixed models', () => {
+  it('returns ChatOCIRaw guidance for oci-prefixed models', () => {
     const args = parseCliArgs(['--model', 'oci:meta/llama-3.1', '-p', 'x']);
     expect(() => getLlmFromCliArgs(args)).toThrow(
-      /OCI models require manual configuration/
+      /Use ChatOCIRaw directly/
     );
   });
 });

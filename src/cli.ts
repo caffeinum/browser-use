@@ -641,7 +641,7 @@ const createLlmForProvider = (
       });
     case 'oci':
       throw new Error(
-        'OCI models require manual configuration in TypeScript runtime. Use a custom BaseChatModel integration for OCI credentials and endpoint setup.'
+        'OCI models require manual configuration in TypeScript runtime. Use ChatOCIRaw directly with your OCI credentials and endpoint setup.'
       );
     case 'ollama': {
       const host = process.env.OLLAMA_HOST || 'http://localhost:11434';
