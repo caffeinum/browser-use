@@ -63,7 +63,9 @@ describe('cli cloud session alignment', () => {
       filterBy: null,
     });
     expect(stdout.read()).toContain('Sessions (1):');
-    expect(stdout.read()).toContain('Live URL: https://live.browser-use.test/session-1');
+    expect(stdout.read()).toContain(
+      'Live URL: https://live.browser-use.test/session-1'
+    );
     expect(stderr.read()).toBe('');
   });
 
@@ -73,8 +75,16 @@ describe('cli cloud session alignment', () => {
     const client = {
       list_sessions: vi.fn(async () => ({
         items: [
-          { id: 'session-a', status: 'active', startedAt: '2026-03-18T10:00:00Z' },
-          { id: 'session-b', status: 'active', startedAt: '2026-03-18T10:00:00Z' },
+          {
+            id: 'session-a',
+            status: 'active',
+            startedAt: '2026-03-18T10:00:00Z',
+          },
+          {
+            id: 'session-b',
+            status: 'active',
+            startedAt: '2026-03-18T10:00:00Z',
+          },
         ],
       })),
       get_session: vi.fn(),
@@ -102,7 +112,15 @@ describe('cli cloud session alignment', () => {
     ).toBe(0);
     expect(
       await runSessionCommand(
-        ['create', '--profile', 'profile-1', '--proxy-country', 'us', '--screen-size', '1440x900'],
+        [
+          'create',
+          '--profile',
+          'profile-1',
+          '--proxy-country',
+          'us',
+          '--screen-size',
+          '1440x900',
+        ],
         {
           client: client as any,
           stdout: stdout.stream,
@@ -141,8 +159,12 @@ describe('cli cloud session alignment', () => {
     );
     expect(stdout.read()).toContain('Stopped 2 session(s):');
     expect(stdout.read()).toContain('Created session: session-new');
-    expect(stdout.read()).toContain('Public share URL: https://share.browser-use.test/session-new');
-    expect(stdout.read()).toContain('Deleted public share for session: session-new');
+    expect(stdout.read()).toContain(
+      'Public share URL: https://share.browser-use.test/session-new'
+    );
+    expect(stdout.read()).toContain(
+      'Deleted public share for session: session-new'
+    );
     expect(stderr.read()).toBe('');
   });
 
@@ -216,7 +238,9 @@ describe('cli cloud session alignment', () => {
       })
     ).toBe(1);
     expect(client.get_session).not.toHaveBeenCalled();
-    expect(stderr.read()).toContain('Usage: browser-use session get <session-id>');
+    expect(stderr.read()).toContain(
+      'Usage: browser-use session get <session-id>'
+    );
   });
 
   it('rejects unexpected extra session arguments', async () => {
@@ -239,7 +263,9 @@ describe('cli cloud session alignment', () => {
       })
     ).toBe(1);
     expect(client.create_session).not.toHaveBeenCalled();
-    expect(stderr.read()).toContain('Usage: browser-use session create [options]');
+    expect(stderr.read()).toContain(
+      'Usage: browser-use session create [options]'
+    );
   });
 
   it('rejects known session flags that do not apply to the selected subcommand', async () => {
@@ -262,6 +288,8 @@ describe('cli cloud session alignment', () => {
       })
     ).toBe(1);
     expect(client.get_session).not.toHaveBeenCalled();
-    expect(stderr.read()).toContain('Usage: browser-use session get <session-id>');
+    expect(stderr.read()).toContain(
+      'Usage: browser-use session get <session-id>'
+    );
   });
 });

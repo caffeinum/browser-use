@@ -143,8 +143,9 @@ const appendJsonInstruction = (
   const target =
     [...messages]
       .reverse()
-      .find((message) => message.role === 'USER' || message.role === 'SYSTEM') ??
-    null;
+      .find(
+        (message) => message.role === 'USER' || message.role === 'SYSTEM'
+      ) ?? null;
 
   if (target) {
     const content = Array.isArray(target.content)
@@ -219,31 +220,26 @@ export class ChatOCIRaw implements BaseChatModel {
           'ChatOCIRaw requires compartmentId or OCI_COMPARTMENT_ID'
         );
       })();
-    this.ociProvider =
-      options.provider ?? process.env.OCI_PROVIDER ?? 'meta';
+    this.ociProvider = options.provider ?? process.env.OCI_PROVIDER ?? 'meta';
     this.temperature = options.temperature ?? 1.0;
     this.maxTokens = options.maxTokens ?? 600;
     this.frequencyPenalty = options.frequencyPenalty ?? 0.0;
     this.presencePenalty = options.presencePenalty ?? 0.0;
     this.topP = options.topP ?? 0.75;
     this.topK = options.topK ?? 0;
-    this.authType =
-      options.authType ?? process.env.OCI_AUTH_TYPE ?? 'API_KEY';
+    this.authType = options.authType ?? process.env.OCI_AUTH_TYPE ?? 'API_KEY';
     this.authProfile =
       options.authProfile ??
       process.env.OCI_AUTH_PROFILE ??
       process.env.OCI_CONFIG_PROFILE ??
       'DEFAULT';
-    this.configFilePath =
-      options.configFilePath ?? process.env.OCI_CONFIG_FILE;
+    this.configFilePath = options.configFilePath ?? process.env.OCI_CONFIG_FILE;
     this.tenancyId = options.tenancyId ?? process.env.OCI_TENANCY_ID;
     this.userId = options.userId ?? process.env.OCI_USER_ID;
     this.fingerprint = options.fingerprint ?? process.env.OCI_FINGERPRINT;
     this.privateKey = options.privateKey ?? process.env.OCI_PRIVATE_KEY;
     this.passphrase =
-      options.passphrase ??
-      process.env.OCI_PRIVATE_KEY_PASSPHRASE ??
-      null;
+      options.passphrase ?? process.env.OCI_PRIVATE_KEY_PASSPHRASE ?? null;
     this.responseSchemaName =
       options.responseSchemaName ?? 'browser_use_response';
   }
@@ -276,12 +272,7 @@ export class ChatOCIRaw implements BaseChatModel {
       return ResourcePrincipalAuthenticationDetailsProvider.builder();
     }
 
-    if (
-      this.tenancyId &&
-      this.userId &&
-      this.fingerprint &&
-      this.privateKey
-    ) {
+    if (this.tenancyId && this.userId && this.fingerprint && this.privateKey) {
       return new SimpleAuthenticationDetailsProvider(
         this.tenancyId,
         this.userId,
@@ -312,7 +303,9 @@ export class ChatOCIRaw implements BaseChatModel {
     return this.clientPromise;
   }
 
-  private getUsage(payload: OciChatResponsePayload | undefined): ChatInvokeUsage | null {
+  private getUsage(
+    payload: OciChatResponsePayload | undefined
+  ): ChatInvokeUsage | null {
     const usage = payload?.usage;
     if (!usage) {
       return null;
@@ -337,7 +330,8 @@ export class ChatOCIRaw implements BaseChatModel {
     outputFormat?: { parse: (input: unknown) => unknown } | undefined
   ) {
     const zodSchema = extractZodSchema(outputFormat);
-    const serializedMessages = OCIRawMessageSerializer.serializeMessages(messages);
+    const serializedMessages =
+      OCIRawMessageSerializer.serializeMessages(messages);
     const optimizedSchema = zodSchema
       ? SchemaOptimizer.createOptimizedJsonSchema(
           zodSchemaToJsonSchema(zodSchema)
@@ -396,7 +390,8 @@ export class ChatOCIRaw implements BaseChatModel {
           zodSchemaToJsonSchema(zodSchema)
         )
       : null;
-    let conversation = OCIRawMessageSerializer.serializeMessagesForCohere(messages);
+    let conversation =
+      OCIRawMessageSerializer.serializeMessagesForCohere(messages);
 
     if (outputFormat) {
       conversation +=
@@ -495,7 +490,9 @@ export class ChatOCIRaw implements BaseChatModel {
       typeof (error as any)?.statusCode === 'number'
         ? (error as any).statusCode
         : 502;
-    const message = String((error as any)?.message ?? error ?? 'OCI request failed');
+    const message = String(
+      (error as any)?.message ?? error ?? 'OCI request failed'
+    );
 
     if (statusCode === 429) {
       throw new ModelRateLimitError(message, statusCode, this.name);
@@ -538,11 +535,23 @@ export class ChatOCIRaw implements BaseChatModel {
       const { text, thinking, stopReason } = this.extractText(payload);
 
       if (!outputFormat) {
-        return new ChatInvokeCompletion(text, usage, thinking, null, stopReason);
+        return new ChatInvokeCompletion(
+          text,
+          usage,
+          thinking,
+          null,
+          stopReason
+        );
       }
 
       const parsed = parseOutput(outputFormat, parseStructuredJson(text));
-      return new ChatInvokeCompletion(parsed, usage, thinking, null, stopReason);
+      return new ChatInvokeCompletion(
+        parsed,
+        usage,
+        thinking,
+        null,
+        stopReason
+      );
     } catch (error) {
       this.mapError(error);
     }

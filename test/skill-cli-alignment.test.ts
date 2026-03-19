@@ -167,7 +167,9 @@ describe('skill-cli alignment', () => {
   });
 
   it('supports wait and cookie commands', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-skill-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-skill-')
+    );
     const cookiesPath = path.join(tempDir, 'cookies.json');
     const session = new BrowserSession();
     const waitForElementSpy = vi
@@ -185,7 +187,12 @@ describe('skill-cli alignment', () => {
         domain: '.example.com',
         path: '/admin',
       } as any,
-      { name: 'other', value: '999', domain: '.elsewhere.test', path: '/' } as any,
+      {
+        name: 'other',
+        value: '999',
+        domain: '.elsewhere.test',
+        path: '/',
+      } as any,
     ]);
     (session as any).browser_context = {
       addCookies: vi.fn(async () => {}),
@@ -357,8 +364,9 @@ describe('skill-cli alignment', () => {
       .spyOn(session, 'get_page_html')
       .mockResolvedValue('<html></html>');
     vi.spyOn(session, 'get_current_page').mockResolvedValue({
-      evaluate: vi.fn(async (fn: (selector: string) => string | null, selector: string) =>
-        fn(selector)
+      evaluate: vi.fn(
+        async (fn: (selector: string) => string | null, selector: string) =>
+          fn(selector)
       ),
     } as any);
 
@@ -475,10 +483,7 @@ describe('skill-cli alignment', () => {
     vi.spyOn(session, 'get_current_page').mockResolvedValue({
       title: vi.fn(async () => 'Example Title'),
       evaluate: vi.fn(
-        async (
-          _fn: unknown,
-          input: { xpath: string; dataKind: string }
-        ) => {
+        async (_fn: unknown, input: { xpath: string; dataKind: string }) => {
           if (input.dataKind === 'text') {
             return 'Visible text';
           }

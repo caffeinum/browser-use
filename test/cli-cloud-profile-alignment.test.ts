@@ -143,7 +143,12 @@ describe('cli cloud profile alignment', () => {
       get_cookies: vi.fn(async () => [
         { name: 'sid', value: '1', domain: '.youtube.com', path: '/' },
         { name: 'prefs', value: '2', domain: '.youtube.com', path: '/' },
-        { name: 'studio', value: '3', domain: '.studio.youtube.com', path: '/' },
+        {
+          name: 'studio',
+          value: '3',
+          domain: '.studio.youtube.com',
+          path: '/',
+        },
         { name: 'trap', value: '4', domain: '.notyoutube.com', path: '/' },
         { name: 'other', value: '3', domain: '.example.com', path: '/' },
       ]),

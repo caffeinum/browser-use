@@ -27,7 +27,9 @@ const createWritable = () => {
 
 describe('skill-cli direct alignment', () => {
   it('launches a local browser on first open and persists direct-mode state', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -74,7 +76,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('treats non-leading --remote as command text instead of a mode switch', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -125,7 +129,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('removes ephemeral local profiles when direct launch fails before connect', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const fakeChrome = path.join(tempDir, 'fake-chrome.sh');
     const ownedProfileDir = path.join(tempDir, 'owned-profile');
     fs.writeFileSync(fakeChrome, '#!/bin/sh\nsleep 5\n');
@@ -134,13 +140,13 @@ describe('skill-cli direct alignment', () => {
     const findExecutableSpy = vi
       .spyOn(systemChrome, 'findExecutable')
       .mockReturnValue(fakeChrome);
-    const mkdtempSpy = vi
-      .spyOn(fs, 'mkdtempSync')
-      .mockImplementation(((prefix: string) => {
-        expect(prefix).toContain('browser-use-direct-');
-        fs.mkdirSync(ownedProfileDir, { recursive: true });
-        return ownedProfileDir;
-      }) as any);
+    const mkdtempSpy = vi.spyOn(fs, 'mkdtempSync').mockImplementation(((
+      prefix: string
+    ) => {
+      expect(prefix).toContain('browser-use-direct-');
+      fs.mkdirSync(ownedProfileDir, { recursive: true });
+      return ownedProfileDir;
+    }) as any);
 
     try {
       await expect(
@@ -148,7 +154,9 @@ describe('skill-cli direct alignment', () => {
           state: {},
           timeout_ms: 10,
         })
-      ).rejects.toThrow(/Timed out waiting for local Chrome debugging endpoint/);
+      ).rejects.toThrow(
+        /Timed out waiting for local Chrome debugging endpoint/
+      );
       expect(fs.existsSync(ownedProfileDir)).toBe(false);
     } finally {
       findExecutableSpy.mockRestore();
@@ -158,7 +166,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('reuses saved direct-mode state for click-by-index commands', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -210,7 +220,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('cleans up stale local direct-mode state before relaunching', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const staleUserDataDir = path.join(tempDir, 'stale-profile');
     const stdout = createWritable();
@@ -279,7 +291,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('removes owned local direct-mode profiles on close', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const userDataDir = path.join(tempDir, 'owned-profile');
     const stdout = createWritable();
@@ -318,7 +332,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('keeps user-managed local profiles on close', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const userDataDir = path.join(tempDir, 'user-profile');
     const stdout = createWritable();
@@ -358,7 +374,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('stops stale remote direct-mode sessions before opening a new remote browser', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -427,7 +445,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('stops cloud sessions on close and clears persisted state', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -466,7 +486,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('supports advanced direct-mode browser controls', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -601,7 +623,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('supports direct-mode get commands and extract placeholder output', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();
@@ -721,7 +745,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('supports direct-mode cookie commands', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const cookieFile = path.join(tempDir, 'cookies.json');
     const stdout = createWritable();
@@ -790,13 +816,7 @@ describe('skill-cli direct alignment', () => {
       ).toBe(0);
       expect(
         await run_direct_command(
-          [
-            'cookies',
-            'export',
-            cookieFile,
-            '--url',
-            'https://example.com/app',
-          ],
+          ['cookies', 'export', cookieFile, '--url', 'https://example.com/app'],
           {
             state_file: stateFile,
             stdout: stdout.stream,
@@ -857,7 +877,9 @@ describe('skill-cli direct alignment', () => {
   });
 
   it('rejects unknown direct cookie options instead of treating them as positional values', async () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-direct-'));
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stateFile = path.join(tempDir, 'state.json');
     const stdout = createWritable();
     const stderr = createWritable();

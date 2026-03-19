@@ -73,10 +73,7 @@ vi.mock('oci-generativeaiinference', () => {
   };
 });
 
-import {
-  ChatOCIRaw,
-  type ChatOCIRawOptions,
-} from '../src/llm/oci-raw/chat.js';
+import { ChatOCIRaw, type ChatOCIRawOptions } from '../src/llm/oci-raw/chat.js';
 import {
   ContentPartImageParam,
   ContentPartTextParam,
@@ -146,7 +143,9 @@ describe('ChatOCIRaw alignment', () => {
       new SystemMessage('system prompt'),
       new UserMessage([
         new ContentPartTextParam('Describe this image'),
-        new ContentPartImageParam(new ImageURL('https://example.com/image.png')),
+        new ContentPartImageParam(
+          new ImageURL('https://example.com/image.png')
+        ),
       ]),
     ]);
 
@@ -231,8 +230,8 @@ describe('ChatOCIRaw alignment', () => {
       },
     });
     expect(
-      request.chatDetails.chatRequest.responseFormat.jsonSchema.schema.properties
-        .value.type
+      request.chatDetails.chatRequest.responseFormat.jsonSchema.schema
+        .properties.value.type
     ).toBe('string');
     expect(result.completion).toEqual({ value: 'ok' });
   });

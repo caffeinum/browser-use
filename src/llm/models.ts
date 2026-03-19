@@ -320,8 +320,7 @@ const buildProviderModel = (
       return new ChatLiteLLM({
         model,
         apiKey: process.env.LITELLM_API_KEY,
-        baseURL:
-          process.env.LITELLM_API_BASE ?? process.env.LITELLM_BASE_URL,
+        baseURL: process.env.LITELLM_API_BASE ?? process.env.LITELLM_BASE_URL,
       });
     case 'oci':
       return new ChatOCIRaw({

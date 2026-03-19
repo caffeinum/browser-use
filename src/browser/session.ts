@@ -101,10 +101,7 @@ type SystemChromeVariant =
 type BrowserEventEmitterLike = Browser & {
   on?: (event: string, listener: (...args: any[]) => void) => void;
   off?: (event: string, listener: (...args: any[]) => void) => void;
-  removeListener?: (
-    event: string,
-    listener: (...args: any[]) => void
-  ) => void;
+  removeListener?: (event: string, listener: (...args: any[]) => void) => void;
   isConnected?: () => boolean;
 };
 
@@ -136,7 +133,9 @@ const cloneBrowserProfileConfig = (profile: BrowserProfile) =>
     ? structuredClone(profile.config)
     : JSON.parse(JSON.stringify(profile.config));
 
-const detectSystemChromeVariant = (executablePath: string | null | undefined): SystemChromeVariant => {
+const detectSystemChromeVariant = (
+  executablePath: string | null | undefined
+): SystemChromeVariant => {
   const normalizedPath = String(executablePath ?? '')
     .trim()
     .toLowerCase();
@@ -284,8 +283,7 @@ export const systemChrome = {
     }
     if (process.platform === 'win32') {
       const localAppData =
-        process.env.LOCALAPPDATA ??
-        path.join(os.homedir(), 'AppData', 'Local');
+        process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local');
       if (variant === 'chromium') {
         return path.join(localAppData, 'Chromium', 'User Data');
       }
@@ -328,8 +326,10 @@ export const systemChrome = {
   },
 };
 
-export interface BrowserSessionFromSystemChromeInit
-  extends Omit<BrowserSessionInit, 'browser_profile' | 'profile'> {
+export interface BrowserSessionFromSystemChromeInit extends Omit<
+  BrowserSessionInit,
+  'browser_profile' | 'profile'
+> {
   browser_profile?: BrowserProfile;
   profile?: Partial<BrowserProfileOptions>;
   profile_directory?: string | null;
@@ -498,9 +498,7 @@ export class BrowserSession {
 
     const availableProfiles = systemChrome.listProfiles(userDataDir);
     const selectedProfileDirectory =
-      init.profile_directory ??
-      availableProfiles[0]?.directory ??
-      'Default';
+      init.profile_directory ?? availableProfiles[0]?.directory ?? 'Default';
 
     if (typeof init.profile_directory === 'undefined' && availableProfiles[0]) {
       createLogger('browser_use.browser.session').info(
@@ -637,7 +635,9 @@ export class BrowserSession {
   async wait_if_captcha_solving(
     timeoutSeconds?: number
   ): Promise<CaptchaWaitResult | null> {
-    return this._captchaWatchdog?.wait_if_captcha_solving(timeoutSeconds) ?? null;
+    return (
+      this._captchaWatchdog?.wait_if_captcha_solving(timeoutSeconds) ?? null
+    );
   }
 
   private _formatTabId(pageId: number): string {
@@ -1023,7 +1023,7 @@ export class BrowserSession {
     const activePage =
       this.agent_current_page && pages.includes(this.agent_current_page)
         ? this.agent_current_page
-        : pages[0] ?? null;
+        : (pages[0] ?? null);
     if (activePage) {
       const activeIndex = this._tabs.findIndex(
         (tab) => this.tabPages.get(tab.page_id) === activePage
@@ -1042,7 +1042,8 @@ export class BrowserSession {
       this.currentUrl = activeTab.url;
       this.currentTitle = activeTab.title || activeTab.url;
       this.agent_current_page = this.tabPages.get(activeTab.page_id) ?? null;
-      this.human_current_page = this.human_current_page ?? this.agent_current_page;
+      this.human_current_page =
+        this.human_current_page ?? this.agent_current_page;
     }
     this._syncSessionManagerFromTabs();
   }
@@ -1320,11 +1321,11 @@ export class BrowserSession {
   get should_gate_watchdog_events(): boolean {
     return Boolean(
       this.initialized ||
-        this.browser ||
-        this.browser_context ||
-        this.cdp_url ||
-        this.wss_url ||
-        this._reconnecting
+      this.browser ||
+      this.browser_context ||
+      this.cdp_url ||
+      this.wss_url ||
+      this._reconnecting
     );
   }
 
@@ -1358,7 +1359,9 @@ export class BrowserSession {
     }
   }
 
-  async wait_for_reconnect(timeoutSeconds: number = this.RECONNECT_WAIT_TIMEOUT) {
+  async wait_for_reconnect(
+    timeoutSeconds: number = this.RECONNECT_WAIT_TIMEOUT
+  ) {
     if (!this._reconnecting) {
       return;
     }
@@ -1838,13 +1841,13 @@ export class BrowserSession {
     const pageByUrl =
       normalizedPreferredUrl == null
         ? null
-        : pages.find((page) => {
+        : (pages.find((page) => {
             try {
               return normalize_url(page.url()) === normalizedPreferredUrl;
             } catch {
               return false;
             }
-          }) ?? null;
+          }) ?? null);
     const clampedIndex =
       preferredTabIndex >= 0 && preferredTabIndex < pages.length
         ? preferredTabIndex
@@ -1865,10 +1868,12 @@ export class BrowserSession {
     await this._syncCurrentTabFromPage(nextPage);
   }
 
-  async reconnect(options: {
-    preferred_url?: string | null;
-    preferred_tab_index?: number;
-  } = {}): Promise<void> {
+  async reconnect(
+    options: {
+      preferred_url?: string | null;
+      preferred_tab_index?: number;
+    } = {}
+  ): Promise<void> {
     if (!this._usesRemoteBrowserConnection()) {
       throw new Error('Cannot reconnect without a remote browser connection');
     }
@@ -1986,9 +1991,7 @@ export class BrowserSession {
 
           const delayMs =
             REMOTE_RECONNECT_DELAYS_MS[attempt - 1] ??
-            REMOTE_RECONNECT_DELAYS_MS[
-              REMOTE_RECONNECT_DELAYS_MS.length - 1
-            ];
+            REMOTE_RECONNECT_DELAYS_MS[REMOTE_RECONNECT_DELAYS_MS.length - 1];
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
@@ -2593,9 +2596,7 @@ export class BrowserSession {
       browser_errors: this.currentPageLoadingStatus
         ? [this.currentPageLoadingStatus]
         : [],
-      is_pdf_viewer: Boolean(
-        this.currentUrl?.toLowerCase().endsWith('.pdf')
-      ),
+      is_pdf_viewer: Boolean(this.currentUrl?.toLowerCase().endsWith('.pdf')),
       loading_status: this.currentPageLoadingStatus,
       recent_events: includeRecentEvents
         ? this._getRecentEventsSummary()
@@ -2813,9 +2814,7 @@ export class BrowserSession {
         tab_id: newTab.tab_id,
         error_message: message,
       });
-      this.logger.debug(
-        `Failed to open new tab via Playwright: ${message}`
-      );
+      this.logger.debug(`Failed to open new tab via Playwright: ${message}`);
       if (page?.close) {
         try {
           await page.close();
@@ -2863,7 +2862,9 @@ export class BrowserSession {
     }
     if (this.historyStack[this.historyStack.length - 1] === normalized) {
       this.historyStack[this.historyStack.length - 1] = completedUrl;
-    } else if (this.historyStack[this.historyStack.length - 1] !== completedUrl) {
+    } else if (
+      this.historyStack[this.historyStack.length - 1] !== completedUrl
+    ) {
       this.historyStack.push(completedUrl);
     }
     this.currentPageLoadingStatus = null;
@@ -3626,7 +3627,9 @@ export class BrowserSession {
       const existingIndex = this.historyStack.lastIndexOf(currentUrl);
       if (existingIndex !== -1) {
         this.historyStack = this.historyStack.slice(0, existingIndex + 1);
-      } else if (this.historyStack[this.historyStack.length - 1] !== currentUrl) {
+      } else if (
+        this.historyStack[this.historyStack.length - 1] !== currentUrl
+      ) {
         this.historyStack.push(currentUrl);
       }
     }
@@ -4295,14 +4298,12 @@ export class BrowserSession {
    */
   async take_screenshot(
     full_page: boolean = false,
-    clip:
-      | {
-          x: number;
-          y: number;
-          width: number;
-          height: number;
-        }
-      | null = null
+    clip: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    } | null = null
   ): Promise<string | null> {
     const page = await this.get_current_page();
     if (!page) {
@@ -4480,7 +4481,8 @@ export class BrowserSession {
 
       // Skip chrome:// pages and new tab pages
       const isNewTab =
-        currentUrl === 'about:blank' || currentUrl.startsWith('chrome://newtab');
+        currentUrl === 'about:blank' ||
+        currentUrl.startsWith('chrome://newtab');
       if (isNewTab || currentUrl.startsWith('chrome://')) {
         if (isNewTab) {
           tabs_info.push({
@@ -5618,7 +5620,8 @@ export class BrowserSession {
         const message = error instanceof Error ? error.message : String(error);
         const isDownloadTimeout =
           error instanceof Error &&
-          (error.name === 'TimeoutError' || message.toLowerCase().includes('timeout'));
+          (error.name === 'TimeoutError' ||
+            message.toLowerCase().includes('timeout'));
         if (!isDownloadTimeout) {
           throw error;
         }
@@ -5644,7 +5647,9 @@ export class BrowserSession {
       const download_path = path.join(downloads_path, unique_filename);
       const download_guid = uuid7str();
       const download_url =
-        typeof download.url === 'function' ? download.url() : (this.currentUrl ?? '');
+        typeof download.url === 'function'
+          ? download.url()
+          : (this.currentUrl ?? '');
       await this.event_bus.dispatch(
         new DownloadStartedEvent({
           guid: download_guid,

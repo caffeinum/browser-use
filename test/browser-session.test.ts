@@ -57,10 +57,7 @@ vi.mock('../src/telemetry/service.js', () => ({
 }));
 
 // Import after mocks
-import {
-  BrowserSession,
-  systemChrome,
-} from '../src/browser/session.js';
+import { BrowserSession, systemChrome } from '../src/browser/session.js';
 import { BrowserProfile } from '../src/browser/profile.js';
 import {
   DownloadProgressEvent,
@@ -214,9 +211,24 @@ describe('BrowserSession Basic Operations', () => {
       path.join(os.tmpdir(), 'browser-use-linux-chrome-')
     );
     const unstableBinary = path.join(tempDir, 'google-chrome-unstable');
+    const whichBinary = path.join(tempDir, 'which');
     const originalPath = process.env.PATH;
     fs.writeFileSync(unstableBinary, '#!/bin/sh\nexit 0\n');
     fs.chmodSync(unstableBinary, 0o755);
+    fs.writeFileSync(
+      whichBinary,
+      `#!/bin/sh
+case "$1" in
+  google-chrome-unstable)
+    printf '%s\\n' ${JSON.stringify(unstableBinary)}
+    ;;
+  *)
+    exit 1
+    ;;
+esac
+`
+    );
+    fs.chmodSync(whichBinary, 0o755);
 
     try {
       process.env.PATH = `${tempDir}${path.delimiter}${originalPath ?? ''}`;
@@ -230,14 +242,12 @@ describe('BrowserSession Basic Operations', () => {
   });
 
   it('detects Canary installs on Windows', async () => {
-    const existsSyncSpy = vi
-      .spyOn(fs, 'existsSync')
-      .mockImplementation(((candidate: fs.PathLike) => {
-        const normalized = String(candidate).replace(/\\/g, '/');
-        return normalized.endsWith(
-          'Google/Chrome SxS/Application/chrome.exe'
-        );
-      }) as any);
+    const existsSyncSpy = vi.spyOn(fs, 'existsSync').mockImplementation(((
+      candidate: fs.PathLike
+    ) => {
+      const normalized = String(candidate).replace(/\\/g, '/');
+      return normalized.endsWith('Google/Chrome SxS/Application/chrome.exe');
+    }) as any);
 
     try {
       await withPlatform('win32', async () => {
@@ -259,16 +269,16 @@ describe('BrowserSession Basic Operations', () => {
   it('prefers stable Chrome over Canary on Windows', async () => {
     const originalLocalAppData = process.env.LOCALAPPDATA;
     process.env.LOCALAPPDATA = 'C:\\Users\\tester\\AppData\\Local';
-    const existsSyncSpy = vi
-      .spyOn(fs, 'existsSync')
-      .mockImplementation(((candidate: fs.PathLike) => {
-        const normalized = String(candidate).replace(/\\/g, '/');
-        return (
-          normalized.startsWith('C:/Users/tester/AppData/Local/') &&
-          (normalized.endsWith('Google/Chrome/Application/chrome.exe') ||
-            normalized.endsWith('Google/Chrome SxS/Application/chrome.exe'))
-        );
-      }) as any);
+    const existsSyncSpy = vi.spyOn(fs, 'existsSync').mockImplementation(((
+      candidate: fs.PathLike
+    ) => {
+      const normalized = String(candidate).replace(/\\/g, '/');
+      return (
+        normalized.startsWith('C:/Users/tester/AppData/Local/') &&
+        (normalized.endsWith('Google/Chrome/Application/chrome.exe') ||
+          normalized.endsWith('Google/Chrome SxS/Application/chrome.exe'))
+      );
+    }) as any);
 
     try {
       await withPlatform('win32', async () => {

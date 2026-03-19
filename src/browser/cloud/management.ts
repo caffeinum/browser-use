@@ -112,7 +112,9 @@ export class CloudManagementClient {
     if (process.env.BROWSER_USE_API_KEY?.trim()) {
       return process.env.BROWSER_USE_API_KEY.trim();
     }
-    const savedToken = new DeviceAuthClient(this.api_base_url).api_token?.trim();
+    const savedToken = new DeviceAuthClient(
+      this.api_base_url
+    ).api_token?.trim();
     return savedToken || null;
   }
 
@@ -178,14 +180,16 @@ export class CloudManagementClient {
     return rendered ? `?${rendered}` : '';
   }
 
-  async list_tasks(options: {
-    pageSize?: number;
-    pageNumber?: number;
-    sessionId?: string | null;
-    filterBy?: string | null;
-    after?: string | null;
-    before?: string | null;
-  } = {}) {
+  async list_tasks(
+    options: {
+      pageSize?: number;
+      pageNumber?: number;
+      sessionId?: string | null;
+      filterBy?: string | null;
+      after?: string | null;
+      before?: string | null;
+    } = {}
+  ) {
     return await this.request_json<PaginatedResponse<CloudTaskView>>(
       `/api/v2/tasks${this.build_query(options)}`,
       { method: 'GET' }
@@ -226,11 +230,13 @@ export class CloudManagementClient {
     );
   }
 
-  async list_sessions(options: {
-    pageSize?: number;
-    pageNumber?: number;
-    filterBy?: string | null;
-  } = {}) {
+  async list_sessions(
+    options: {
+      pageSize?: number;
+      pageNumber?: number;
+      filterBy?: string | null;
+    } = {}
+  ) {
     return await this.request_json<PaginatedResponse<CloudSessionView>>(
       `/api/v2/sessions${this.build_query(options)}`,
       { method: 'GET' }
@@ -282,7 +288,9 @@ export class CloudManagementClient {
     );
   }
 
-  async list_profiles(options: { pageSize?: number; pageNumber?: number } = {}) {
+  async list_profiles(
+    options: { pageSize?: number; pageNumber?: number } = {}
+  ) {
     return await this.request_json<PaginatedResponse<CloudProfileView>>(
       `/api/v2/profiles${this.build_query(options)}`,
       { method: 'GET' }

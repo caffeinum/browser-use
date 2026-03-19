@@ -202,7 +202,14 @@ describe('CLI argument parsing', () => {
 
   it('extracts task subcommands after leading global flags', () => {
     expect(
-      extractPrefixedSubcommand(['--json', '--debug', 'task', 'list', '--limit', '5'])
+      extractPrefixedSubcommand([
+        '--json',
+        '--debug',
+        'task',
+        'list',
+        '--limit',
+        '5',
+      ])
     ).toEqual({
       command: 'task',
       argv: ['list', '--limit', '5'],
@@ -213,7 +220,14 @@ describe('CLI argument parsing', () => {
 
   it('extracts task subcommands after leading value-based global flags', () => {
     expect(
-      extractPrefixedSubcommand(['--api-key', 'bu_test', '--provider', 'openai', 'task', 'list'])
+      extractPrefixedSubcommand([
+        '--api-key',
+        'bu_test',
+        '--provider',
+        'openai',
+        'task',
+        'list',
+      ])
     ).toEqual({
       command: 'task',
       argv: ['list'],
@@ -224,7 +238,14 @@ describe('CLI argument parsing', () => {
 
   it('extracts run subcommands after leading global flags', () => {
     expect(
-      extractPrefixedSubcommand(['--debug', 'run', '--remote', '--wait', 'Collect', 'data'])
+      extractPrefixedSubcommand([
+        '--debug',
+        'run',
+        '--remote',
+        '--wait',
+        'Collect',
+        'data',
+      ])
     ).toEqual({
       command: 'run',
       argv: ['--remote', '--wait', 'Collect', 'data'],
@@ -235,12 +256,12 @@ describe('CLI argument parsing', () => {
 
   it('dispatches api-key-prefixed task subcommands through main', async () => {
     let output = '';
-    const stdoutSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation(((chunk: string | Uint8Array) => {
-        output += String(chunk);
-        return true;
-      }) as any);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((
+      chunk: string | Uint8Array
+    ) => {
+      output += String(chunk);
+      return true;
+    }) as any);
     const listTasksSpy = vi
       .spyOn(CloudManagementClient.prototype, 'list_tasks')
       .mockResolvedValue({
@@ -277,12 +298,12 @@ describe('CLI argument parsing', () => {
 
   it('dispatches json-prefixed task subcommands through main', async () => {
     let output = '';
-    const stdoutSpy = vi
-      .spyOn(process.stdout, 'write')
-      .mockImplementation(((chunk: string | Uint8Array) => {
-        output += String(chunk);
-        return true;
-      }) as any);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((
+      chunk: string | Uint8Array
+    ) => {
+      output += String(chunk);
+      return true;
+    }) as any);
     const listTasksSpy = vi
       .spyOn(CloudManagementClient.prototype, 'list_tasks')
       .mockResolvedValue({
@@ -582,7 +603,8 @@ describe('CLI doctor checks', () => {
   it('reports a healthy environment when all checks pass', async () => {
     const report = await runDoctorChecks({
       version: '1.2.3',
-      browser_executable: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      browser_executable:
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
       api_key: 'test-api-key',
       cloudflared_path: '/usr/local/bin/cloudflared',
       fetch_impl: (async () =>
@@ -663,8 +685,7 @@ describe('CLI install command', () => {
     expect(() =>
       runInstallCommand({
         playwright_cli_path: '/tmp/playwright-cli.js',
-        spawn_impl:
-          spawnImpl as typeof import('node:child_process').spawnSync,
+        spawn_impl: spawnImpl as typeof import('node:child_process').spawnSync,
       })
     ).toThrow('Playwright browser install failed with exit code 2');
   });

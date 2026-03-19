@@ -24,7 +24,10 @@ export interface CaptchaWaitResult {
 
 export class CaptchaWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [BrowserConnectedEvent, BrowserStoppedEvent];
-  static override EMITS = [CaptchaSolverStartedEvent, CaptchaSolverFinishedEvent];
+  static override EMITS = [
+    CaptchaSolverStartedEvent,
+    CaptchaSolverFinishedEvent,
+  ];
 
   private _cdpSession: CDPSessionLike | null = null;
   private _handlers: Array<{
@@ -83,7 +86,9 @@ export class CaptchaWatchdog extends BaseWatchdog {
 
         const vendor = String(payload?.vendor ?? this._captchaInfo.vendor);
         const url = String(payload?.url ?? this._captchaInfo.url);
-        const targetId = String(payload?.targetId ?? this._captchaInfo.target_id);
+        const targetId = String(
+          payload?.targetId ?? this._captchaInfo.target_id
+        );
 
         for (const resolve of this._waiters) {
           resolve();

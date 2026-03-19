@@ -109,9 +109,9 @@ export class TunnelManager {
     }
 
     try {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as
-        | Partial<TunnelInfo>
-        | null;
+      const parsed = JSON.parse(
+        fs.readFileSync(filePath, 'utf-8')
+      ) as Partial<TunnelInfo> | null;
       if (
         !parsed ||
         typeof parsed.port !== 'number' ||

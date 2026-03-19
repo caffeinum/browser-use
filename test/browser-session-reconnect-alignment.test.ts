@@ -100,7 +100,9 @@ describe('browser session reconnect alignment', () => {
     expect(dispatchedTypes).toContain('BrowserReconnectingEvent');
     expect(dispatchedTypes).toContain('BrowserReconnectedEvent');
     expect(
-      dispatchedTypes.filter((eventType) => eventType === 'BrowserConnectedEvent')
+      dispatchedTypes.filter(
+        (eventType) => eventType === 'BrowserConnectedEvent'
+      )
     ).toHaveLength(2);
 
     const reconnectingIndex = dispatchedTypes.lastIndexOf(

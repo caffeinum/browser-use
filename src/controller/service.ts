@@ -2523,7 +2523,8 @@ You will be given a query and the markdown of a webpage that has been filtered t
 
       const paperKey = String(params.paper_format ?? 'Letter').toLowerCase();
       const paperSize = paperSizes[paperKey] ?? paperSizes.letter;
-      const cdpSession = await browser_session.get_or_create_cdp_session?.(page);
+      const cdpSession =
+        await browser_session.get_or_create_cdp_session?.(page);
       if (!cdpSession?.send) {
         throw new BrowserError('CDP session unavailable for save_as_pdf.');
       }
@@ -2549,7 +2550,9 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!fileName) {
         try {
           const titlePromise =
-            typeof page.title === 'function' ? page.title() : Promise.resolve('');
+            typeof page.title === 'function'
+              ? page.title()
+              : Promise.resolve('');
           const pageTitle = await Promise.race([
             titlePromise,
             new Promise<string>((_, reject) => {

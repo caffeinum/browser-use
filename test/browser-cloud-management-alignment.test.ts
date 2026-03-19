@@ -30,14 +30,16 @@ describe('browser cloud management alignment', () => {
       sessionId: 'session-1',
     });
 
-    expect(result.count ?? result.totalItems).toBe(0);
+    expect(result.totalItems).toBe(0);
     expect(requests).toHaveLength(1);
     expect(requests[0]!.url).toBe(
       'https://api.browser-use.test/api/v2/tasks?pageSize=10&filterBy=started&sessionId=session-1'
     );
-    expect((requests[0]!.init.headers as Record<string, string>)[
-      'X-Browser-Use-API-Key'
-    ]).toBe('bu_test_key');
+    expect(
+      (requests[0]!.init.headers as Record<string, string>)[
+        'X-Browser-Use-API-Key'
+      ]
+    ).toBe('bu_test_key');
   });
 
   it('supports session and profile lifecycle endpoints', async () => {
@@ -92,7 +94,9 @@ describe('browser cloud management alignment', () => {
     expect(session.id).toBe('session-1');
     expect(profile.name).toBe('Primary');
     expect(updated.name).toBe('Renamed');
-    expect(requests[0]!.url).toBe('https://api.browser-use.test/api/v2/sessions');
+    expect(requests[0]!.url).toBe(
+      'https://api.browser-use.test/api/v2/sessions'
+    );
     expect(requests[0]!.init.method).toBe('POST');
     expect(requests[1]!.url).toBe(
       'https://api.browser-use.test/api/v2/profiles/profile-1'
@@ -124,8 +128,7 @@ describe('browser cloud management alignment', () => {
     await expect(client.list_sessions()).rejects.toEqual(
       expect.objectContaining<Partial<CloudBrowserError>>({
         name: 'CloudBrowserError',
-        message:
-          'Cloud API request failed (502): <html>bad gateway</html>',
+        message: 'Cloud API request failed (502): <html>bad gateway</html>',
       })
     );
   });

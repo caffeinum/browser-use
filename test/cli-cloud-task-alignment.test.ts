@@ -34,11 +34,14 @@ describe('cli cloud task alignment', () => {
       get_task_logs: vi.fn(),
     };
 
-    const exitCode = await runTaskCommand(['list', '--limit', '5', '--status', 'finished'], {
-      client: client as any,
-      stdout: stdout.stream,
-      stderr: stderr.stream,
-    });
+    const exitCode = await runTaskCommand(
+      ['list', '--limit', '5', '--status', 'finished'],
+      {
+        client: client as any,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      }
+    );
 
     expect(exitCode).toBe(0);
     expect(client.list_tasks).toHaveBeenCalledWith({
@@ -105,7 +108,9 @@ describe('cli cloud task alignment', () => {
     expect(output).toContain('Reasoning: Opened the profile page');
     expect(output).toContain('Output: done');
     expect(output).toContain('Stopped task: task-12345678');
-    expect(output).toContain('Download logs: https://files.browser-use.test/logs/task-12345678');
+    expect(output).toContain(
+      'Download logs: https://files.browser-use.test/logs/task-12345678'
+    );
     expect(stderr.read()).toBe('');
   });
 

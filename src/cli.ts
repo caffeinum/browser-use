@@ -1015,7 +1015,9 @@ export interface RunInstallCommandOptions {
   spawn_impl?: typeof spawnSync;
 }
 
-type WritableLike = Pick<typeof process.stdout, 'write'>;
+type WritableLike = {
+  write(chunk: string): boolean | void;
+};
 
 export interface RunTunnelCommandOptions {
   manager?: Pick<
