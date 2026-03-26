@@ -50,6 +50,58 @@ function run(cmd, args, cwd) {
   }
 }
 
+function assertPackagedFileMatches(
+  repoRoot,
+  installedPackageDir,
+  sourcePath,
+  packagedPath
+) {
+  const absoluteSourcePath = path.join(repoRoot, sourcePath);
+  const absolutePackagedPath = path.join(installedPackageDir, packagedPath);
+
+  if (!fs.existsSync(absolutePackagedPath)) {
+    throw new Error(
+      `Packaged asset is missing: ${packagedPath} (expected from ${sourcePath})`
+    );
+  }
+
+  const sourceContents = fs.readFileSync(absoluteSourcePath, 'utf8');
+  const packagedContents = fs.readFileSync(absolutePackagedPath, 'utf8');
+  if (sourceContents !== packagedContents) {
+    throw new Error(
+      `Packaged asset does not match source: ${packagedPath} (expected from ${sourcePath})`
+    );
+  }
+}
+
+function assertPackagedAssets(repoRoot, installedPackageDir) {
+  assertPackagedFileMatches(
+    repoRoot,
+    installedPackageDir,
+    'src/dom/dom_tree/index.js',
+    'dist/dom/dom_tree/index.js'
+  );
+
+  const agentSourceDir = path.join(repoRoot, 'src/agent');
+  const agentPromptTemplates = fs
+    .readdirSync(agentSourceDir)
+    .filter((file) => file.endsWith('.md'))
+    .sort();
+
+  if (agentPromptTemplates.length === 0) {
+    throw new Error(`No agent prompt templates found in ${agentSourceDir}`);
+  }
+
+  for (const templateName of agentPromptTemplates) {
+    assertPackagedFileMatches(
+      repoRoot,
+      installedPackageDir,
+      path.join('src/agent', templateName),
+      path.join('dist/agent', templateName)
+    );
+  }
+}
+
 let tempDir = null;
 let tarballPath = null;
 
@@ -77,6 +129,7 @@ try {
     tempDir
   );
 
+  const installedPackageDir = path.join(tempDir, 'node_modules', 'browser-use');
   const tempRequire = createRequire(path.join(tempDir, 'package.json'));
   const failures = [];
 
@@ -99,6 +152,8 @@ try {
       `Public exports smoke test failed for ${failures.length} specifier(s):\n${failures.join('\n')}`
     );
   }
+
+  assertPackagedAssets(repoRoot, installedPackageDir);
 
   console.log(
     `Pack smoke test passed for ${publicSpecifiers.length} public specifiers.`
