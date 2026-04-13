@@ -13,9 +13,6 @@ The Model Context Protocol (MCP) is Anthropic's open standard for connecting AI 
 ```bash
 # Start in MCP mode
 npx browser-use --mcp
-
-# Or with explicit port
-npx browser-use --mcp --port 3000
 ```
 
 ### Configuring Claude Desktop
@@ -39,20 +36,28 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
-## Available MCP Tools
+## Core MCP Tools
 
-### browser_run_task
+Browser-Use registers a set of convenience `browser_*` MCP tools and also exposes registered controller actions as additional tools.
 
-Execute an autonomous browser task.
+| Tool                           | Purpose                                                                       | Key Parameters                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `retry_with_browser_use_agent` | Run an autonomous multi-step task with the agent                              | `task`, `max_steps?`, `model?`, `allowed_domains?`, `use_vision?` |
+| `browser_navigate`             | Navigate to a URL                                                             | `url`, `new_tab?`                                                 |
+| `browser_click`                | Click an element by index from `browser_get_state`                            | `index`, `new_tab?`                                               |
+| `browser_type`                 | Type text into an element by index                                            | `index`, `text`                                                   |
+| `browser_get_state`            | Inspect the current page, tabs, interactive elements, and optional screenshot | `include_screenshot?`, `include_recent_events?`                   |
+| `browser_extract_content`      | Extract structured content from the current page                              | `query`, `extract_links?`                                         |
+| `browser_scroll`               | Scroll the page up or down                                                    | `direction?`                                                      |
+| `browser_go_back`              | Navigate back                                                                 | None                                                              |
+| `browser_list_tabs`            | List open tabs                                                                | None                                                              |
+| `browser_switch_tab`           | Switch tab by `tab_id`, `page_id`, or `tab_index`                             | `tab_id?`, `page_id?`, `tab_index?`                               |
+| `browser_close_tab`            | Close a tab by `tab_id`, `page_id`, or `tab_index`                            | `tab_id?`, `page_id?`, `tab_index?`                               |
+| `browser_list_sessions`        | List tracked browser sessions                                                 | None                                                              |
+| `browser_close_session`        | Close one tracked browser session                                             | `session_id`                                                      |
+| `browser_close_all`            | Close all tracked browser sessions                                            | None                                                              |
 
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `task` | `string` | Yes | Task description in natural language |
-| `max_steps` | `number` | No | Maximum steps (default: 100) |
-| `use_vision` | `boolean` | No | Enable screenshots (default: true) |
-
-**Example:**
+### Example: Autonomous Task
 
 ```json
 {
@@ -62,127 +67,14 @@ Execute an autonomous browser task.
 }
 ```
 
-### browser_navigate
-
-Navigate to a specific URL.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `url` | `string` | Yes | URL to navigate to |
-
-**Example:**
+### Example: Inspect Current Page State
 
 ```json
 {
-  "url": "https://github.com"
+  "include_screenshot": true,
+  "include_recent_events": false
 }
 ```
-
-### browser_click
-
-Click an element on the page.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `index` | `number` | Yes | Element index from page state |
-
-**Example:**
-
-```json
-{
-  "index": 5
-}
-```
-
-### browser_type
-
-Type text into an input field.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `index` | `number` | Yes | Element index |
-| `text` | `string` | Yes | Text to type |
-| `press_enter` | `boolean` | No | Press Enter after typing |
-
-**Example:**
-
-```json
-{
-  "index": 3,
-  "text": "search query",
-  "press_enter": true
-}
-```
-
-### browser_scroll
-
-Scroll the page.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `direction` | `string` | Yes | "up" or "down" |
-| `amount` | `number` | No | Pixels to scroll |
-
-**Example:**
-
-```json
-{
-  "direction": "down",
-  "amount": 500
-}
-```
-
-### browser_get_state
-
-Get current browser state including interactive elements.
-
-**Parameters:** None
-
-**Returns:**
-
-- Current URL
-- Page title
-- Screenshot (base64)
-- Interactive elements list
-
-### browser_extract
-
-Extract structured data from the page.
-
-**Parameters:**
-| Name | Type | Required | Description |
-|------|------|----------|-------------|
-| `instruction` | `string` | Yes | What to extract |
-| `schema` | `object` | No | Expected data structure |
-
-**Example:**
-
-```json
-{
-  "instruction": "Extract all product prices from the page",
-  "schema": {
-    "prices": ["string"]
-  }
-}
-```
-
-### browser_screenshot
-
-Take a screenshot of the current page.
-
-**Parameters:** None
-
-**Returns:** Base64-encoded screenshot image
-
-### browser_close
-
-Close the browser session.
-
-**Parameters:** None
 
 ## MCP Prompts
 
@@ -226,7 +118,7 @@ BROWSER_USE_LLM_MODEL=gpt-4o
 BROWSER_USE_HEADLESS=true
 
 # MCP Configuration
-MCP_SERVER_PORT=3000
+BROWSER_USE_MCP_SESSION_TIMEOUT_MINUTES=10
 
 # Telemetry
 ANONYMIZED_TELEMETRY=false
@@ -261,19 +153,16 @@ Once configured, you can use natural language in Claude Desktop:
 
 Claude will:
 
-1. Call `browser_run_task` with the appropriate task
+1. Call `retry_with_browser_use_agent` or the direct `browser_*` tools
 2. Display progress and results
-3. Show screenshots if available
+3. Request screenshots via `browser_get_state` when needed
 
 ### Direct API Usage
 
 ```typescript
 import { MCPServer } from 'browser-use/mcp';
 
-const server = new MCPServer({
-  llm: yourLLMInstance,
-  browserProfile: yourProfile,
-});
+const server = new MCPServer('browser-use', 'dev');
 
 await server.start();
 ```
@@ -282,7 +171,7 @@ await server.start();
 
 ### Persistent Sessions
 
-The MCP server maintains a single browser session across tool calls. This enables:
+The MCP server tracks browser sessions across tool calls. This enables:
 
 - Tab persistence
 - Login state retention
@@ -292,26 +181,11 @@ The MCP server maintains a single browser session across tool calls. This enable
 
 1. **Start**: Browser launches on first tool call
 2. **Active**: Session persists across subsequent calls
-3. **Close**: Explicit `browser_close` or server shutdown
+3. **Close**: Explicit `browser_close_session`, `browser_close_all`, or server shutdown
 
 ### Multiple Sessions
 
-For multiple independent sessions, run multiple MCP server instances on different ports:
-
-```json
-{
-  "mcpServers": {
-    "browser-use-1": {
-      "command": "npx",
-      "args": ["browser-use", "--mcp", "--port", "3001"]
-    },
-    "browser-use-2": {
-      "command": "npx",
-      "args": ["browser-use", "--mcp", "--port", "3002"]
-    }
-  }
-}
-```
+Use `browser_list_sessions`, `browser_close_session`, and `browser_close_all` to inspect and manage the sessions tracked by one MCP server process.
 
 ## Error Handling
 
@@ -429,9 +303,7 @@ npx @anthropic-ai/mcp-inspector browser-use --mcp
 The server logs startup information:
 
 ```
-INFO [browser_use.mcp] MCP Server starting on port 3000
-INFO [browser_use.mcp] Available tools: browser_run_task, browser_navigate, ...
-INFO [browser_use.mcp] Server ready
+INFO [browser_use.mcp.server] 🔌 MCP Server started (... tools, ... prompts registered)
 ```
 
 ## Advanced Usage
@@ -442,23 +314,21 @@ Extend the MCP server with custom tools:
 
 ```typescript
 import { MCPServer } from 'browser-use/mcp';
+import { z } from 'zod';
 
-const server = new MCPServer({ llm });
+const server = new MCPServer('browser-use', 'dev');
 
 // Add custom tool
-server.registerTool('my_custom_tool', {
-  description: 'My custom browser tool',
-  parameters: {
-    type: 'object',
-    properties: {
-      param1: { type: 'string' },
-    },
-  },
-  handler: async (params) => {
-    // Implementation
-    return { result: 'success' };
-  },
-});
+server.registerTool(
+  'my_custom_tool',
+  'My custom browser tool',
+  z.object({
+    param1: z.string(),
+  }),
+  async (params) => {
+    return { result: `processed ${params.param1}` };
+  }
+);
 
 await server.start();
 ```

@@ -4,17 +4,23 @@ Browser-Use supports multiple LLM providers through a unified interface. This gu
 
 ## Supported Providers
 
-| Provider      | Vision Support | Reasoning Models | Caching | Notes                     |
-| ------------- | -------------- | ---------------- | ------- | ------------------------- |
-| OpenAI        | ✅             | ✅ (o1, o3, o4)  | ❌      | Default provider          |
-| Anthropic     | ✅             | ❌               | ✅      | Best for complex tasks    |
-| Google Gemini | ✅             | ✅               | ❌      | Extended thinking support |
-| Azure OpenAI  | ✅             | ✅               | ❌      | Enterprise deployment     |
-| AWS Bedrock   | ✅             | ❌               | ❌      | Claude via AWS            |
-| Groq          | ❌             | ❌               | ❌      | Fastest inference         |
-| Ollama        | ❌             | ❌               | ❌      | Local models              |
-| DeepSeek      | ❌             | ❌               | ❌      | Cost-effective            |
-| OpenRouter    | Varies         | Varies           | ❌      | Multi-model routing       |
+| Provider      | Vision Support | Reasoning Models | Caching | Notes                      |
+| ------------- | -------------- | ---------------- | ------- | -------------------------- |
+| OpenAI        | ✅             | ✅ (o1, o3, o4)  | ❌      | Default provider           |
+| Anthropic     | ✅             | ❌               | ✅      | Best for complex tasks     |
+| Google Gemini | ✅             | ✅               | ❌      | Extended thinking support  |
+| Azure OpenAI  | ✅             | ✅               | ❌      | Enterprise deployment      |
+| AWS Bedrock   | ✅             | ❌               | ❌      | Claude via AWS             |
+| Groq          | ❌             | ❌               | ❌      | Fastest inference          |
+| Ollama        | ❌             | ❌               | ❌      | Local models               |
+| DeepSeek      | ❌             | ❌               | ❌      | Cost-effective             |
+| OpenRouter    | Varies         | Varies           | ❌      | Multi-model routing        |
+| Mistral       | Varies         | ❌               | ❌      | Mistral-hosted models      |
+| Cerebras      | ❌             | ❌               | ❌      | Fast hosted inference      |
+| Browser Use   | Varies         | Varies           | ❌      | Browser Use hosted LLM     |
+| LiteLLM       | Varies         | Varies           | Varies  | OpenAI-compatible gateway  |
+| OCI Raw       | Varies         | Varies           | ❌      | Oracle Cloud GenAI         |
+| Vercel        | Varies         | Varies           | Varies  | AI Gateway / routed models |
 
 ## OpenAI
 
@@ -383,6 +389,87 @@ OpenRouter provides access to multiple providers. Use provider/model format:
 | `openai/gpt-4-turbo`              | OpenAI    |
 | `google/gemini-pro`               | Google    |
 | `meta-llama/llama-3-70b-instruct` | Meta      |
+
+---
+
+## Additional Adapters
+
+These adapters are also exported and supported by the package:
+
+### Mistral
+
+```bash
+export MISTRAL_API_KEY=your-api-key
+```
+
+```typescript
+import { ChatMistral } from 'browser-use/llm/mistral';
+
+const llm = new ChatMistral('mistral-large-latest');
+```
+
+### Cerebras
+
+```bash
+export CEREBRAS_API_KEY=your-api-key
+```
+
+```typescript
+import { ChatCerebras } from 'browser-use/llm/cerebras';
+
+const llm = new ChatCerebras('llama3.1-8b');
+```
+
+### Browser Use
+
+```bash
+export BROWSER_USE_API_KEY=your-api-key
+```
+
+```typescript
+import { ChatBrowserUse } from 'browser-use/llm/browser-use';
+
+const llm = new ChatBrowserUse({ model: 'bu-latest' });
+```
+
+### LiteLLM
+
+```bash
+export LITELLM_API_KEY=your-api-key
+export LITELLM_BASE_URL=http://localhost:4000
+```
+
+```typescript
+import { ChatLiteLLM } from 'browser-use/llm/litellm';
+
+const llm = new ChatLiteLLM('gpt-4o-mini');
+```
+
+### OCI Raw
+
+```bash
+export OCI_SERVICE_ENDPOINT=https://inference.generativeai.us-chicago-1.oci.oraclecloud.com
+export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
+export OCI_MODEL_ID=cohere.command-r-plus
+```
+
+```typescript
+import { ChatOCIRaw } from 'browser-use/llm/oci-raw';
+
+const llm = new ChatOCIRaw({ model: 'cohere.command-r-plus' });
+```
+
+### Vercel
+
+```bash
+export VERCEL_API_KEY=your-api-key
+```
+
+```typescript
+import { ChatVercel } from 'browser-use/llm/vercel';
+
+const llm = new ChatVercel('openai/gpt-4o');
+```
 
 ---
 

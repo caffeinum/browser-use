@@ -9,7 +9,7 @@ Browser-Use enables AI agents to autonomously control web browsers, making decis
 ## Key Features
 
 - **Autonomous Browser Control**: AI-driven navigation, clicking, typing, and form filling
-- **Multi-LLM Support**: Compatible with OpenAI, Anthropic, Google Gemini, Azure, AWS Bedrock, Groq, Ollama, DeepSeek, and OpenRouter
+- **Multi-LLM Support**: Compatible with OpenAI, Anthropic, Google Gemini, Azure, AWS Bedrock, Groq, Ollama, DeepSeek, OpenRouter, Mistral, Cerebras, Browser Use, LiteLLM, OCI Raw, and Vercel
 - **Vision Capabilities**: Screenshot-based understanding for visual web interactions
 - **Custom Actions**: Extensible action registry for domain-specific operations
 - **Security First**: Built-in sensitive data masking and domain restrictions
@@ -76,5 +76,5 @@ MIT License - see [LICENSE](../LICENSE) for details.
 
 ## Support
 
-- **GitHub Issues**: [Report bugs and request features](https://github.com/anthropics/browser-use/issues)
-- **Discussions**: [Community discussions](https://github.com/anthropics/browser-use/discussions)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/webllm/browser-use/issues)
+- **Discussions**: [Community discussions](https://github.com/webllm/browser-use/discussions)

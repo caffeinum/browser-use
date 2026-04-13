@@ -23,7 +23,7 @@
 ## ✨ Features
 
 - 🤖 **Autonomous Browser Control** — AI-driven navigation, clicking, typing, form filling, scrolling, and tab management
-- 🧠 **10+ LLM Providers** — OpenAI, Anthropic, Google Gemini, Azure, AWS Bedrock, Groq, Ollama, DeepSeek, OpenRouter, Mistral, Cerebras, and custom providers
+- 🧠 **15+ LLM Providers & Adapters** — OpenAI, Anthropic, Google Gemini, Azure, AWS Bedrock, Groq, Ollama, DeepSeek, OpenRouter, Mistral, Cerebras, Browser Use, LiteLLM, OCI Raw, Vercel, and custom providers
 - 👁️ **Vision Support** — Screenshot-based understanding for visual web interactions
 - 🔧 **45+ Built-in Actions** — Navigation, element interaction, scrolling, forms, tabs, content extraction, file I/O, and more
 - 🧩 **Custom Actions** — Extensible registry with Zod schema validation, domain restrictions, and page filters
@@ -112,7 +112,7 @@ npx browser-use --mcp
 | **BrowserSession** | Playwright wrapper — browser lifecycle, tab management, screenshots    |
 | **DomService**     | Extracts interactive elements with indexed mapping for LLM consumption |
 | **MessageManager** | Manages LLM conversation history with token optimization               |
-| **LLM Providers**  | Unified `BaseChatModel` interface across 10+ providers                 |
+| **LLM Providers**  | Unified `BaseChatModel` interface across 15+ providers and adapters    |
 
 ### How It Works
 
@@ -125,19 +125,23 @@ npx browser-use --mcp
 
 ## 🔌 LLM Providers
 
-| Provider          | Import                       | Vision | Notes                                         |
-| ----------------- | ---------------------------- | ------ | --------------------------------------------- |
-| **OpenAI**        | `browser-use/llm/openai`     | ✅     | Default provider, reasoning models (o1/o3/o4) |
-| **Anthropic**     | `browser-use/llm/anthropic`  | ✅     | Prompt caching support                        |
-| **Google Gemini** | `browser-use/llm/google`     | ✅     | Extended thinking support                     |
-| **Azure OpenAI**  | `browser-use/llm/azure`      | ✅     | Enterprise deployment                         |
-| **AWS Bedrock**   | `browser-use/llm/aws`        | ✅     | Claude via AWS                                |
-| **Groq**          | `browser-use/llm/groq`       | ❌     | Fastest inference                             |
-| **Ollama**        | `browser-use/llm/ollama`     | ❌     | Local/self-hosted models                      |
-| **DeepSeek**      | `browser-use/llm/deepseek`   | ❌     | Cost-effective                                |
-| **OpenRouter**    | `browser-use/llm/openrouter` | Varies | Multi-model routing                           |
-| **Mistral**       | `browser-use/llm/mistral`    | Varies | Mistral models                                |
-| **Cerebras**      | `browser-use/llm/cerebras`   | ❌     | Fast inference                                |
+| Provider          | Import                        | Vision | Notes                                         |
+| ----------------- | ----------------------------- | ------ | --------------------------------------------- |
+| **OpenAI**        | `browser-use/llm/openai`      | ✅     | Default provider, reasoning models (o1/o3/o4) |
+| **Anthropic**     | `browser-use/llm/anthropic`   | ✅     | Prompt caching support                        |
+| **Google Gemini** | `browser-use/llm/google`      | ✅     | Extended thinking support                     |
+| **Azure OpenAI**  | `browser-use/llm/azure`       | ✅     | Enterprise deployment                         |
+| **AWS Bedrock**   | `browser-use/llm/aws`         | ✅     | Claude via AWS                                |
+| **Groq**          | `browser-use/llm/groq`        | ❌     | Fastest inference                             |
+| **Ollama**        | `browser-use/llm/ollama`      | ❌     | Local/self-hosted models                      |
+| **DeepSeek**      | `browser-use/llm/deepseek`    | ❌     | Cost-effective                                |
+| **OpenRouter**    | `browser-use/llm/openrouter`  | Varies | Multi-model routing                           |
+| **Mistral**       | `browser-use/llm/mistral`     | Varies | Mistral models                                |
+| **Cerebras**      | `browser-use/llm/cerebras`    | ❌     | Fast inference                                |
+| **Browser Use**   | `browser-use/llm/browser-use` | Varies | Hosted Browser Use LLM                        |
+| **LiteLLM**       | `browser-use/llm/litellm`     | Varies | OpenAI-compatible LiteLLM gateway             |
+| **OCI Raw**       | `browser-use/llm/oci-raw`     | Varies | Oracle Cloud Generative AI                    |
+| **Vercel**        | `browser-use/llm/vercel`      | Varies | Vercel AI Gateway / routed models             |
 
 <details>
 <summary>Provider examples</summary>
@@ -210,6 +214,7 @@ const agent = new Agent({
 ### Custom Actions
 
 ```typescript
+import fs from 'node:fs';
 import { Controller, ActionResult } from 'browser-use';
 import { z } from 'zod';
 
@@ -345,7 +350,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 }
 ```
 
-Available MCP tools: `browser_run_task`, `browser_navigate`, `browser_click`, `browser_type`, `browser_scroll`, `browser_get_state`, `browser_extract`, `browser_screenshot`, `browser_close`.
+Core MCP tools include `retry_with_browser_use_agent`, `browser_navigate`, `browser_click`, `browser_type`, `browser_get_state`, `browser_extract_content`, `browser_scroll`, `browser_go_back`, `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_list_sessions`, `browser_close_session`, and `browser_close_all`. The server also exposes registered controller actions as additional MCP tools.
 
 > See [MCP Server Guide](./docs/MCP_SERVER.md) for more details.
 

@@ -120,12 +120,11 @@ Interactive mode commands:
 Supported CLI options:
 
 - `--version`: print package version
-- `--provider <name>`: force provider (`openai|anthropic|google|deepseek|groq|openrouter|azure|ollama|aws|aws-anthropic`)
+- `--provider <name>`: force provider (`openai|anthropic|google|deepseek|groq|openrouter|azure|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic`)
 - `--model <name>`: choose model/provider (for example `gpt-*`, `claude-*`, `gemini-*`)
 - `-p, --prompt <task>`: one-shot task
 - `--headless`: headless browser mode
 - `--allowed-domains <items>`: comma-separated navigation allowlist
-- `--allow-insecure`: bypass sensitive-data domain-lockdown enforcement (unsafe)
 - `--window-width <px>`, `--window-height <px>`: browser window size
 - `--user-data-dir <path>`, `--profile-directory <name>`: Chrome profile controls
 - `--cdp-url <url>`: connect to existing Chromium via CDP
