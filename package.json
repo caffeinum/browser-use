@@ -285,7 +285,6 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "commit": "pnpm exec git-cz",
     "prepack": "pnpm build",
     "postinstall": "playwright install chromium",
     "postinstall:ci": "playwright install --with-deps chromium"
@@ -311,7 +310,7 @@
     "@google/genai": "^1.40.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "adm-zip": "^0.5.16",
-    "axios": "^1.13.4",
+    "axios": "^1.15.0",
     "canvas": "^3.2.1",
     "dotenv": "^17.2.4",
     "eventemitter3": "^5.0.4",
@@ -343,7 +342,6 @@
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "commitizen": "^4.3.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
@@ -352,13 +350,8 @@
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1",
+    "vite": "^7.3.2",
     "vitest": "^4.0.18"
-  },
-  "config": {
-    "commitizen": {
-      "path": "cz-conventional-changelog"
-    }
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -372,6 +365,7 @@
       "flatted": "3.4.2",
       "hono": "4.12.4",
       "minimatch": "10.2.4",
+      "path-to-regexp": "8.4.2",
       "picomatch@<2.3.2": "2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "4.0.4",
       "rollup": "4.59.0"
