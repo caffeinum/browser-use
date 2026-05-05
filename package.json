@@ -280,6 +280,7 @@
     "test:watch": "vitest --watch",
     "test:pack": "node scripts/smoke-pack.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm typecheck:test && pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm test:pack",
+    "commit": "cz",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -288,6 +289,11 @@
     "prepack": "pnpm build",
     "postinstall": "playwright install chromium",
     "postinstall:ci": "playwright install --with-deps chromium"
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
   },
   "keywords": [
     "browser",
@@ -342,6 +348,8 @@
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vitest/coverage-v8": "^4.0.18",
+    "commitizen": "^4.3.1",
+    "cz-conventional-changelog": "^3.3.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
