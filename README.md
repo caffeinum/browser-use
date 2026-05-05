@@ -428,4 +428,4 @@ pnpm exec tsx examples/simple-search.ts
 
 ## 📄 License
 
-[MIT](./LICENSE) © Web LLM
+[MIT](./LICENSE)

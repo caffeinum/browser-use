@@ -7,7 +7,8 @@
  * LLM Configuration (in order of preference):
  * 1. Azure OpenAI - Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
  * 2. OpenAI - Set OPENAI_API_KEY
- * 3. Google Gemini - Set GOOGLE_API_KEY
+ * 3. Anthropic - Set ANTHROPIC_API_KEY
+ * 4. Google Gemini - Set GOOGLE_API_KEY
  */
 
 import 'dotenv/config';
@@ -69,7 +70,7 @@ async function saveScreenshot(
 
 /**
  * Get an LLM based on available API keys
- * Priority: Azure OpenAI > OpenAI > Google Gemini
+ * Priority: Azure OpenAI > OpenAI > Anthropic > Google Gemini
  */
 async function getLLM(): Promise<BaseChatModel> {
   // Try Azure OpenAI first (enterprise-grade)
@@ -92,6 +93,13 @@ async function getLLM(): Promise<BaseChatModel> {
     return new ChatOpenAI('gpt-4o-mini');
   }
 
+  // Try Anthropic before Google
+  if (process.env.ANTHROPIC_API_KEY) {
+    const { ChatAnthropic } = await import('../src/llm/anthropic/chat.js');
+    console.log('🤖 Using Anthropic LLM (claude-sonnet-4-20250514)');
+    return new ChatAnthropic('claude-sonnet-4-20250514');
+  }
+
   // Fall back to Google
   if (process.env.GOOGLE_API_KEY) {
     const { ChatGoogle } = await import('../src/llm/google/chat.js');
@@ -106,6 +114,7 @@ async function getLLM(): Promise<BaseChatModel> {
     'No LLM API key found. Please set one of:\n' +
       '  - AZURE_OPENAI_API_KEY (recommended for enterprise)\n' +
       '  - OPENAI_API_KEY\n' +
+      '  - ANTHROPIC_API_KEY\n' +
       '  - GOOGLE_API_KEY'
   );
 }
@@ -119,7 +128,7 @@ async function main() {
     console.log('\nTo run this example:');
     console.log('  1. Copy .env.example to .env');
     console.log(
-      '  2. Add your AZURE_OPENAI_API_KEY, OPENAI_API_KEY, or GOOGLE_API_KEY'
+      '  2. Add your AZURE_OPENAI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY'
     );
     console.log('  3. Run: pnpm exec tsx examples/search-wikipedia.ts');
     process.exit(1);
@@ -146,8 +155,7 @@ async function main() {
     const page: Page = await context.newPage();
 
     // Navigate to the Wikipedia page first
-    console.log('📄 Navigating to Wikipedia TDD page...');
-    await page.goto('https://en.wikipedia.org/', {
+    await page.goto('https://www.google.com/', {
       waitUntil: 'domcontentloaded',
     });
 

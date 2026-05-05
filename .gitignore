@@ -139,4 +139,4 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 recordings/
 browseruse_agent_data/
-py-browser-use/
+origin/
