@@ -110,9 +110,16 @@ describe('ClickElementActionSchema lenient index coercion', () => {
     if (result.success) expect(result.data.index).toBe(1);
   });
 
-  it('rejects {index: false} because min=1', () => {
+  it('accepts {index: false} as {index: 0} (index 0 is the first DOM element)', () => {
     const result = ClickElementActionSchema.safeParse({ index: false });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.index).toBe(0);
+  });
+
+  it('accepts {index: 0} (first element on page)', () => {
+    const result = ClickElementActionSchema.safeParse({ index: 0 });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.index).toBe(0);
   });
 });
 
@@ -134,9 +141,10 @@ describe('DropdownOptionsActionSchema lenient index coercion', () => {
     if (result.success) expect(result.data.index).toBe(1);
   });
 
-  it('rejects {index: false} because min=1', () => {
+  it('accepts {index: false} as {index: 0}', () => {
     const result = DropdownOptionsActionSchema.safeParse({ index: false });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.index).toBe(0);
   });
 });
 
@@ -148,6 +156,15 @@ describe('SelectDropdownActionSchema lenient index coercion', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.index).toBe(1);
+  });
+
+  it('accepts {index: false, text: "opt"} as {index: 0, ...}', () => {
+    const result = SelectDropdownActionSchema.safeParse({
+      index: false,
+      text: 'opt',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.index).toBe(0);
   });
 });
 
