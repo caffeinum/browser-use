@@ -1,4 +1,6 @@
 import { z } from 'zod';
+export declare const lenientInt: (min?: number) => z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
+export declare const lenientNumber: () => z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
 export declare const SearchGoogleActionSchema: z.ZodObject<{
     query: z.ZodString;
 }, z.core.$strip>;
@@ -18,17 +20,17 @@ export declare const WaitActionSchema: z.ZodObject<{
 }, z.core.$strip>;
 export type WaitAction = z.infer<typeof WaitActionSchema>;
 export declare const ClickElementActionSchema: z.ZodObject<{
-    index: z.ZodOptional<z.ZodNumber>;
+    index: z.ZodOptional<z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>>;
     coordinate_x: z.ZodOptional<z.ZodNumber>;
     coordinate_y: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
 export type ClickElementAction = z.infer<typeof ClickElementActionSchema>;
 export declare const ClickElementActionIndexOnlySchema: z.ZodObject<{
-    index: z.ZodNumber;
+    index: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
 }, z.core.$strip>;
 export type ClickElementActionIndexOnly = z.infer<typeof ClickElementActionIndexOnlySchema>;
 export declare const InputTextActionSchema: z.ZodObject<{
-    index: z.ZodNumber;
+    index: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
     text: z.ZodString;
     clear: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>;
@@ -59,9 +61,9 @@ export declare const CloseTabActionSchema: z.ZodObject<{
 export type CloseTabAction = z.infer<typeof CloseTabActionSchema>;
 export declare const ScrollActionSchema: z.ZodObject<{
     down: z.ZodDefault<z.ZodBoolean>;
-    num_pages: z.ZodDefault<z.ZodNumber>;
-    pages: z.ZodOptional<z.ZodNumber>;
-    index: z.ZodOptional<z.ZodNumber>;
+    num_pages: z.ZodDefault<z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>>;
+    pages: z.ZodOptional<z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>>;
+    index: z.ZodOptional<z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>>;
 }, z.core.$strip>;
 export type ScrollAction = z.infer<typeof ScrollActionSchema>;
 export declare const SendKeysActionSchema: z.ZodObject<{
@@ -69,7 +71,7 @@ export declare const SendKeysActionSchema: z.ZodObject<{
 }, z.core.$strip>;
 export type SendKeysAction = z.infer<typeof SendKeysActionSchema>;
 export declare const UploadFileActionSchema: z.ZodObject<{
-    index: z.ZodNumber;
+    index: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
     path: z.ZodString;
 }, z.core.$strip>;
 export type UploadFileAction = z.infer<typeof UploadFileActionSchema>;
@@ -140,11 +142,11 @@ export declare const ScrollToTextActionSchema: z.ZodObject<{
 }, z.core.$strip>;
 export type ScrollToTextAction = z.infer<typeof ScrollToTextActionSchema>;
 export declare const DropdownOptionsActionSchema: z.ZodObject<{
-    index: z.ZodNumber;
+    index: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
 }, z.core.$strip>;
 export type DropdownOptionsAction = z.infer<typeof DropdownOptionsActionSchema>;
 export declare const SelectDropdownActionSchema: z.ZodObject<{
-    index: z.ZodNumber;
+    index: z.ZodPipe<z.ZodTransform<unknown, unknown>, z.ZodNumber>;
     text: z.ZodString;
 }, z.core.$strip>;
 export type SelectDropdownAction = z.infer<typeof SelectDropdownActionSchema>;
