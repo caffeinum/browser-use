@@ -589,7 +589,7 @@ export class Controller {
                 long_term_memory: msg,
             });
         };
-        this.registry.action('Click and input text into an input interactive element', { param_model: InputTextActionSchema })(async function input_text(params, { browser_session, has_sensitive_data, sensitive_data, signal }) {
+        this.registry.action('Click and input text into an input interactive element. Provide `index` as the integer index of the target element from the marked DOM. Example: {index: 12, text: "hello"}', { param_model: InputTextActionSchema })(async function input_text(params, { browser_session, has_sensitive_data, sensitive_data, signal }) {
             return inputImpl(params, {
                 browser_session,
                 has_sensitive_data,
