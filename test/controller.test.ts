@@ -1828,11 +1828,23 @@ describe('Regression Coverage', () => {
     ).toBe(false);
   });
 
-  it('click action rejects index 0', async () => {
+  it('click action accepts index 0 (first DOM element on page)', async () => {
     const controller = new Controller();
-    await expect(
-      controller.registry.execute_action('click', { index: 0 })
-    ).rejects.toThrow('Too small: expected number to be >=1');
+    const element = { xpath: '/html/body/button' };
+    const browserSession = {
+      get_dom_element_by_index: vi.fn(async () => element),
+      _click_element_node: vi.fn(async () => null),
+    };
+
+    const result = await controller.registry.execute_action(
+      'click',
+      { index: 0 },
+      { browser_session: browserSession as any }
+    );
+
+    expect(result.error).toBeNull();
+    expect(browserSession.get_dom_element_by_index).toHaveBeenCalled();
+    expect(browserSession.get_dom_element_by_index.mock.calls[0][0]).toBe(0);
   });
 
   it('input_text forwards clear=false to browser session', async () => {
