@@ -904,7 +904,7 @@ export class Controller<Context = unknown> {
     };
 
     this.registry.action(
-      'Click and input text into an input interactive element',
+      'Click and input text into an input interactive element. Provide `index` as the integer index of the target element from the marked DOM. Example: {index: 12, text: "hello"}',
       { param_model: InputTextActionSchema }
     )(async function input_text(
       params: InputTextAction,
