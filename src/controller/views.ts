@@ -39,7 +39,7 @@ export type ClickElementActionIndexOnly = z.infer<
 export const InputTextActionSchema = z.object({
   index: z.number().int().min(0),
   text: z.string(),
-  clear: z.boolean().default(true),
+  clear: z.boolean().optional(),
 });
 export type InputTextAction = z.infer<typeof InputTextActionSchema>;
 
