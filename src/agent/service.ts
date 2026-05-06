@@ -5623,8 +5623,17 @@ export class Agent<
         {}) as unknown;
       const paramsResult = actionInfo.paramSchema.safeParse(rawParams);
       if (!paramsResult.success) {
+        // Surface a human-readable issue list (zod v4 `prettifyError`) plus
+        // a corrective hint, rather than the default JSON dump of `.issues`.
+        // This Error propagates → `_handle_step_error` writes it into
+        // `state.last_result` → `create_state_messages` injects it into the
+        // next LLM turn, so the model knows exactly what shape it got wrong.
+        const pretty = z.prettifyError(paramsResult.error);
+        const sentParams = JSON.stringify(rawParams);
         throw new Error(
-          `Invalid parameters for action '${requestedActionName}': ${paramsResult.error.message}`
+          `Schema validation failed for action '${requestedActionName}'. ` +
+            `You sent: ${sentParams}. Issues:\n${pretty}\n` +
+            `Please retry with parameters matching the action's schema exactly.`
         );
       }
 
