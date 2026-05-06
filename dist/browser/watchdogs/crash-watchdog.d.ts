@@ -1,0 +1,38 @@
+import { BrowserConnectedEvent, BrowserErrorEvent, BrowserStoppedEvent, TabClosedEvent, TargetCrashedEvent } from '../events.js';
+import { BaseWatchdog } from './base.js';
+export declare class CrashWatchdog extends BaseWatchdog {
+    static LISTENS_TO: (typeof BrowserConnectedEvent | typeof BrowserStoppedEvent | typeof TabClosedEvent)[];
+    static EMITS: (typeof TargetCrashedEvent | typeof BrowserErrorEvent)[];
+    private _pageListeners;
+    private _pendingRequests;
+    private _requestIds;
+    private _requestCounter;
+    private _healthInterval;
+    private _networkTimeoutMs;
+    private _healthCheckIntervalMs;
+    private _consecutiveUnresponsiveChecks;
+    private _unresponsiveThreshold;
+    private _monitoringInProgress;
+    on_BrowserConnectedEvent(): Promise<void>;
+    on_TabCreatedEvent(): Promise<void>;
+    on_TabClosedEvent(): Promise<void>;
+    on_BrowserStoppedEvent(): Promise<void>;
+    protected onDetached(): void;
+    private _attachToKnownPages;
+    private _dropDetachedPages;
+    private _detachAllPages;
+    private _attachPage;
+    private _detachPageListeners;
+    private _getKnownPages;
+    private _handlePageCrash;
+    private _resolveTargetId;
+    private _safePageUrl;
+    private _normalizeCrashError;
+    private _trackRequestStart;
+    private _trackRequestDone;
+    private _startHealthMonitor;
+    private _stopHealthMonitor;
+    private _runHealthCheck;
+    private _checkNetworkTimeouts;
+    private _checkPageResponsiveness;
+}

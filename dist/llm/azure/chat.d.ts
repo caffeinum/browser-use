@@ -1,0 +1,66 @@
+import type { BaseChatModel, ChatInvokeOptions } from '../base.js';
+import type { Message } from '../messages.js';
+import { ChatInvokeCompletion } from '../views.js';
+export interface ChatAzureOptions {
+    model?: string;
+    apiKey?: string;
+    endpoint?: string;
+    baseURL?: string;
+    apiVersion?: string;
+    deployment?: string;
+    azureAdToken?: string | null;
+    azureAdTokenProvider?: (() => Promise<string>) | null;
+    timeout?: number | null;
+    temperature?: number | null;
+    frequencyPenalty?: number | null;
+    reasoningEffort?: 'low' | 'medium' | 'high';
+    serviceTier?: 'auto' | 'default' | 'flex' | 'priority' | 'scale' | null;
+    maxCompletionTokens?: number | null;
+    topP?: number | null;
+    seed?: number | null;
+    maxRetries?: number;
+    defaultHeaders?: Record<string, string> | null;
+    defaultQuery?: Record<string, string | undefined> | null;
+    fetchImplementation?: typeof fetch;
+    fetchOptions?: RequestInit | null;
+    useResponsesApi?: boolean | 'auto';
+    addSchemaToSystemPrompt?: boolean;
+    dontForceStructuredOutput?: boolean;
+    removeMinItemsFromSchema?: boolean;
+    removeDefaultsFromSchema?: boolean;
+}
+export declare class ChatAzure implements BaseChatModel {
+    model: string;
+    provider: string;
+    private client;
+    private temperature;
+    private frequencyPenalty;
+    private reasoningEffort;
+    private serviceTier;
+    private maxCompletionTokens;
+    private topP;
+    private seed;
+    private useResponsesApi;
+    private addSchemaToSystemPrompt;
+    private dontForceStructuredOutput;
+    private removeMinItemsFromSchema;
+    private removeDefaultsFromSchema;
+    constructor(options?: string | ChatAzureOptions);
+    get name(): string;
+    get model_name(): string;
+    private isReasoningModel;
+    private shouldUseResponsesApi;
+    private getChatUsage;
+    private getResponsesUsage;
+    private getResponseOutputText;
+    private getModelParamsForCompletions;
+    private getModelParamsForResponses;
+    private getZodSchemaCandidate;
+    private applySchemaToSystemMessage;
+    ainvoke(messages: Message[], output_format?: undefined, options?: ChatInvokeOptions): Promise<ChatInvokeCompletion<string>>;
+    ainvoke<T>(messages: Message[], output_format: {
+        parse: (input: string) => T;
+    } | undefined, options?: ChatInvokeOptions): Promise<ChatInvokeCompletion<T>>;
+    private invokeChatCompletions;
+    private invokeResponses;
+}

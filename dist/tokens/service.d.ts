@@ -1,0 +1,35 @@
+import type { BaseChatModel } from '../llm/base.js';
+import type { ChatInvokeUsage } from '../llm/views.js';
+import { ModelPricing, ModelUsageStats, ModelUsageTokens, TokenCostCalculated, TokenUsageEntry, UsageSummary } from './views.js';
+export declare class TokenCost {
+    private includeCost;
+    private usageHistory;
+    private registeredLlms;
+    private originalAinvoke;
+    private pricingData;
+    private initialized;
+    private cacheDir;
+    constructor(includeCost?: boolean);
+    initialize(): Promise<void>;
+    private loadPricingData;
+    private findValidCache;
+    private isCacheValid;
+    private loadFromCache;
+    private fetchAndCachePricing;
+    addUsage(model: string, usage: ChatInvokeUsage): TokenUsageEntry;
+    register_llm(llm: BaseChatModel): BaseChatModel;
+    private logUsage;
+    private buildInputDisplay;
+    private formatTokens;
+    calculateCost(model: string, usage: ChatInvokeUsage): Promise<TokenCostCalculated | null>;
+    getModelPricing(modelName: string): Promise<ModelPricing | null>;
+    get_usage_tokens_for_model(model: string): ModelUsageTokens;
+    get_usage_summary(model?: string, since?: Date): Promise<UsageSummary>;
+    log_usage_summary(): Promise<void>;
+    get_cost_by_model: () => Promise<Record<string, ModelUsageStats>>;
+    clear_history(): void;
+    refresh_pricing_data(): Promise<void>;
+    clean_old_caches(keepCount?: number): Promise<void>;
+    ensurePricingLoaded(): Promise<void>;
+    estimateTokens(text: string): number;
+}

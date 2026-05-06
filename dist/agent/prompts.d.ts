@@ -1,0 +1,73 @@
+import { SystemMessage, UserMessage, ContentPartTextParam, ContentPartImageParam } from '../llm/messages.js';
+import type { AgentStepInfo } from './views.js';
+import type { BrowserStateSummary } from '../browser/views.js';
+import type { FileSystem } from '../filesystem/file-system.js';
+export declare class SystemPrompt {
+    private readonly maxActionsPerStep;
+    private readonly overrideSystemMessage;
+    private readonly extendSystemMessage;
+    private readonly useThinking;
+    private readonly flashMode;
+    private readonly isAnthropic;
+    private readonly isBrowserUseModel;
+    private readonly modelName;
+    private promptTemplate;
+    private systemMessage;
+    constructor(maxActionsPerStep?: number, overrideSystemMessage?: string | null, extendSystemMessage?: string | null, useThinking?: boolean, flashMode?: boolean, isAnthropic?: boolean, isBrowserUseModel?: boolean, modelName?: string | null);
+    private isAnthropic45Model;
+    private loadPromptTemplate;
+    get_system_message(): SystemMessage;
+}
+interface AgentMessagePromptInit {
+    browser_state_summary: BrowserStateSummary;
+    file_system: FileSystem;
+    agent_history_description?: string | null;
+    read_state_description?: string | null;
+    task?: string | null;
+    include_attributes?: string[] | null;
+    step_info?: AgentStepInfo | null;
+    page_filtered_actions?: string | null;
+    max_clickable_elements_length?: number;
+    sensitive_data?: string | null;
+    available_file_paths?: string[] | null;
+    screenshots?: string[] | null;
+    vision_detail_level?: 'auto' | 'low' | 'high';
+    include_recent_events?: boolean;
+    sample_images?: Array<ContentPartTextParam | ContentPartImageParam> | null;
+    read_state_images?: Array<Record<string, unknown>> | null;
+    llm_screenshot_size?: [number, number] | null;
+    unavailable_skills_info?: string | null;
+    plan_description?: string | null;
+}
+export declare class AgentMessagePrompt {
+    private readonly browserState;
+    private readonly fileSystem;
+    private readonly agentHistoryDescription;
+    private readonly readStateDescription;
+    private readonly task;
+    private readonly includeAttributes?;
+    private readonly stepInfo?;
+    private readonly pageFilteredActions;
+    private readonly maxClickableElementsLength;
+    private readonly sensitiveData;
+    private readonly availableFilePaths?;
+    private readonly screenshots;
+    private readonly visionDetailLevel;
+    private readonly includeRecentEvents;
+    private readonly sampleImages;
+    private readonly readStateImages;
+    private readonly llmScreenshotSize;
+    private readonly unavailableSkillsInfo;
+    private readonly planDescription;
+    constructor(init: AgentMessagePromptInit);
+    private extractPageStatistics;
+    private browserStateDescription;
+    private agentStateDescription;
+    private resizeScreenshotForLlm;
+    get_user_message(use_vision?: boolean): UserMessage;
+}
+export declare const get_rerun_summary_prompt: (originalTask: string, totalSteps: number, successCount: number, errorCount: number) => string;
+export declare const get_rerun_summary_message: (prompt: string, screenshotB64?: string | null) => UserMessage;
+export declare const get_ai_step_system_prompt: () => string;
+export declare const get_ai_step_user_prompt: (query: string, statsSummary: string, content: string) => string;
+export {};

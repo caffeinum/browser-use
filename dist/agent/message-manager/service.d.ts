@@ -1,0 +1,38 @@
+import { ContentPartImageParam, ContentPartTextParam, SystemMessage, UserMessage, type Message } from '../../llm/messages.js';
+import type { BaseChatModel } from '../../llm/base.js';
+import { ActionResult, AgentOutput, AgentStepInfo, MessageCompactionSettings } from '../views.js';
+import { BrowserStateSummary } from '../../browser/views.js';
+import { FileSystem } from '../../filesystem/file-system.js';
+import { MessageManagerState } from './views.js';
+export declare class MessageManager {
+    private readonly fileSystem;
+    private readonly state;
+    private readonly useThinking;
+    private readonly sensitiveData?;
+    private readonly maxHistoryItems;
+    private readonly visionDetailLevel;
+    private readonly includeToolCallExamples;
+    private readonly includeRecentEvents;
+    private readonly sampleImages;
+    private readonly llmScreenshotSize;
+    private task;
+    private systemPrompt;
+    private sensitiveDataDescription;
+    private lastInputMessages;
+    private includeAttributes;
+    last_state_message_text: string | null;
+    constructor(task: string, systemMessage: SystemMessage, fileSystem: FileSystem, state?: MessageManagerState, useThinking?: boolean, includeAttributes?: string[] | null, sensitiveData?: Record<string, string | Record<string, string>> | undefined, maxHistoryItems?: number | null, visionDetailLevel?: 'auto' | 'low' | 'high', includeToolCallExamples?: boolean, includeRecentEvents?: boolean, sampleImages?: Array<ContentPartTextParam | ContentPartImageParam> | null, llmScreenshotSize?: [number, number] | null);
+    get agent_history_description(): string;
+    add_new_task(new_task: string): void;
+    private updateAgentHistoryDescription;
+    private getSensitiveDataDescription;
+    prepare_step_state(browser_state_summary: BrowserStateSummary, model_output?: AgentOutput | null, result?: ActionResult[] | null, step_info?: AgentStepInfo | null, sensitive_data?: Record<string, string | Record<string, string>> | null): void;
+    maybe_compact_messages(llm: BaseChatModel | null, settings: MessageCompactionSettings | null, step_info?: AgentStepInfo | null): Promise<boolean>;
+    create_state_messages(browser_state_summary: BrowserStateSummary, model_output?: AgentOutput | null, result?: ActionResult[] | null, step_info?: AgentStepInfo | null, use_vision?: boolean | 'auto', page_filtered_actions?: string | null, sensitive_data?: Record<string, string | Record<string, string>> | null, available_file_paths?: string[] | null, include_recent_events?: boolean | null, plan_description?: string | null, unavailable_skills_info?: string | null, skip_state_update?: boolean): void;
+    get_messages(): Message[];
+    private setMessageWithType;
+    private addContextMessage;
+    _add_context_message(message: SystemMessage | UserMessage): void;
+    private extractStateMessageText;
+    private filterSensitiveData;
+}

@@ -1,0 +1,64 @@
+import type { BaseChatModel, ChatInvokeOptions } from '../base.js';
+import type { Message } from '../messages.js';
+import { ChatInvokeCompletion } from '../views.js';
+export interface ChatOCIRawOptions {
+    model?: string;
+    modelId?: string;
+    serviceEndpoint?: string;
+    compartmentId?: string;
+    provider?: string;
+    temperature?: number | null;
+    maxTokens?: number | null;
+    frequencyPenalty?: number | null;
+    presencePenalty?: number | null;
+    topP?: number | null;
+    topK?: number | null;
+    authType?: 'API_KEY' | 'INSTANCE_PRINCIPAL' | 'RESOURCE_PRINCIPAL' | string;
+    authProfile?: string;
+    configFilePath?: string;
+    tenancyId?: string;
+    userId?: string;
+    fingerprint?: string;
+    privateKey?: string;
+    passphrase?: string | null;
+    responseSchemaName?: string;
+}
+export declare class ChatOCIRaw implements BaseChatModel {
+    model: string;
+    provider: string;
+    private readonly serviceEndpoint;
+    private readonly compartmentId;
+    private readonly ociProvider;
+    private readonly temperature;
+    private readonly maxTokens;
+    private readonly frequencyPenalty;
+    private readonly presencePenalty;
+    private readonly topP;
+    private readonly topK;
+    private readonly authType;
+    private readonly authProfile;
+    private readonly configFilePath?;
+    private readonly tenancyId?;
+    private readonly userId?;
+    private readonly fingerprint?;
+    private readonly privateKey?;
+    private readonly passphrase;
+    private readonly responseSchemaName;
+    private clientPromise;
+    constructor(options?: ChatOCIRawOptions);
+    get name(): string;
+    get model_name(): string;
+    private usesCohereFormat;
+    private createAuthProvider;
+    private getClient;
+    private getUsage;
+    private buildGenericRequest;
+    private buildCohereRequest;
+    private buildChatRequest;
+    private extractText;
+    private mapError;
+    ainvoke(messages: Message[], outputFormat?: undefined, options?: ChatInvokeOptions): Promise<ChatInvokeCompletion<string>>;
+    ainvoke<T>(messages: Message[], outputFormat: {
+        parse: (input: unknown) => T;
+    } | undefined, options?: ChatInvokeOptions): Promise<ChatInvokeCompletion<T>>;
+}

@@ -1,0 +1,305 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+import { CONFIG } from '../../config.js';
+import { ModelProviderError, ModelRateLimitError } from '../exceptions.js';
+import { zodSchemaToJsonSchema } from '../schema.js';
+import { ChatInvokeCompletion } from '../views.js';
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const VALID_MODELS = new Set(['bu-latest', 'bu-1-0', 'bu-2-0']);
+class HttpStatusError extends Error {
+    statusCode;
+    detail;
+    constructor(statusCode, detail) {
+        super(`HTTP ${statusCode}: ${detail}`);
+        this.statusCode = statusCode;
+        this.detail = detail;
+        this.name = 'HttpStatusError';
+    }
+}
+const isAbortError = (error) => error instanceof Error && error.name === 'AbortError';
+const getJsonErrorDetail = (value) => {
+    if (!value || typeof value !== 'object') {
+        return '';
+    }
+    const detail = value.detail ?? value.error ?? value.message;
+    if (typeof detail === 'string') {
+        return detail;
+    }
+    try {
+        return JSON.stringify(value);
+    }
+    catch {
+        return '';
+    }
+};
+export class ChatBrowserUse {
+    model;
+    provider = 'browser-use';
+    apiKey;
+    baseUrl;
+    timeoutMs;
+    maxRetries;
+    retryBaseDelay;
+    retryMaxDelay;
+    fast;
+    fetchImplementation;
+    constructor(options = {}) {
+        const { model = 'bu-latest', apiKey = process.env.BROWSER_USE_API_KEY, baseUrl = process.env.BROWSER_USE_LLM_URL ??
+            'https://llm.api.browser-use.com', timeout = 120, maxRetries = 5, retryBaseDelay = 1.0, retryMaxDelay = 60.0, fast = false, fetchImplementation = fetch, } = options;
+        const isValidModel = VALID_MODELS.has(model) || model.startsWith('browser-use/');
+        if (!isValidModel) {
+            throw new Error(`Invalid model: '${model}'. Must be one of bu-latest, bu-1-0, bu-2-0 or start with 'browser-use/'`);
+        }
+        this.model = model === 'bu-latest' ? 'bu-1-0' : model;
+        if (!apiKey) {
+            throw new Error('You need to set the BROWSER_USE_API_KEY environment variable. Get your key at https://cloud.browser-use.com/new-api-key');
+        }
+        this.apiKey = apiKey;
+        this.baseUrl = baseUrl.replace(/\/+$/, '');
+        this.timeoutMs = Math.max(1, Math.round(timeout * 1000));
+        this.maxRetries = Math.max(1, Math.trunc(maxRetries));
+        this.retryBaseDelay = Math.max(0.001, retryBaseDelay);
+        this.retryMaxDelay = Math.max(this.retryBaseDelay, retryMaxDelay);
+        this.fast = fast;
+        this.fetchImplementation = fetchImplementation;
+    }
+    get name() {
+        return this.model;
+    }
+    get model_name() {
+        return this.model;
+    }
+    getOutputSchema(output_format) {
+        const output = output_format;
+        if (!output || typeof output !== 'object') {
+            return null;
+        }
+        if (typeof output.model_json_schema === 'function') {
+            const schema = output.model_json_schema();
+            if (schema && typeof schema === 'object') {
+                return schema;
+            }
+        }
+        if (typeof output.safeParse === 'function' &&
+            typeof output.parse === 'function') {
+            return zodSchemaToJsonSchema(output, {
+                name: 'Response',
+                target: 'jsonSchema7',
+            });
+        }
+        if (output.schema &&
+            typeof output.schema.safeParse === 'function' &&
+            typeof output.schema.parse === 'function') {
+            return zodSchemaToJsonSchema(output.schema, {
+                name: 'Response',
+                target: 'jsonSchema7',
+            });
+        }
+        if (output.schema && typeof output.schema === 'object') {
+            const schemaCandidate = output.schema;
+            const schema = typeof schemaCandidate.toJSON === 'function'
+                ? schemaCandidate.toJSON()
+                : schemaCandidate;
+            if (schema && typeof schema === 'object') {
+                return schema;
+            }
+        }
+        return null;
+    }
+    parseOutput(output_format, payload) {
+        const output = output_format;
+        if (output &&
+            typeof output === 'object' &&
+            output.schema &&
+            typeof output.schema.parse === 'function') {
+            return output.schema.parse(payload);
+        }
+        return output.parse(payload);
+    }
+    serializeMessage(message) {
+        return {
+            role: message.role,
+            content: message.content,
+        };
+    }
+    getUsage(payload) {
+        if (!payload || typeof payload !== 'object') {
+            return null;
+        }
+        const usage = payload.usage;
+        if (!usage || typeof usage !== 'object') {
+            return null;
+        }
+        return {
+            prompt_tokens: Number(usage.prompt_tokens ?? 0) || 0,
+            prompt_cached_tokens: usage.prompt_cached_tokens == null
+                ? null
+                : Number(usage.prompt_cached_tokens),
+            prompt_cache_creation_tokens: usage.prompt_cache_creation_tokens == null
+                ? null
+                : Number(usage.prompt_cache_creation_tokens),
+            prompt_image_tokens: usage.prompt_image_tokens == null
+                ? null
+                : Number(usage.prompt_image_tokens),
+            completion_tokens: Number(usage.completion_tokens ?? 0) || 0,
+            total_tokens: Number(usage.total_tokens ?? 0) || 0,
+        };
+    }
+    raiseHttpError(statusCode, detail) {
+        const errorDetail = detail || `HTTP ${statusCode}`;
+        if (statusCode === 401) {
+            throw new ModelProviderError(`Invalid API key. ${errorDetail}`, 401, this.model);
+        }
+        if (statusCode === 402) {
+            throw new ModelProviderError(`Insufficient credits. ${errorDetail}`, 402, this.model);
+        }
+        if (statusCode === 429) {
+            throw new ModelRateLimitError(`Rate limit exceeded. ${errorDetail}`, 429, this.model);
+        }
+        if (RETRYABLE_STATUS_CODES.has(statusCode)) {
+            throw new ModelProviderError(`Server error. ${errorDetail}`, statusCode, this.model);
+        }
+        throw new ModelProviderError(`API request failed: ${errorDetail}`, statusCode, this.model);
+    }
+    isRetryableNetworkError(error) {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        if (isAbortError(error)) {
+            return false;
+        }
+        const message = error.message.toLowerCase();
+        return (message.includes('fetch failed') ||
+            message.includes('networkerror') ||
+            message.includes('econnreset') ||
+            message.includes('econnrefused') ||
+            message.includes('enotfound') ||
+            message.includes('etimedout') ||
+            message.includes('timeout'));
+    }
+    async makeRequest(payload, signal) {
+        const controller = new AbortController();
+        const timeoutHandle = setTimeout(() => controller.abort(), this.timeoutMs);
+        const onAbort = () => controller.abort();
+        if (signal) {
+            if (signal.aborted) {
+                controller.abort();
+            }
+            else {
+                signal.addEventListener('abort', onAbort, { once: true });
+            }
+        }
+        try {
+            const response = await this.fetchImplementation(`${this.baseUrl}/v1/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${this.apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            });
+            if (!response.ok) {
+                let detail = '';
+                try {
+                    const errorJson = await response.json();
+                    detail = getJsonErrorDetail(errorJson);
+                }
+                catch {
+                    try {
+                        detail = await response.text();
+                    }
+                    catch {
+                        detail = '';
+                    }
+                }
+                throw new HttpStatusError(response.status, detail);
+            }
+            const result = await response.json();
+            return result && typeof result === 'object'
+                ? result
+                : {};
+        }
+        catch (error) {
+            if (isAbortError(error) && !signal?.aborted) {
+                throw new ModelProviderError(`Request timed out after ${Math.round(this.timeoutMs / 1000)}s`, 408, this.model);
+            }
+            throw error;
+        }
+        finally {
+            clearTimeout(timeoutHandle);
+            signal?.removeEventListener('abort', onAbort);
+        }
+    }
+    async ainvoke(messages, output_format, options = {}) {
+        const payload = {
+            model: this.model,
+            messages: messages.map((message) => this.serializeMessage(message)),
+            fast: this.fast,
+            request_type: options.request_type ?? 'browser_agent',
+            anonymized_telemetry: CONFIG.ANONYMIZED_TELEMETRY,
+        };
+        if (typeof options.session_id === 'string') {
+            payload.session_id = options.session_id;
+        }
+        const schema = this.getOutputSchema(output_format);
+        if (schema) {
+            payload.output_format = schema;
+        }
+        let result = null;
+        for (let attempt = 0; attempt < this.maxRetries; attempt += 1) {
+            try {
+                result = await this.makeRequest(payload, options.signal);
+                break;
+            }
+            catch (error) {
+                if (isAbortError(error)) {
+                    throw error;
+                }
+                const statusCode = error instanceof HttpStatusError
+                    ? error.statusCode
+                    : (error?.statusCode ?? null);
+                const retryableHttp = typeof statusCode === 'number' &&
+                    RETRYABLE_STATUS_CODES.has(statusCode);
+                const retryableNetwork = this.isRetryableNetworkError(error);
+                if (attempt < this.maxRetries - 1 &&
+                    (retryableHttp || retryableNetwork)) {
+                    const delaySeconds = Math.min(this.retryBaseDelay * 2 ** attempt, this.retryMaxDelay);
+                    const jitter = Math.random() * delaySeconds * 0.1;
+                    const sleepMs = Math.max(1, Math.round((delaySeconds + jitter) * 1000));
+                    await sleep(sleepMs);
+                    continue;
+                }
+                if (error instanceof HttpStatusError) {
+                    this.raiseHttpError(error.statusCode, error.detail);
+                }
+                if (error instanceof ModelProviderError) {
+                    throw error;
+                }
+                throw new ModelProviderError(`Failed to connect to browser-use API: ${error instanceof Error ? error.message : String(error)}`, 502, this.model);
+            }
+        }
+        if (result == null) {
+            throw new ModelProviderError('Request failed without a response payload.', 502, this.model);
+        }
+        const usage = this.getUsage(result);
+        const completionPayload = result.completion;
+        if (!output_format) {
+            const textCompletion = typeof completionPayload === 'string'
+                ? completionPayload
+                : JSON.stringify(completionPayload ?? '');
+            return new ChatInvokeCompletion(textCompletion, usage);
+        }
+        const parsedPayload = typeof completionPayload === 'string'
+            ? (() => {
+                try {
+                    return JSON.parse(completionPayload);
+                }
+                catch {
+                    return completionPayload;
+                }
+            })()
+            : completionPayload;
+        const completion = this.parseOutput(output_format, parsedPayload);
+        return new ChatInvokeCompletion(completion, usage);
+    }
+}
