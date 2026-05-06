@@ -30,7 +30,7 @@ export type ClickElementActionIndexOnly = z.infer<typeof ClickElementActionIndex
 export declare const InputTextActionSchema: z.ZodObject<{
     index: z.ZodNumber;
     text: z.ZodString;
-    clear: z.ZodDefault<z.ZodBoolean>;
+    clear: z.ZodOptional<z.ZodBoolean>;
 }, z.core.$strip>;
 export type InputTextAction = z.infer<typeof InputTextActionSchema>;
 export declare const DoneActionSchema: z.ZodObject<{

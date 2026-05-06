@@ -24,7 +24,7 @@ export const ClickElementActionIndexOnlySchema = z.object({
 export const InputTextActionSchema = z.object({
     index: z.number().int().min(0),
     text: z.string(),
-    clear: z.boolean().default(true),
+    clear: z.boolean().optional(),
 });
 export const DoneActionSchema = z.object({
     text: z.string(),
