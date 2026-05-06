@@ -26,12 +26,12 @@ export const WaitActionSchema = z.object({
     seconds: z.number().default(3),
 });
 export const ClickElementActionSchema = z.object({
-    index: lenientInt(1).optional(),
+    index: lenientInt(0).optional(),
     coordinate_x: z.number().int().optional(),
     coordinate_y: z.number().int().optional(),
 });
 export const ClickElementActionIndexOnlySchema = z.object({
-    index: lenientInt(1),
+    index: lenientInt(0),
 });
 export const InputTextActionSchema = z.object({
     index: lenientInt(0),
@@ -129,10 +129,10 @@ export const ScrollToTextActionSchema = z.object({
     text: z.string(),
 });
 export const DropdownOptionsActionSchema = z.object({
-    index: lenientInt(1),
+    index: lenientInt(0),
 });
 export const SelectDropdownActionSchema = z.object({
-    index: lenientInt(1),
+    index: lenientInt(0),
     text: z.string(),
 });
 export const SheetsRangeActionSchema = z.object({
