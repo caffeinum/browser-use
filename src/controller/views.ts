@@ -43,14 +43,14 @@ export const WaitActionSchema = z.object({
 export type WaitAction = z.infer<typeof WaitActionSchema>;
 
 export const ClickElementActionSchema = z.object({
-  index: lenientInt(1).optional(),
+  index: lenientInt(0).optional(),
   coordinate_x: z.number().int().optional(),
   coordinate_y: z.number().int().optional(),
 });
 export type ClickElementAction = z.infer<typeof ClickElementActionSchema>;
 
 export const ClickElementActionIndexOnlySchema = z.object({
-  index: lenientInt(1),
+  index: lenientInt(0),
 });
 export type ClickElementActionIndexOnly = z.infer<
   typeof ClickElementActionIndexOnlySchema
@@ -201,12 +201,12 @@ export const ScrollToTextActionSchema = z.object({
 export type ScrollToTextAction = z.infer<typeof ScrollToTextActionSchema>;
 
 export const DropdownOptionsActionSchema = z.object({
-  index: lenientInt(1),
+  index: lenientInt(0),
 });
 export type DropdownOptionsAction = z.infer<typeof DropdownOptionsActionSchema>;
 
 export const SelectDropdownActionSchema = z.object({
-  index: lenientInt(1),
+  index: lenientInt(0),
   text: z.string(),
 });
 export type SelectDropdownAction = z.infer<typeof SelectDropdownActionSchema>;
