@@ -287,6 +287,7 @@
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "prepack": "pnpm build",
+    "prepare": "npm run build",
     "postinstall": "playwright install chromium",
     "postinstall:ci": "playwright install --with-deps chromium"
   },
