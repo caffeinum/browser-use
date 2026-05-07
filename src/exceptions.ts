@@ -8,6 +8,22 @@ export class LLMException extends Error {
   }
 }
 
+export class JudgeSchemaInvalidError extends Error {
+  constructor(
+    public readonly judge: 'simple_judge' | 'judge_trace',
+    public readonly attempts: number,
+    public readonly prettyIssues: string,
+    public readonly rawCompletion: unknown
+  ) {
+    super(
+      `Judge (${judge}) failed schema validation after ${attempts} attempt(s). ` +
+        `Issues:\n${prettyIssues}\n` +
+        `Raw completion: ${typeof rawCompletion === 'string' ? rawCompletion : JSON.stringify(rawCompletion)}`
+    );
+    this.name = 'JudgeSchemaInvalidError';
+  }
+}
+
 export class URLNotAllowedError extends Error {
   constructor(
     public readonly url: string,
