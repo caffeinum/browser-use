@@ -8,6 +8,22 @@ export class LLMException extends Error {
         this.name = 'LLMException';
     }
 }
+export class JudgeSchemaInvalidError extends Error {
+    judge;
+    attempts;
+    prettyIssues;
+    rawCompletion;
+    constructor(judge, attempts, prettyIssues, rawCompletion) {
+        super(`Judge (${judge}) failed schema validation after ${attempts} attempt(s). ` +
+            `Issues:\n${prettyIssues}\n` +
+            `Raw completion: ${typeof rawCompletion === 'string' ? rawCompletion : JSON.stringify(rawCompletion)}`);
+        this.judge = judge;
+        this.attempts = attempts;
+        this.prettyIssues = prettyIssues;
+        this.rawCompletion = rawCompletion;
+        this.name = 'JudgeSchemaInvalidError';
+    }
+}
 export class URLNotAllowedError extends Error {
     url;
     allowedDomains;

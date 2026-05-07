@@ -323,6 +323,19 @@ export declare class Agent<Context = ControllerContext, AgentStructuredOutput = 
     private _update_loop_detector_actions;
     private _update_loop_detector_page_state;
     private _inject_budget_warning;
+    private static readonly JUDGE_SCHEMA_MAX_RETRIES;
+    /**
+     * Invoke a judge LLM with the given messages and schema, retrying on zod
+     * validation failure with prettified feedback injected back into the
+     * conversation. On exhaustion, throws JudgeSchemaInvalidError so the
+     * orchestrator can surface an explicit failure_reason instead of silently
+     * falling through to the agent's last claim.
+     *
+     * Pairs strict zod with retry-with-feedback (per
+     * reference_zod_pydantic_parity.md memory) — does NOT mask model bugs
+     * by lax-coercing missing fields to defaults.
+     */
+    private _invokeJudgeWithRetry;
     private _run_simple_judge;
     private _judge_trace;
     private _judge_and_log;

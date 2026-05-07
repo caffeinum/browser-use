@@ -22,6 +22,7 @@ import { DEFAULT_INCLUDE_ATTRIBUTES, } from '../dom/views.js';
 import { extractCleanMarkdownFromHtml } from '../dom/markdown-extractor.js';
 import { ChatBrowserUse } from '../llm/browser-use/chat.js';
 import { ModelProviderError, ModelRateLimitError } from '../llm/exceptions.js';
+import { JudgeSchemaInvalidError } from '../exceptions.js';
 import { AssistantMessage, ContentPartTextParam, SystemMessage, UserMessage, } from '../llm/messages.js';
 import { getLlmByName } from '../llm/models.js';
 import { ActionResult, AgentHistory, AgentHistoryList, AgentOutput, AgentState, AgentStepInfo, AgentError, StepMetadata, ActionModel, PlanItem, defaultMessageCompactionSettings, normalizeMessageCompactionSettings, } from './views.js';
@@ -3390,6 +3391,71 @@ export class Agent {
         this.logger.info(`Step budget warning: ${stepsUsed}/${step_info.max_steps} (${pct}%)`);
         this._message_manager._add_context_message(new UserMessage(message));
     }
+    // Max retries when a judge response fails zod schema validation.
+    // First attempt + retries = total LLM calls. Matches PR #34's
+    // action-emission retry pattern (feedback-driven self-correction).
+    static JUDGE_SCHEMA_MAX_RETRIES = 2;
+    /**
+     * Invoke a judge LLM with the given messages and schema, retrying on zod
+     * validation failure with prettified feedback injected back into the
+     * conversation. On exhaustion, throws JudgeSchemaInvalidError so the
+     * orchestrator can surface an explicit failure_reason instead of silently
+     * falling through to the agent's last claim.
+     *
+     * Pairs strict zod with retry-with-feedback (per
+     * reference_zod_pydantic_parity.md memory) — does NOT mask model bugs
+     * by lax-coercing missing fields to defaults.
+     */
+    async _invokeJudgeWithRetry(judgeName, llm, initialMessages, schema, outputFormat, judgeKeys, invokeOptions) {
+        const messages = [...initialMessages];
+        let lastError = null;
+        let lastCompletion = undefined;
+        const maxAttempts = Agent.JUDGE_SCHEMA_MAX_RETRIES + 1;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            const response = await llm.ainvoke(messages, outputFormat, invokeOptions);
+            lastCompletion = response.completion;
+            const parsed = this._parseCompletionPayload(lastCompletion);
+            const validation = schema.safeParse(parsed);
+            if (validation.success) {
+                return validation.data;
+            }
+            lastError = validation.error;
+            // If the first response shows no judge-related keys at all (e.g. the
+            // LLM returned an agent-step JSON because the caller wired the same
+            // mock for both agent and judge), treat it as "not a judge response"
+            // and silently skip — preserves prior graceful-skip behavior.
+            if (attempt === 1) {
+                const hasAnyJudgeKey = parsed && typeof parsed === 'object'
+                    ? judgeKeys.some((k) => k in parsed)
+                    : false;
+                if (!hasAnyJudgeKey) {
+                    this.logger.debug(`${judgeName} response has no judge-related keys; skipping override.`);
+                    return undefined;
+                }
+            }
+            if (attempt < maxAttempts) {
+                // Inject feedback for retry: assistant turn echoing what model sent,
+                // user turn with prettified zod issues + corrective hint. Mirrors the
+                // pattern in `_validateAndNormalizeActions` (PR #34).
+                const pretty = z.prettifyError(lastError);
+                const sent = JSON.stringify(parsed);
+                const assistantText = typeof lastCompletion === 'string'
+                    ? lastCompletion
+                    : JSON.stringify(lastCompletion);
+                messages.push(new AssistantMessage({ content: assistantText }));
+                messages.push(new UserMessage(`Your previous response failed schema validation.\n` +
+                    `You sent: ${sent}\n` +
+                    `Issues:\n${pretty}\n` +
+                    `Please re-emit a valid response matching the schema exactly. ` +
+                    `All required fields must be present with the correct type.`));
+                this.logger.warning(`${judgeName} schema validation failed on attempt ${attempt}/${maxAttempts}; retrying with feedback. Issues:\n${pretty}`);
+            }
+        }
+        const pretty = lastError
+            ? z.prettifyError(lastError)
+            : 'unknown validation error';
+        throw new JudgeSchemaInvalidError(judgeName, maxAttempts, pretty, lastCompletion);
+    }
     async _run_simple_judge() {
         const lastHistoryItem = this.history.history[this.history.history.length - 1];
         if (!lastHistoryItem || !lastHistoryItem.result.length) {
@@ -3403,31 +3469,47 @@ export class Agent {
             task: this.task,
             final_result: this.history.final_result() ?? '',
         });
+        let parsed;
         try {
-            const response = await this.llm.ainvoke(messages, SimpleJudgeOutputFormat);
-            const parsed = this._parseCompletionPayload(response.completion);
-            if (typeof parsed?.is_correct !== 'boolean') {
-                this.logger.debug('Simple judge response missing boolean is_correct; skipping override.');
-                return;
-            }
-            const isCorrect = parsed.is_correct;
-            const reason = typeof parsed?.reason === 'string' && parsed.reason.trim()
-                ? parsed.reason.trim()
-                : 'Task requirements not fully met';
-            if (!isCorrect) {
-                this.logger.info(`⚠️  Simple judge overriding success to failure: ${reason}`);
+            parsed = await this._invokeJudgeWithRetry('simple_judge', this.llm, messages, SimpleJudgeSchema, SimpleJudgeOutputFormat, ['is_correct', 'reason']);
+        }
+        catch (error) {
+            if (error instanceof JudgeSchemaInvalidError) {
+                // Loud-throw fallback: surface on the final ActionResult so harbor's
+                // failure_reason picks it up. Mark the run as failed with an explicit
+                // schema-error note instead of silently passing the agent's claim.
+                this.logger.warning(`⚠️  Simple judge schema validation exhausted retries; marking run as failed. ${error.message}`);
                 lastResult.success = false;
-                const note = `[Simple judge: ${reason}]`;
+                const note = `[Judge schema invalid: simple_judge retries exhausted (${error.attempts} attempts). ${error.prettyIssues}]`;
                 if (lastResult.extracted_content) {
                     lastResult.extracted_content += `\n\n${note}`;
                 }
                 else {
                     lastResult.extracted_content = note;
                 }
+                return;
             }
-        }
-        catch (error) {
             this.logger.warning(`Simple judge failed with error: ${error instanceof Error ? error.message : String(error)}`);
+            return;
+        }
+        if (!parsed) {
+            // Helper bailed (no judge-shape detected). Preserve prior graceful skip.
+            return;
+        }
+        const isCorrect = parsed.is_correct;
+        const reason = parsed.reason?.trim()
+            ? parsed.reason.trim()
+            : 'Task requirements not fully met';
+        if (!isCorrect) {
+            this.logger.info(`⚠️  Simple judge overriding success to failure: ${reason}`);
+            lastResult.success = false;
+            const note = `[Simple judge: ${reason}]`;
+            if (lastResult.extracted_content) {
+                lastResult.extracted_content += `\n\n${note}`;
+            }
+            else {
+                lastResult.extracted_content = note;
+            }
         }
     }
     async _judge_trace() {
@@ -3442,20 +3524,29 @@ export class Agent {
             ground_truth: this.settings.ground_truth,
             use_vision: this.settings.use_vision,
         });
+        const invokeOptions = this.judge_llm?.provider === 'browser-use'
+            ? { request_type: 'judge' }
+            : undefined;
         try {
-            const invokeOptions = this.judge_llm?.provider === 'browser-use'
-                ? { request_type: 'judge' }
-                : undefined;
-            const response = await this.judge_llm.ainvoke(messages, JudgeOutputFormat, invokeOptions);
-            const parsed = this._parseCompletionPayload(response.completion);
-            const validation = JudgeSchema.safeParse(parsed);
-            if (!validation.success) {
-                this.logger.warning('Judge trace response did not match expected schema; skipping judgement.');
-                return null;
-            }
-            return validation.data;
+            const judgement = await this._invokeJudgeWithRetry('judge_trace', this.judge_llm, messages, JudgeSchema, JudgeOutputFormat, ['verdict', 'reasoning', 'failure_reason'], invokeOptions);
+            // Helper returns undefined when response has no judge-shape; preserve
+            // prior graceful skip behavior by mapping undefined → null.
+            return judgement ?? null;
         }
         catch (error) {
+            if (error instanceof JudgeSchemaInvalidError) {
+                // Loud-throw fallback: synthesize a judgement with verdict=false and
+                // failure_reason=<schema error> so harbor's failure_reason picks it
+                // up via _judge_and_log → lastResult.judgement.
+                this.logger.warning(`⚠️  Judge trace schema validation exhausted retries; surfacing as judgement failure. ${error.message}`);
+                return {
+                    reasoning: `Judge response did not match expected schema after ${error.attempts} attempts.`,
+                    verdict: false,
+                    failure_reason: `Judge schema invalid: ${error.prettyIssues}`,
+                    impossible_task: false,
+                    reached_captcha: false,
+                };
+            }
             this.logger.warning(`Judge trace failed: ${error instanceof Error ? error.message : String(error)}`);
             return null;
         }
