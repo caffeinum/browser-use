@@ -279,7 +279,6 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest --watch",
     "test:pack": "node scripts/smoke-pack.mjs",
-    "dump-schema": "tsx scripts/dump-schema.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm typecheck:test && pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm test:pack",
     "commit": "cz",
     "typecheck": "tsc --noEmit",
