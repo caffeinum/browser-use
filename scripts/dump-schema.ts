@@ -3,8 +3,9 @@
  * dump-schema — print the JSON Schema rendered for any registered action.
  *
  * The action registry feeds these schemas to the LLM as the input contract
- * (via RegisteredAction.promptDescription). This script renders the same
- * shape so you can eyeball what the model actually sees.
+ * (via RegisteredAction.promptDescription). This script calls the same
+ * helper (RegisteredAction.getPromptJsonSchema) so the output matches what
+ * the model actually sees at runtime — no reimplementation.
  *
  * Usage:
  *   bun run scripts/dump-schema.ts done
@@ -14,7 +15,6 @@
  *
  * (works with `tsx scripts/dump-schema.ts ...` too)
  */
-import { z } from 'zod';
 import { Controller } from '../src/controller/service.js';
 
 type ArgvFlags = {
@@ -54,14 +54,6 @@ function printUsageAndExit(code: number): never {
   process.exit(code);
 }
 
-function renderSchema(schema: z.ZodTypeAny): unknown {
-  // Mirror the registry's call exactly so the dump matches what the LLM sees.
-  return z.toJSONSchema(schema, {
-    io: 'input',
-    unrepresentable: 'any',
-  });
-}
-
 function main() {
   const flags = parseArgv(process.argv.slice(2));
 
@@ -96,7 +88,7 @@ function main() {
     const action = actions.get(name)!;
     out[name] = {
       description: action.description,
-      schema: renderSchema(action.paramSchema),
+      schema: action.getPromptJsonSchema(),
     };
   }
 

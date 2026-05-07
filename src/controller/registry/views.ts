@@ -27,7 +27,7 @@ type FileSystem = unknown;
 // Replaces a prior raw dump of zod's private `_def` AST, which leaked
 // internal keys like `innerType`/`defaultValue` and confused the LLM into
 // copying default booleans into numeric fields (see scroll.num_pages bug).
-function renderParamsJsonSchema(
+export function renderParamsJsonSchema(
   schema: ZodTypeAny,
   skipKeys: Set<string>
 ): Record<string, unknown> {
@@ -75,10 +75,12 @@ export class RegisteredAction {
     public readonly terminates_sequence = false
   ) {}
 
-  promptDescription() {
+  // Returns the JSON Schema rendered for the LLM prompt, with the same
+  // skipKeys logic applied as in `promptDescription`. Exposed so tooling
+  // (e.g. scripts/dump-schema.ts) can exercise the exact code path the
+  // model sees.
+  getPromptJsonSchema(): Record<string, unknown> {
     const skipKeys = new Set(['title']);
-    let description = `${this.description}: \n`;
-    description += `{${this.name}: `;
 
     const schemaShape =
       (this.paramSchema instanceof z.ZodObject && this.paramSchema.shape) ||
@@ -105,8 +107,13 @@ export class RegisteredAction {
       skipKeys.add('output_schema');
     }
 
-    const jsonSchema = renderParamsJsonSchema(this.paramSchema, skipKeys);
-    description += JSON.stringify(jsonSchema);
+    return renderParamsJsonSchema(this.paramSchema, skipKeys);
+  }
+
+  promptDescription() {
+    let description = `${this.description}: \n`;
+    description += `{${this.name}: `;
+    description += JSON.stringify(this.getPromptJsonSchema());
     description += '}';
     return description;
   }
