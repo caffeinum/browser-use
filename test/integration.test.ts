@@ -230,13 +230,21 @@ class MockLLM implements BaseChatModel {
 
   async ainvoke(
     messages: any[],
-    _output_format?: unknown,
+    output_format?: unknown,
     options?: { signal?: AbortSignal }
   ): Promise<any> {
     this.calls.push(messages);
     this.signals.push(options?.signal);
     if (this.onInvoke) {
       await this.onInvoke(options?.signal);
+    }
+    // When invoked as a judge (output_format carries the judge schema), return
+    // a passthrough judge-shaped response so _run_simple_judge / _judge_trace
+    // don't downgrade these tests to failure. Tests that specifically exercise
+    // judge behavior pass the judge llm separately.
+    const judgeShape = detectJudgeShape(output_format);
+    if (judgeShape) {
+      return new ChatInvokeCompletion(judgeShape, null, null, null, null);
     }
     const idx = Math.min(this.calls.length - 1, this.responses.length - 1);
     const response = this.responses[idx] ?? { completion: { action: [] } };
@@ -249,6 +257,25 @@ class MockLLM implements BaseChatModel {
     );
   }
 }
+
+const detectJudgeShape = (output_format: unknown): unknown | null => {
+  if (!output_format || typeof output_format !== 'object') return null;
+  const shape = (output_format as any).shape ?? (output_format as any).schema?.shape;
+  if (!shape || typeof shape !== 'object') return null;
+  if ('is_correct' in shape && 'reason' in shape) {
+    return { is_correct: true, reason: '' };
+  }
+  if ('verdict' in shape && 'reasoning' in shape) {
+    return {
+      verdict: true,
+      reasoning: '',
+      failure_reason: '',
+      impossible_task: false,
+      reached_captcha: false,
+    };
+  }
+  return null;
+};
 
 const tempResources: string[] = [];
 afterEach(() => {

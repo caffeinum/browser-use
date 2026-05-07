@@ -4972,9 +4972,8 @@ export class Agent<
     initialMessages: Message[],
     schema: S,
     outputFormat: unknown,
-    judgeKeys: ReadonlyArray<string>,
     invokeOptions?: Record<string, unknown>
-  ): Promise<z.infer<S> | undefined> {
+  ): Promise<z.infer<S>> {
     const messages: Message[] = [...initialMessages];
     let lastError: z.ZodError | null = null;
     let lastCompletion: unknown = undefined;
@@ -4993,23 +4992,6 @@ export class Agent<
         return validation.data;
       }
       lastError = validation.error;
-
-      // If the first response shows no judge-related keys at all (e.g. the
-      // LLM returned an agent-step JSON because the caller wired the same
-      // mock for both agent and judge), treat it as "not a judge response"
-      // and silently skip — preserves prior graceful-skip behavior.
-      if (attempt === 1) {
-        const hasAnyJudgeKey =
-          parsed && typeof parsed === 'object'
-            ? judgeKeys.some((k) => k in parsed)
-            : false;
-        if (!hasAnyJudgeKey) {
-          this.logger.debug(
-            `${judgeName} response has no judge-related keys; skipping override.`
-          );
-          return undefined;
-        }
-      }
 
       if (attempt < maxAttempts) {
         // Inject feedback for retry: assistant turn echoing what model sent,
@@ -5066,15 +5048,14 @@ export class Agent<
       final_result: this.history.final_result() ?? '',
     });
 
-    let parsed: z.infer<typeof SimpleJudgeSchema> | undefined;
+    let parsed: z.infer<typeof SimpleJudgeSchema>;
     try {
       parsed = await this._invokeJudgeWithRetry(
         'simple_judge',
         this.llm,
         messages,
         SimpleJudgeSchema,
-        SimpleJudgeOutputFormat,
-        ['is_correct', 'reason']
+        SimpleJudgeOutputFormat
       );
     } catch (error) {
       if (error instanceof JudgeSchemaInvalidError) {
@@ -5098,11 +5079,6 @@ export class Agent<
           error instanceof Error ? error.message : String(error)
         }`
       );
-      return;
-    }
-
-    if (!parsed) {
-      // Helper bailed (no judge-shape detected). Preserve prior graceful skip.
       return;
     }
 
@@ -5150,12 +5126,9 @@ export class Agent<
         messages,
         JudgeSchema,
         JudgeOutputFormat,
-        ['verdict', 'reasoning', 'failure_reason'],
         invokeOptions as any
       );
-      // Helper returns undefined when response has no judge-shape; preserve
-      // prior graceful skip behavior by mapping undefined → null.
-      return judgement ?? null;
+      return judgement;
     } catch (error) {
       if (error instanceof JudgeSchemaInvalidError) {
         // Loud-throw fallback: synthesize a judgement with verdict=false and
