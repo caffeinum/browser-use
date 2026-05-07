@@ -31,10 +31,14 @@ function renderParamsJsonSchema(
   schema: ZodTypeAny,
   skipKeys: Set<string>
 ): Record<string, unknown> {
-  const raw = z.toJSONSchema(schema, { unrepresentable: 'any' }) as Record<
-    string,
-    unknown
-  >;
+  // `io: 'input'` makes zod render the *input* shape (what the LLM is
+  // expected to provide). Without it, fields with `.default(...)` get marked
+  // as required in the JSON Schema (because the parsed *output* always has
+  // them), which misleads the model — e.g. scroll.num_pages, done.success.
+  const raw = z.toJSONSchema(schema, {
+    io: 'input',
+    unrepresentable: 'any',
+  }) as Record<string, unknown>;
   // Strip dialect noise the LLM doesn't need.
   delete raw.$schema;
 

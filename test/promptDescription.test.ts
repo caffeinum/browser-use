@@ -34,6 +34,10 @@ describe('RegisteredAction.promptDescription', () => {
     expect(prompt).not.toContain('"def":');
     // $schema noise must be stripped.
     expect(prompt).not.toContain('$schema');
+    // io: 'input' guard — defaulted fields must NOT be marked required.
+    const required = (parsed.required as string[] | undefined) ?? [];
+    expect(required).not.toContain('num_pages');
+    expect(required).not.toContain('down');
   });
 
   it('still respects skipKeys for done.success and extract.output_schema', () => {
