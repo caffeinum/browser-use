@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { config as loadEnv } from 'dotenv';
 import { createLogger } from './logging-config.js';
 
-loadEnv();
+loadEnv({ quiet: true });
 
 const require = createRequire(import.meta.url);
 const logger = createLogger('browser_use.observability');

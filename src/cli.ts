@@ -41,7 +41,7 @@ import { get_tunnel_manager } from './skill-cli/tunnel.js';
 import { DeviceAuthClient, save_cloud_api_token } from './sync/auth.js';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const require = createRequire(import.meta.url);
 

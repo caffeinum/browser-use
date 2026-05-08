@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { createLogger } from './logging-config.js';
 
-loadEnv();
+loadEnv({ quiet: true });
 
 const logger = createLogger('browser_use.config');
 

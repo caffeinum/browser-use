@@ -11,7 +11,7 @@ import { config as loadEnv } from 'dotenv';
 import * as minimatchModule from 'minimatch';
 import { createLogger } from './logging-config.js';
 
-loadEnv();
+loadEnv({ quiet: true });
 
 const logger = createLogger('browser_use.utils');
 let _exiting = false;

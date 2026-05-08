@@ -100,7 +100,7 @@ import {
   type SkillService,
 } from '../skills/index.js';
 
-loadEnv();
+loadEnv({ quiet: true });
 
 const logger = createLogger('browser_use.agent');
 const URL_PATTERN =
