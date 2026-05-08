@@ -6,33 +6,28 @@ import { createRequire } from 'node:module';
 
 const repoRoot = process.cwd();
 
-const publicSpecifiers = [
-  'browser-use',
-  'browser-use/agent',
-  'browser-use/browser',
-  'browser-use/controller',
-  'browser-use/filesystem',
-  'browser-use/mcp',
-  'browser-use/llm/openai',
-  'browser-use/llm/anthropic',
-  'browser-use/llm/google',
-  'browser-use/llm/aws',
-  'browser-use/llm/azure',
-  'browser-use/llm/deepseek',
-  'browser-use/llm/groq',
-  'browser-use/llm/ollama',
-  'browser-use/llm/openrouter',
-  'browser-use/llm/messages',
-  'browser-use/llm/schema',
-  'browser-use/llm/base',
-  'browser-use/llm/exceptions',
-  'browser-use/llm/views',
-  'browser-use/telemetry',
-  'browser-use/tokens',
-  'browser-use/sync',
-  'browser-use/screenshots',
-  'browser-use/integrations/gmail',
-];
+function getPublicSpecifiers(repoRoot) {
+  const packageJsonPath = path.join(repoRoot, 'package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const packageName = packageJson.name;
+  const exportsMap = packageJson.exports;
+
+  if (typeof packageName !== 'string' || !packageName) {
+    throw new Error('package.json must define a package name.');
+  }
+  if (!exportsMap || typeof exportsMap !== 'object') {
+    throw new Error('package.json must define an exports map.');
+  }
+
+  return Object.keys(exportsMap)
+    .filter((subpath) => subpath !== './package.json' && !subpath.includes('*'))
+    .map((subpath) =>
+      subpath === '.' ? packageName : `${packageName}/${subpath.slice(2)}`
+    )
+    .sort();
+}
+
+const publicSpecifiers = getPublicSpecifiers(repoRoot);
 
 function run(cmd, args, cwd) {
   try {
