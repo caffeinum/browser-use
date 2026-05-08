@@ -73,9 +73,7 @@ async function main() {
     return;
   }
 
-  const targets = flags.all
-    ? [...actions.keys()].sort()
-    : flags.names;
+  const targets = flags.all ? [...actions.keys()].sort() : flags.names;
 
   const missing = targets.filter((n) => !actions.has(n));
   if (missing.length > 0) {
