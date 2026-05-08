@@ -15,7 +15,7 @@
  *
  * (works with `tsx scripts/dump-schema.ts ...` too)
  */
-import { Controller } from '../src/controller/service.js';
+process.env.DOTENV_CONFIG_QUIET ??= 'true';
 
 type ArgvFlags = {
   all: boolean;
@@ -54,7 +54,7 @@ function printUsageAndExit(code: number): never {
   process.exit(code);
 }
 
-function main() {
+async function main() {
   const flags = parseArgv(process.argv.slice(2));
 
   if (!flags.all && !flags.list && flags.names.length === 0) {
@@ -62,6 +62,7 @@ function main() {
   }
 
   // Instantiate Controller to register all default actions.
+  const { Controller } = await import('../src/controller/service.js');
   const controller = new Controller();
   const actions = controller.registry.get_all_actions();
 
@@ -101,4 +102,7 @@ function main() {
   console.log(JSON.stringify(out, null, 2));
 }
 
-main();
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
