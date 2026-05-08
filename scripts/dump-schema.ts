@@ -15,7 +15,7 @@
  *
  * (works with `tsx scripts/dump-schema.ts ...` too)
  */
-process.env.DOTENV_CONFIG_QUIET ??= 'true';
+process.env.DOTENV_CONFIG_QUIET = 'true';
 
 type ArgvFlags = {
   all: boolean;
