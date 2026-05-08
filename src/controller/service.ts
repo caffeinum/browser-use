@@ -288,22 +288,6 @@ const validateAndFixJavaScript = (code: string): string => {
     (_match, selector: string) => `.matches(\`${selector}\`)`
   );
 
-  // Auto-wrap bare async function expressions in IIFE so they actually
-  // execute. The LLM commonly emits `async () => { ... }` (or
-  // `async function () { ... }`) without trailing `()`, which evaluates
-  // to a function reference and silently does nothing — this is the
-  // root cause behind credential-extraction failures where
-  // `clipboard.writeText` etc. never runs. Detect that the trimmed code
-  // is exactly one such expression with no trailing call and wrap it.
-  const trimmed = fixedCode.trim();
-  const startsAsyncArrow = /^async\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(
-    trimmed
-  );
-  const startsAsyncFn = /^async\s+function\b/.test(trimmed);
-  if ((startsAsyncArrow || startsAsyncFn) && !/\)\s*;?\s*$/.test(trimmed)) {
-    fixedCode = `(${trimmed})()`;
-  }
-
   return fixedCode;
 };
 
