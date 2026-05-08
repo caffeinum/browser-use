@@ -98,8 +98,7 @@ describe('zod validation error feedback to LLM', () => {
         new ActionResult({ error: thrown!.message }),
       ];
 
-      const errorOnState = (agent as any).state.last_result[0]
-        .error as string;
+      const errorOnState = (agent as any).state.last_result[0].error as string;
       expect(errorOnState).toContain('Schema validation failed');
       expect(errorOnState).toContain('num_pages');
     } finally {

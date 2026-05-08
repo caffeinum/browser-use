@@ -19,7 +19,10 @@ describe('RegisteredAction.promptDescription', () => {
     );
 
     const prompt = action.promptDescription();
-    const jsonStart = prompt.indexOf('{', prompt.indexOf('{scroll:') + '{scroll:'.length);
+    const jsonStart = prompt.indexOf(
+      '{',
+      prompt.indexOf('{scroll:') + '{scroll:'.length
+    );
     const inner = prompt.slice(jsonStart, prompt.lastIndexOf('}'));
     const parsed = JSON.parse(inner) as Record<string, unknown>;
 
