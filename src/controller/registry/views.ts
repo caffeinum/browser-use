@@ -23,6 +23,47 @@ type BrowserSession = unknown;
 type BaseChatModel = unknown;
 type FileSystem = unknown;
 
+// Render an action's param schema as compact JSON Schema for the LLM prompt.
+// Replaces a prior raw dump of zod's private `_def` AST, which leaked
+// internal keys like `innerType`/`defaultValue` and confused the LLM into
+// copying default booleans into numeric fields (see scroll.num_pages bug).
+export function renderParamsJsonSchema(
+  schema: ZodTypeAny,
+  skipKeys: Set<string>
+): Record<string, unknown> {
+  // `io: 'input'` makes zod render the *input* shape (what the LLM is
+  // expected to provide). Without it, fields with `.default(...)` get marked
+  // as required in the JSON Schema (because the parsed *output* always has
+  // them), which misleads the model — e.g. scroll.num_pages, done.success.
+  const raw = z.toJSONSchema(schema, {
+    io: 'input',
+    unrepresentable: 'any',
+  }) as Record<string, unknown>;
+  // Strip dialect noise the LLM doesn't need.
+  delete raw.$schema;
+
+  const properties = (raw.properties as Record<string, unknown>) ?? {};
+  const filteredProps: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    if (skipKeys.has(key)) {
+      continue;
+    }
+    filteredProps[key] = value;
+  }
+  raw.properties = filteredProps;
+
+  if (Array.isArray(raw.required)) {
+    raw.required = raw.required.filter(
+      (key: unknown) => typeof key === 'string' && !skipKeys.has(key)
+    );
+    if ((raw.required as string[]).length === 0) {
+      delete raw.required;
+    }
+  }
+
+  return raw;
+}
+
 export class RegisteredAction {
   constructor(
     public readonly name: string,
@@ -34,10 +75,12 @@ export class RegisteredAction {
     public readonly terminates_sequence = false
   ) {}
 
-  promptDescription() {
+  // Returns the JSON Schema rendered for the LLM prompt, with the same
+  // skipKeys logic applied as in `promptDescription`. Exposed so tooling
+  // (e.g. scripts/dump-schema.ts) can exercise the exact code path the
+  // model sees.
+  getPromptJsonSchema(): Record<string, unknown> {
     const skipKeys = new Set(['title']);
-    let description = `${this.description}: \n`;
-    description += `{${this.name}: `;
 
     const schemaShape =
       (this.paramSchema instanceof z.ZodObject && this.paramSchema.shape) ||
@@ -64,25 +107,13 @@ export class RegisteredAction {
       skipKeys.add('output_schema');
     }
 
-    if (schemaShape) {
-      const props = Object.fromEntries(
-        Object.entries(schemaShape)
-          .filter(([key]) => !skipKeys.has(key))
-          .map(([key, value]) => {
-            const entries = value instanceof z.ZodType ? value._def : value;
-            const cleanEntries = Object.fromEntries(
-              Object.entries(entries as Record<string, unknown>).filter(
-                ([propKey]) => !skipKeys.has(propKey)
-              )
-            );
-            return [key, cleanEntries];
-          })
-      );
-      description += JSON.stringify(props);
-    } else {
-      description += '{}';
-    }
+    return renderParamsJsonSchema(this.paramSchema, skipKeys);
+  }
 
+  promptDescription() {
+    let description = `${this.description}: \n`;
+    description += `{${this.name}: `;
+    description += JSON.stringify(this.getPromptJsonSchema());
     description += '}';
     return description;
   }
