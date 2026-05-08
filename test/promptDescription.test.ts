@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { RegisteredAction } from '../src/controller/registry/views.js';
+import { ExtractStructuredDataActionSchema } from '../src/controller/views.js';
 
 const ScrollActionSchema = z.object({
   down: z.boolean().default(true),
@@ -43,7 +44,7 @@ describe('RegisteredAction.promptDescription', () => {
     expect(required).not.toContain('down');
   });
 
-  it('still respects skipKeys for done.success and extract.output_schema', () => {
+  it('still respects skipKeys for done.success and extract output_schema aliases', () => {
     const doneSchema = z.object({
       success: z.boolean(),
       data: z.object({ value: z.string() }),
@@ -57,5 +58,17 @@ describe('RegisteredAction.promptDescription', () => {
     const donePrompt = doneAction.promptDescription();
     expect(donePrompt).toContain('data');
     expect(donePrompt).not.toContain('"success"');
+
+    for (const actionName of ['extract_structured_data', 'extract'] as const) {
+      const extractAction = new RegisteredAction(
+        actionName,
+        'Extract',
+        async () => ({}),
+        ExtractStructuredDataActionSchema
+      );
+      const extractPrompt = extractAction.promptDescription();
+      expect(extractPrompt).toContain('already_collected');
+      expect(extractPrompt).not.toContain('"output_schema"');
+    }
   });
 });

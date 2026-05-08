@@ -98,7 +98,7 @@ export class RegisteredAction {
     }
 
     const hideExtractOutputSchema = Boolean(
-      this.name === 'extract_structured_data' &&
+      (this.name === 'extract_structured_data' || this.name === 'extract') &&
       schemaShape &&
       typeof schemaShape === 'object' &&
       Object.prototype.hasOwnProperty.call(schemaShape, 'output_schema')
