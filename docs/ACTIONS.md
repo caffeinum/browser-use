@@ -364,7 +364,7 @@ Wait for a specified duration.
 
 ```typescript
 import { Controller } from 'browser-use/controller';
-import { ActionResult } from 'browser-use/agent/views';
+import { ActionResult } from 'browser-use/agent';
 import { z } from 'zod';
 
 const controller = new Controller();

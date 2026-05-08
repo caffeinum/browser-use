@@ -459,7 +459,7 @@ researchTopic();
 ```typescript
 import { Agent, BrowserSession } from 'browser-use';
 import { Controller } from 'browser-use/controller';
-import { ActionResult } from 'browser-use/agent/views';
+import { ActionResult } from 'browser-use/agent';
 import { ChatOpenAI } from 'browser-use/llm/openai';
 import { z } from 'zod';
 import * as fs from 'fs';
@@ -515,7 +515,7 @@ withScreenshots();
 ```typescript
 import { Agent } from 'browser-use';
 import { Controller } from 'browser-use/controller';
-import { ActionResult } from 'browser-use/agent/views';
+import { ActionResult } from 'browser-use/agent';
 import { ChatOpenAI } from 'browser-use/llm/openai';
 import { z } from 'zod';
 
@@ -586,7 +586,7 @@ withDatabase();
 ```typescript
 import { Agent } from 'browser-use';
 import { Controller } from 'browser-use/controller';
-import { ActionResult } from 'browser-use/agent/views';
+import { ActionResult } from 'browser-use/agent';
 import { ChatOpenAI } from 'browser-use/llm/openai';
 import { z } from 'zod';
 

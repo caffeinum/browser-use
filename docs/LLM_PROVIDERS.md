@@ -536,7 +536,7 @@ const llm = new ChatOllama('llama3:70b');
 To add a custom LLM provider, implement the `BaseChatModel` interface:
 
 ```typescript
-import { BaseChatModel, Message, ChatInvokeCompletion } from 'browser-use/llm';
+import { BaseChatModel, Message, ChatInvokeCompletion } from 'browser-use';
 
 class MyCustomLLM implements BaseChatModel {
   model: string;

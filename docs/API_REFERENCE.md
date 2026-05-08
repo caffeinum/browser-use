@@ -385,7 +385,7 @@ Action registration and execution.
 ### Import
 
 ```typescript
-import { Registry } from 'browser-use/controller/registry';
+import { Registry } from 'browser-use/controller';
 ```
 
 ### Methods
