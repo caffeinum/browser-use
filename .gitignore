@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 recordings/
 browseruse_agent_data/
 origin/
+
+# Claude Code agent worktrees + local state
+.claude/
