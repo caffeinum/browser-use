@@ -50,6 +50,7 @@ import {
   DownloadProgressEvent,
   DownloadStartedEvent,
   FileDownloadedEvent,
+  ScreenshotEvent,
   TabClosedEvent,
   TabCreatedEvent,
   type WaitUntilState,
@@ -2481,36 +2482,20 @@ export class BrowserSession {
     }
 
     let screenshot: string | null = null;
-    if (options.include_screenshot && page?.screenshot) {
-      // Strip the highlight overlays (bboxes + labels) BEFORE the screenshot
-      // so the LLM sees the unobstructed page. Highlights occlude trailing
-      // characters of credentials/copy-buttons and have caused hallucinated
-      // truncations (e.g. an `e2b_*cf` key read as `e2b_*c`). The DOM tree +
-      // selector_map have already been built above, so removing the visual
-      // overlay does not affect the textual state passed to the LLM.
+    if (options.include_screenshot && page) {
+      // Route through ScreenshotEvent so ScreenshotWatchdog handles
+      // remove_highlights() centrally (highlights occlude trailing characters
+      // of credentials/copy-buttons and have caused hallucinated truncations,
+      // e.g. an `e2b_*cf` key read as `e2b_*c`). The DOM tree + selector_map
+      // were built above, so the visual overlay strip does not affect the
+      // textual state passed to the LLM.
       try {
-        await this._withAbort(this.remove_highlights(), signal);
-      } catch (error) {
-        if (this._isAbortError(error)) {
-          throw error;
-        }
-        this.logger.debug(
-          `Failed to remove highlights pre-screenshot: ${(error as Error).message}`
-        );
-      }
-
-      try {
-        const image = await this._withAbort(
-          page.screenshot({
-            type: 'png',
-            fullPage: true,
-          }),
+        const dispatchResult = await this._withAbort(
+          this.dispatch_browser_event(new ScreenshotEvent({ full_page: true })),
           signal
         );
         screenshot =
-          typeof image === 'string'
-            ? image
-            : Buffer.from(image).toString('base64');
+          (dispatchResult?.event?.event_result as string | null) ?? null;
       } catch (error) {
         if (this._isAbortError(error)) {
           throw error;
