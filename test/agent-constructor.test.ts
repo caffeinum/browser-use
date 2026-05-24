@@ -1023,6 +1023,38 @@ describe('Agent constructor browser session alignment', () => {
     await agent.close();
   });
 
+  it('multi_act maps registry timeout errors before returning partial failures', async () => {
+    const agent = new Agent({
+      task: 'multi_act registry timeout parity',
+      llm: createLlm(),
+    });
+    const executeActionSpy = vi
+      .spyOn(agent.controller.registry as any, 'execute_action')
+      .mockImplementation(async (...args: unknown[]) => {
+        const params = args[1] as { fail?: boolean } | undefined;
+        if (params?.fail) {
+          throw new Error('Error executing action wait due to timeout.');
+        }
+        return new ActionResult({ extracted_content: 'first action ok' });
+      });
+
+    const results = await agent.multi_act(
+      [
+        { wait: { seconds: 0 } },
+        { wait: { seconds: 0, fail: true } },
+        { wait: { seconds: 0 } },
+      ],
+      { check_for_new_elements: false }
+    );
+
+    expect(executeActionSpy).toHaveBeenCalledTimes(2);
+    expect(results).toHaveLength(2);
+    expect(results[0]?.extracted_content).toBe('first action ok');
+    expect(results[1]?.error).toBe('wait was not executed due to timeout.');
+
+    await agent.close();
+  });
+
   it('multi_act still propagates interruption-style action errors', async () => {
     const agent = new Agent({
       task: 'multi_act propagates abort errors',

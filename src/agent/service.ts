@@ -3038,6 +3038,18 @@ export class Agent<
           throw error;
         }
 
+        const registryTimeoutResult = this._actionResultFromRegistryTimeout(
+          actionName,
+          error
+        );
+        if (registryTimeoutResult) {
+          this.logger.error(
+            `❌ Action ${i + 1} failed: ${registryTimeoutResult.error}`
+          );
+          results.push(registryTimeoutResult);
+          return results;
+        }
+
         const message = this._formatActionExecutionError(error);
         this.logger.error(`❌ Action ${i + 1} failed: ${message}`);
         results.push(new ActionResult({ error: message }));
@@ -3097,6 +3109,17 @@ export class Agent<
     }
 
     return new ActionResult({ error: error.long_term_memory });
+  }
+
+  private _actionResultFromRegistryTimeout(actionName: string, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message !== `Error executing action ${actionName} due to timeout.`) {
+      return null;
+    }
+
+    return new ActionResult({
+      error: `${actionName} was not executed due to timeout.`,
+    });
   }
 
   private async _generate_rerun_summary(
