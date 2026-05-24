@@ -2,19 +2,20 @@ import type { Message } from '../../llm/messages.js';
 
 export class HistoryItem {
   constructor(
-    public step_number: number | null = null,
-    public evaluation_previous_goal: string | null = null,
-    public memory: string | null = null,
-    public next_goal: string | null = null,
-    public action_results: string | null = null,
-    public error: string | null = null,
-    public system_message: string | null = null
+    public readonly step_number: number | null = null,
+    public readonly evaluation_previous_goal: string | null = null,
+    public readonly memory: string | null = null,
+    public readonly next_goal: string | null = null,
+    public readonly action_results: string | null = null,
+    public readonly error: string | null = null,
+    public readonly system_message: string | null = null
   ) {
     if (this.error && this.system_message) {
       throw new Error(
         'Cannot have both error and system_message at the same time'
       );
     }
+    Object.freeze(this);
   }
 
   to_string() {

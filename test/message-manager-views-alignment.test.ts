@@ -39,4 +39,19 @@ ok`);
     expect(item.to_string()).toBe(`<step>
 failed to parse`);
   });
+
+  it('keeps history entries immutable after construction', () => {
+    const item = new HistoryItem(
+      3,
+      'Done',
+      'Remember this',
+      'Next action',
+      'Result\nok'
+    );
+
+    expect(Object.isFrozen(item)).toBe(true);
+    expect(Reflect.set(item, 'memory', 'changed')).toBe(false);
+    expect(item.memory).toBe('Remember this');
+    expect(item.to_string()).toContain('Remember this');
+  });
 });
