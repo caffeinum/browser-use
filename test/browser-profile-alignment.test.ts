@@ -162,6 +162,39 @@ describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
     }
   });
 
+  it('copies Chromium-backed user profiles to a temp directory', async () => {
+    const { BrowserProfile } = await importProfileModule();
+    const sourceUserDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'chromium-user-data-src-')
+    );
+    let copiedUserDataDir: string | null = null;
+
+    try {
+      const profileDir = path.join(sourceUserDataDir, 'Default');
+      fs.mkdirSync(profileDir, { recursive: true });
+      fs.writeFileSync(path.join(profileDir, 'Preferences'), '{"ok":true}');
+
+      const profile = new BrowserProfile({
+        user_data_dir: sourceUserDataDir,
+        executable_path: '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      });
+
+      copiedUserDataDir = profile.config.user_data_dir;
+      expect(copiedUserDataDir).not.toBe(sourceUserDataDir);
+      expect(path.basename(copiedUserDataDir!)).toMatch(
+        /^browser-use-user-data-dir-/
+      );
+      expect(
+        fs.existsSync(path.join(copiedUserDataDir!, 'Default', 'Preferences'))
+      ).toBe(true);
+    } finally {
+      fs.rmSync(sourceUserDataDir, { recursive: true, force: true });
+      if (copiedUserDataDir) {
+        fs.rmSync(copiedUserDataDir, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('keeps browser-use managed Chrome profiles persistent instead of temp-copying them', async () => {
     const configDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-config-')

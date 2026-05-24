@@ -860,7 +860,8 @@ export class BrowserProfile {
   }
 
   private isChromeBackedProfile(userDataDirText: string) {
-    return userDataDirText.toLowerCase().includes('chrome');
+    const normalized = userDataDirText.toLowerCase();
+    return normalized.includes('chrome') || normalized.includes('chromium');
   }
 
   private isBrowserUseManagedProfile(userDataDirText: string) {
