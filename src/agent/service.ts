@@ -35,7 +35,11 @@ import {
 } from './prompts.js';
 import { MessageManager } from './message-manager/service.js';
 import type { MessageManagerState } from './message-manager/views.js';
-import { BrowserStateSummary, BrowserStateHistory } from '../browser/views.js';
+import {
+  BrowserError,
+  BrowserStateSummary,
+  BrowserStateHistory,
+} from '../browser/views.js';
 import { BrowserSession } from '../browser/session.js';
 import { BrowserProfile, DEFAULT_BROWSER_PROFILE } from '../browser/profile.js';
 import type { Browser, BrowserContext, Page } from '../browser/types.js';
@@ -3021,6 +3025,19 @@ export class Agent<
           return results;
         }
 
+        if (error instanceof BrowserError) {
+          const browserErrorResult = this._actionResultFromBrowserError(error);
+          if (browserErrorResult) {
+            this.logger.error(
+              `❌ Action ${i + 1} failed with BrowserError: ${error.toString()}`
+            );
+            results.push(browserErrorResult);
+            return results;
+          }
+
+          throw error;
+        }
+
         const message = this._formatActionExecutionError(error);
         this.logger.error(`❌ Action ${i + 1} failed: ${message}`);
         results.push(new ActionResult({ error: message }));
@@ -3061,6 +3078,25 @@ export class Agent<
         : 'Error';
     const message = error instanceof Error ? error.message : String(error);
     return `${typeName}: ${message}`;
+  }
+
+  private _actionResultFromBrowserError(error: BrowserError) {
+    if (error.long_term_memory == null) {
+      this.logger.warning(
+        '⚠️ A BrowserError was raised without long_term_memory - always set long_term_memory when raising BrowserError to propagate right messages to LLM.'
+      );
+      return null;
+    }
+
+    if (error.short_term_memory != null) {
+      return new ActionResult({
+        extracted_content: error.short_term_memory,
+        error: error.long_term_memory,
+        include_extracted_content_only_once: true,
+      });
+    }
+
+    return new ActionResult({ error: error.long_term_memory });
   }
 
   private async _generate_rerun_summary(
