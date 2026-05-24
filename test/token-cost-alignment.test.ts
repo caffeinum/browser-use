@@ -13,10 +13,10 @@ describe('TokenCost alignment', () => {
     expect(pricing?.cache_read_input_token_cost).toBeCloseTo(0.06 / 1_000_000);
   });
 
-  it('keeps bu-latest and smart aliases aligned with bu-1-0 pricing', async () => {
+  it('keeps bu-latest and smart aliases aligned with bu-2-0 pricing', async () => {
     const tokenCost = new TokenCost(false);
 
-    const canonical = await tokenCost.getModelPricing('bu-1-0');
+    const canonical = await tokenCost.getModelPricing('bu-2-0');
     const latest = await tokenCost.getModelPricing('bu-latest');
     const smart = await tokenCost.getModelPricing('smart');
 

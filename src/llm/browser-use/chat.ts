@@ -64,7 +64,7 @@ export class ChatBrowserUse implements BaseChatModel {
 
   constructor(options: ChatBrowserUseOptions = {}) {
     const {
-      model = 'bu-latest',
+      model = 'bu-2-0',
       apiKey = process.env.BROWSER_USE_API_KEY,
       baseUrl = process.env.BROWSER_USE_LLM_URL ??
         'https://llm.api.browser-use.com',
@@ -84,7 +84,7 @@ export class ChatBrowserUse implements BaseChatModel {
       );
     }
 
-    this.model = model === 'bu-latest' ? 'bu-1-0' : model;
+    this.model = model === 'bu-latest' ? 'bu-2-0' : model;
     if (!apiKey) {
       throw new Error(
         'You need to set the BROWSER_USE_API_KEY environment variable. Get your key at https://cloud.browser-use.com/new-api-key'

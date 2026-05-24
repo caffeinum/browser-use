@@ -496,7 +496,7 @@ describe('CLI model routing', () => {
     const args = parseCliArgs(['--provider', 'browser-use', '-p', 'x']);
     const llm = getLlmFromCliArgs(args);
     expect(llm.provider).toBe('browser-use');
-    expect(llm.model).toBe('bu-1-0');
+    expect(llm.model).toBe('bu-2-0');
   });
 
   it('supports vercel provider defaults when api key is configured', () => {

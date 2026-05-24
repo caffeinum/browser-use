@@ -110,7 +110,7 @@ describe('LLM models factory alignment', () => {
     const latest = getLlmByName('bu_latest');
     const explicit = getLlmByName('bu_2_0');
     expect(latest.provider).toBe('browser-use');
-    expect(latest.model).toBe('bu-1-0');
+    expect(latest.model).toBe('bu-2-0');
     expect(explicit.provider).toBe('browser-use');
     expect(explicit.model).toBe('bu-2-0');
   });

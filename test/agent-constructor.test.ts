@@ -215,7 +215,7 @@ describe('Agent constructor browser session alignment', () => {
       });
 
       expect(agent.llm.provider).toBe('browser-use');
-      expect(agent.llm.model).toBe('bu-1-0');
+      expect(agent.llm.model).toBe('bu-2-0');
       expect(agent.settings.flash_mode).toBe(true);
       expect(agent.settings.enable_planning).toBe(false);
 

@@ -55,7 +55,7 @@ describe('ChatBrowserUse alignment', () => {
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
-    expect(payload.model).toBe('bu-1-0');
+    expect(payload.model).toBe('bu-2-0');
     expect(payload.request_type).toBe('judge');
     expect(payload.session_id).toBe('session-123');
     expect(payload.messages).toEqual([{ role: 'user', content: 'hello' }]);
