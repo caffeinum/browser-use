@@ -314,17 +314,22 @@ esac
     const listProfilesSpy = vi
       .spyOn(systemChrome, 'listProfiles')
       .mockReturnValue([{ directory: 'Profile 4', name: 'Work' }]);
+    let copiedUserDataDir: string | null = null;
 
     try {
       const session = BrowserSession.from_system_chrome({
         profile: { headless: true },
       });
+      copiedUserDataDir = session.browser_profile.user_data_dir;
 
       expect(session.browser_profile.config.executable_path).toBe(
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
       );
-      expect(session.browser_profile.user_data_dir).toBe(
+      expect(session.browser_profile.user_data_dir).not.toBe(
         '/tmp/chrome-user-data'
+      );
+      expect(path.basename(session.browser_profile.user_data_dir!)).toMatch(
+        /^browser-use-user-data-dir-/
       );
       expect(session.browser_profile.config.profile_directory).toBe(
         'Profile 4'
@@ -338,6 +343,9 @@ esac
       findExecutableSpy.mockRestore();
       getUserDataDirSpy.mockRestore();
       listProfilesSpy.mockRestore();
+      if (copiedUserDataDir) {
+        fs.rmSync(copiedUserDataDir, { recursive: true, force: true });
+      }
     }
   });
 

@@ -68,6 +68,14 @@ export const CHROME_DOCKER_ARGS = [
   '--disable-site-isolation-trials',
 ];
 
+export const CHROME_PROFILE_TRANSIENT_FILE_PATTERNS = [
+  'Singleton*',
+  '*.lock',
+  '*-journal',
+  'LOCK',
+  'LOCKFILE',
+];
+
 export const CHROME_DISABLE_SECURITY_ARGS = [
   '--disable-site-isolation-trials',
   '--disable-web-security',
@@ -532,6 +540,28 @@ const argsAsList = (args: Record<string, string>) =>
 const cloneDefaultOptions = (): BrowserProfileOptions =>
   JSON.parse(JSON.stringify(DEFAULT_BROWSER_PROFILE_OPTIONS));
 
+const isChromeProfileTransientFile = (name: string) =>
+  name.startsWith('Singleton') ||
+  name.endsWith('.lock') ||
+  name.endsWith('-journal') ||
+  name === 'LOCK' ||
+  name === 'LOCKFILE';
+
+const isChromeProfileLockError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = String((error as NodeJS.ErrnoException).code ?? '');
+  const message = error.message;
+  return (
+    code === 'EACCES' ||
+    code === 'EPERM' ||
+    code === 'EBUSY' ||
+    message.includes('WinError 32') ||
+    message.includes('being used by another process')
+  );
+};
+
 const normalizeDomainEntry = (entry: unknown) =>
   String(entry ?? '')
     .trim()
@@ -602,6 +632,7 @@ export class BrowserProfile {
     this.warnStorageStateUserDataDirConflict();
     this.warnUserDataDirNonDefault();
     this.warnDeterministicRenderingWeirdness();
+    this.copyChromeProfileToTempIfNeeded();
   }
 
   toString() {
@@ -753,6 +784,78 @@ export class BrowserProfile {
         '⚠️ BrowserSession(deterministic_rendering=True) is NOT RECOMMENDED. It breaks many sites and increases chances of getting blocked by anti-bot systems. It hardcodes the JS random seed and forces browsers across Linux/Mac/Windows to use the same font rendering engine so that identical screenshots can be generated.'
       );
     }
+  }
+
+  private copyChromeProfileToTempIfNeeded() {
+    const userDataDir = this.options.user_data_dir;
+    if (!userDataDir) {
+      return;
+    }
+
+    const userDataDirText = String(userDataDir);
+    if (userDataDirText.toLowerCase().includes('browser-use-user-data-dir-')) {
+      return;
+    }
+
+    if (!this.isChromeBackedProfile(userDataDirText)) {
+      return;
+    }
+
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-user-data-dir-')
+    );
+    const originalProfileDir = path.join(
+      userDataDirText,
+      this.options.profile_directory
+    );
+    const tempProfileDir = path.join(tempDir, this.options.profile_directory);
+
+    try {
+      if (fs.existsSync(originalProfileDir)) {
+        fs.cpSync(originalProfileDir, tempProfileDir, {
+          recursive: true,
+          filter: (source) =>
+            !isChromeProfileTransientFile(path.basename(source)),
+        });
+
+        const localStateSource = path.join(userDataDirText, 'Local State');
+        if (fs.existsSync(localStateSource)) {
+          fs.copyFileSync(localStateSource, path.join(tempDir, 'Local State'));
+        }
+        logger.info(
+          `Copied profile (${this.options.profile_directory}) and Local State to temp directory: ${tempDir}`
+        );
+      } else {
+        fs.mkdirSync(tempProfileDir, { recursive: true });
+        logger.info(
+          `Created new profile (${this.options.profile_directory}) in temp directory: ${tempDir}`
+        );
+      }
+
+      this.options.user_data_dir = tempDir;
+    } catch (error) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      if (isChromeProfileLockError(error)) {
+        throw new Error(
+          `Unable to copy Chrome profile "${this.options.profile_directory}" because one or more files are locked. ` +
+            'Close any Chrome windows using this profile, or start browser-use with --cdp-url to connect to an already-running browser instead of copying the profile.'
+        );
+      }
+      throw error;
+    }
+  }
+
+  private isChromeBackedProfile(userDataDirText: string) {
+    const executablePath = String(this.options.executable_path ?? '');
+    const channel = this.options.channel;
+    return (
+      userDataDirText.toLowerCase().includes('chrome') ||
+      executablePath.toLowerCase().includes('chrome') ||
+      channel === BrowserChannel.CHROME ||
+      channel === BrowserChannel.CHROME_BETA ||
+      channel === BrowserChannel.CHROME_DEV ||
+      channel === BrowserChannel.CHROME_CANARY
+    );
   }
 
   private ensureDefaultDownloadsPath() {

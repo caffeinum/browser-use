@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const importProfileModule = async () => {
   vi.resetModules();
@@ -96,5 +98,66 @@ describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
     expect(args).toContain('--custom-size=1280,720');
     expect(args).toContain('--custom=bar=baz');
     expect(args).toContain('--custom-flag');
+  });
+
+  it('copies Chrome-backed user profiles to a temp directory and skips transient files', async () => {
+    const { BrowserProfile } = await importProfileModule();
+    const sourceUserDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'chrome-user-data-src-')
+    );
+    let copiedUserDataDir: string | null = null;
+
+    try {
+      const profileDir = path.join(sourceUserDataDir, 'Profile 4');
+      fs.mkdirSync(path.join(profileDir, 'IndexedDB'), { recursive: true });
+      fs.writeFileSync(path.join(sourceUserDataDir, 'Local State'), '{}');
+      fs.writeFileSync(path.join(profileDir, 'Preferences'), '{"ok":true}');
+      fs.writeFileSync(path.join(profileDir, 'SingletonLock'), '1234');
+      fs.writeFileSync(path.join(profileDir, 'LOCK'), 'lock');
+      fs.writeFileSync(path.join(profileDir, 'Cookies-journal'), 'journal');
+      fs.writeFileSync(path.join(profileDir, 'IndexedDB', 'data.lock'), 'lock');
+
+      const profile = new BrowserProfile({
+        user_data_dir: sourceUserDataDir,
+        profile_directory: 'Profile 4',
+        executable_path:
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      });
+
+      copiedUserDataDir = profile.config.user_data_dir;
+      expect(copiedUserDataDir).not.toBe(sourceUserDataDir);
+      expect(path.basename(copiedUserDataDir!)).toMatch(
+        /^browser-use-user-data-dir-/
+      );
+      expect(fs.existsSync(path.join(copiedUserDataDir!, 'Local State'))).toBe(
+        true
+      );
+      expect(
+        fs.existsSync(path.join(copiedUserDataDir!, 'Profile 4', 'Preferences'))
+      ).toBe(true);
+      expect(
+        fs.existsSync(
+          path.join(copiedUserDataDir!, 'Profile 4', 'SingletonLock')
+        )
+      ).toBe(false);
+      expect(
+        fs.existsSync(path.join(copiedUserDataDir!, 'Profile 4', 'LOCK'))
+      ).toBe(false);
+      expect(
+        fs.existsSync(
+          path.join(copiedUserDataDir!, 'Profile 4', 'Cookies-journal')
+        )
+      ).toBe(false);
+      expect(
+        fs.existsSync(
+          path.join(copiedUserDataDir!, 'Profile 4', 'IndexedDB', 'data.lock')
+        )
+      ).toBe(false);
+    } finally {
+      fs.rmSync(sourceUserDataDir, { recursive: true, force: true });
+      if (copiedUserDataDir) {
+        fs.rmSync(copiedUserDataDir, { recursive: true, force: true });
+      }
+    }
   });
 });
