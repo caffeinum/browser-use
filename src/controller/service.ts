@@ -954,19 +954,43 @@ export class Controller<Context = unknown> {
       }
 
       if (!allowedPaths.has(uploadPath)) {
-        const fsInstance = file_system ?? null;
-        const managedFile =
-          fsInstance && typeof fsInstance.get_file === 'function'
-            ? fsInstance.get_file(uploadPath)
-            : null;
-        if (managedFile && fsInstance?.get_dir) {
-          uploadPath = path.join(fsInstance.get_dir(), uploadPath);
-        } else if (!isLocalBrowser) {
+        if (!isLocalBrowser) {
           // Remote browser paths may only exist on the remote runtime.
         } else {
-          return new ActionResult({
-            error: `File path ${params.path} is not available. To fix: add this file path to available_file_paths when creating the Agent.`,
-          });
+          const fsInstance = file_system ?? null;
+          const managedFile =
+            fsInstance && typeof fsInstance.get_file === 'function'
+              ? fsInstance.get_file(uploadPath)
+              : null;
+
+          if (managedFile && fsInstance?.get_dir) {
+            const fsDir = fsInstance.get_dir();
+            const managedFileName = String(
+              (managedFile as any).fullName ??
+                (managedFile as any).full_name ??
+                path.basename(uploadPath)
+            );
+            const candidatePath = path.join(fsDir, managedFileName);
+            const realDir = fs.realpathSync(fsDir);
+            const realPath = fs.existsSync(candidatePath)
+              ? fs.realpathSync(candidatePath)
+              : path.resolve(candidatePath);
+            const relativePath = path.relative(realDir, realPath);
+            if (
+              relativePath === '..' ||
+              relativePath.startsWith(`..${path.sep}`) ||
+              path.isAbsolute(relativePath)
+            ) {
+              return new ActionResult({
+                error: `Upload of ${params.path} escapes FileSystem directory; refusing.`,
+              });
+            }
+            uploadPath = candidatePath;
+          } else {
+            return new ActionResult({
+              error: `File path ${params.path} is not available. To fix: add this file path to available_file_paths when creating the Agent.`,
+            });
+          }
         }
       }
 

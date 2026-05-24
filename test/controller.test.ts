@@ -2726,6 +2726,49 @@ describe('Regression Coverage', () => {
     }
   });
 
+  it('upload_file uses the FileSystem-owned basename for managed files', async () => {
+    const controller = new Controller();
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-upload-')
+    );
+    const fileSystem = new FileSystem(tempDir, false);
+    const locator = {
+      setInputFiles: vi.fn(async () => {}),
+    };
+    const browserSession = {
+      downloaded_files: [],
+      find_file_upload_element_by_index: vi.fn(async () => ({
+        xpath: '/html/body/input',
+      })),
+      get_locate_element: vi.fn(async () => locator),
+    };
+
+    try {
+      await fileSystem.write_file('note.md', 'safe content');
+
+      const result = await controller.registry.execute_action(
+        'upload_file',
+        { index: 1, path: '../note.md' },
+        {
+          browser_session: browserSession as any,
+          available_file_paths: [],
+          file_system: fileSystem as any,
+        }
+      );
+
+      const expectedPath = path.join(fileSystem.get_dir(), 'note.md');
+      expect(locator.setInputFiles).toHaveBeenCalledWith(expectedPath);
+      expect(
+        path
+          .resolve(expectedPath)
+          .startsWith(path.resolve(fileSystem.get_dir()))
+      ).toBe(true);
+      expect(result.long_term_memory).toContain(expectedPath);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('upload_file allows remote browser paths outside available_file_paths', async () => {
     const controller = new Controller();
     const locator = {
@@ -2752,6 +2795,45 @@ describe('Regression Coverage', () => {
 
     expect(locator.setInputFiles).toHaveBeenCalledWith(remotePath);
     expect(result.extracted_content).toContain('Successfully uploaded file');
+  });
+
+  it('upload_file does not rewrite remote paths on FileSystem basename collisions', async () => {
+    const controller = new Controller();
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-upload-')
+    );
+    const fileSystem = new FileSystem(tempDir, false);
+    const locator = {
+      setInputFiles: vi.fn(async () => {}),
+    };
+    const browserSession = {
+      is_local: false,
+      downloaded_files: [],
+      find_file_upload_element_by_index: vi.fn(async () => ({
+        xpath: '/html/body/input',
+      })),
+      get_locate_element: vi.fn(async () => locator),
+    };
+
+    try {
+      await fileSystem.write_file('note.md', 'local content');
+      const remotePath = '/remote/runtime/note.md';
+
+      const result = await controller.registry.execute_action(
+        'upload_file',
+        { index: 1, path: remotePath },
+        {
+          browser_session: browserSession as any,
+          available_file_paths: [],
+          file_system: fileSystem as any,
+        }
+      );
+
+      expect(locator.setInputFiles).toHaveBeenCalledWith(remotePath);
+      expect(result.extracted_content).toContain('Successfully uploaded file');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it('upload_file returns ActionResult error for zero-byte local files', async () => {
