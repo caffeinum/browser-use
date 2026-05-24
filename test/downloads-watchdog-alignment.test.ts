@@ -316,4 +316,112 @@ describe('downloads watchdog alignment', () => {
       fs.rmSync(downloadsDir, { recursive: true, force: true });
     }
   });
+
+  it('reduces page-controlled download names to safe basenames', () => {
+    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-cdp-dl-'));
+    try {
+      const session = new BrowserSession({
+        profile: {
+          downloads_path: downloadsDir,
+        },
+      });
+      const watchdog = new DownloadsWatchdog({ browser_session: session });
+
+      expect((watchdog as any)._sanitizeFilename('../outside/report.pdf')).toBe(
+        'report.pdf'
+      );
+      expect((watchdog as any)._sanitizeFilename('..\\secret.pdf')).toBe(
+        'secret.pdf'
+      );
+      expect((watchdog as any)._sanitizeFilename('\0')).toBe('download');
+      expect(
+        (watchdog as any)._isPathContained(
+          path.join(downloadsDir, 'report.pdf'),
+          downloadsDir
+        )
+      ).toBe(true);
+      expect(
+        (watchdog as any)._isPathContained(
+          path.join(downloadsDir, '..', 'report.pdf'),
+          downloadsDir
+        )
+      ).toBe(false);
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
+  it('materializes CDP downloads inside downloads_path when headers include traversal', async () => {
+    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-cdp-dl-'));
+    try {
+      const session = new BrowserSession({
+        profile: {
+          downloads_path: downloadsDir,
+        },
+      });
+      const watchdog = new DownloadsWatchdog({ browser_session: session });
+      session.attach_watchdog(watchdog);
+
+      const listeners = new Map<string, (payload: any) => void>();
+      vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue({
+        send: vi.fn(async (method: string) => {
+          if (method === 'Network.getResponseBody') {
+            return {
+              body: Buffer.from('%PDF-1.4').toString('base64'),
+              base64Encoded: true,
+            };
+          }
+          return {};
+        }),
+        on: (event: string, handler: (payload: any) => void) => {
+          listeners.set(event, handler);
+        },
+        off: (event: string) => {
+          listeners.delete(event);
+        },
+        detach: vi.fn(async () => {}),
+      } as any);
+      session.browser_context = {
+        newCDPSession: vi.fn(async () => ({})),
+      } as any;
+
+      const completed: FileDownloadedEvent[] = [];
+      session.event_bus.on(
+        'FileDownloadedEvent',
+        (event) => completed.push(event as FileDownloadedEvent),
+        { handler_id: 'test.downloads.cdp.traversal-complete' }
+      );
+
+      await session.event_bus.dispatch_or_throw(
+        new BrowserConnectedEvent({ cdp_url: 'ws://example' })
+      );
+
+      listeners.get('Network.responseReceived')?.({
+        requestId: 'req-pdf-traversal',
+        response: {
+          url: 'https://example.com/download',
+          mimeType: 'application/pdf',
+          headers: {
+            'content-disposition':
+              'attachment; filename="../outside/report.pdf"',
+          },
+        },
+      });
+      listeners.get('Network.loadingFinished')?.({
+        requestId: 'req-pdf-traversal',
+        encodedDataLength: 8,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(completed).toHaveLength(1);
+      expect(completed[0].file_name).toBe('report.pdf');
+      expect(path.dirname(completed[0].path)).toBe(downloadsDir);
+      expect(fs.existsSync(path.join(downloadsDir, 'report.pdf'))).toBe(true);
+      expect(fs.existsSync(path.join(downloadsDir, '..', 'outside'))).toBe(
+        false
+      );
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
 });

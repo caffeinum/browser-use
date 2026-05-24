@@ -528,6 +528,12 @@ export class DownloadsWatchdog extends BaseWatchdog {
         metadata.suggested_filename
       );
       const filePath = path.join(downloadsPath, uniqueFilename);
+      if (!this._isPathContained(filePath, downloadsPath)) {
+        this.browser_session.logger.debug(
+          `[DownloadsWatchdog] Refusing to write download outside downloads_path: ${filePath}`
+        );
+        return;
+      }
       const content = responseBody?.base64Encoded
         ? Buffer.from(body, 'base64')
         : Buffer.from(body, 'utf8');
@@ -571,7 +577,7 @@ export class DownloadsWatchdog extends BaseWatchdog {
         contentDisposition
       );
     const fromHeader = filenameMatch?.[1] || filenameMatch?.[2] || '';
-    const candidate = decodeURIComponent(fromHeader || '').trim();
+    const candidate = this._decodeFilenameCandidate(fromHeader).trim();
     if (candidate) {
       return this._sanitizeFilename(candidate);
     }
@@ -589,9 +595,29 @@ export class DownloadsWatchdog extends BaseWatchdog {
     return 'download';
   }
 
+  private _decodeFilenameCandidate(filename: string) {
+    if (!filename) {
+      return '';
+    }
+    try {
+      return decodeURIComponent(filename);
+    } catch {
+      return filename;
+    }
+  }
+
   private _sanitizeFilename(filename: string) {
-    const sanitized = filename
-      .replace(/[\\/:*?"<>|]+/g, '_')
+    const basename = filename
+      .replace(/\0/g, '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .pop()
+      ?.trim();
+    if (!basename || basename === '.' || basename === '..') {
+      return 'download';
+    }
+    const sanitized = basename
+      .replace(/[:*?"<>|]+/g, '_')
       .replace(/\s+/g, ' ')
       .trim();
     return sanitized || 'download';
@@ -609,14 +635,47 @@ export class DownloadsWatchdog extends BaseWatchdog {
   }
 
   private async _getUniqueFilename(directory: string, filename: string) {
-    const ext = path.extname(filename);
-    const basename = ext ? filename.slice(0, -ext.length) : filename;
-    let candidate = filename || 'download';
+    const safeFilename = this._sanitizeFilename(filename);
+    const ext = path.extname(safeFilename);
+    const basename = ext ? safeFilename.slice(0, -ext.length) : safeFilename;
+    let candidate = safeFilename || 'download';
     let counter = 1;
     while (fs.existsSync(path.join(directory, candidate))) {
       candidate = `${basename || 'download'}_${counter}${ext}`;
       counter += 1;
     }
     return candidate;
+  }
+
+  private _isPathContained(filePath: string, directory: string) {
+    const realDirectory = this._realPathForMissingPath(directory);
+    const realFilePath = this._realPathForMissingPath(filePath);
+    const relative = path.relative(realDirectory, realFilePath);
+    return (
+      relative === '' ||
+      (relative !== '' &&
+        !relative.startsWith('..') &&
+        !path.isAbsolute(relative))
+    );
+  }
+
+  private _realPathForMissingPath(inputPath: string) {
+    const resolvedPath = path.resolve(inputPath);
+    if (fs.existsSync(resolvedPath)) {
+      return fs.realpathSync.native(resolvedPath);
+    }
+
+    const missingParts: string[] = [];
+    let existingParent = resolvedPath;
+    while (!fs.existsSync(existingParent)) {
+      const parent = path.dirname(existingParent);
+      if (parent === existingParent) {
+        return resolvedPath;
+      }
+      missingParts.unshift(path.basename(existingParent));
+      existingParent = parent;
+    }
+
+    return path.join(fs.realpathSync.native(existingParent), ...missingParts);
   }
 }
