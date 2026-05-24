@@ -512,5 +512,10 @@ describe('SystemPrompt template selection parity', () => {
     expect(text).toContain('CAPTCHAs are automatically solved by the browser.');
     expect(text).toContain('Are there any obstacles (popups, login walls)?');
     expect(text).toContain('Blocking error check:');
+    expect(text).toContain('1. <user_request>: Your ultimate objective.');
+    expect(text).toContain(
+      '3. <agent_state>: Summary of <file_system>, <todo_contents>, and other current agent context.'
+    );
+    expect(text).not.toContain('Current <user_request>');
   });
 });
