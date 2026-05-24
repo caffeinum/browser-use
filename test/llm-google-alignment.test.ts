@@ -145,6 +145,9 @@ describe('Google LLM alignment', () => {
       location: 'us-central1',
       httpOptions: {
         timeout: 30000,
+        headers: {
+          'x-existing-client': 'keep-me',
+        },
       },
       googleAuthOptions: {
         scopes: ['https://www.googleapis.com/auth/cloud-platform'],
@@ -163,6 +166,10 @@ describe('Google LLM alignment', () => {
       location: 'us-central1',
       httpOptions: {
         timeout: 30000,
+        headers: {
+          'x-existing-client': 'keep-me',
+          'x-goog-api-client': expect.stringMatching(/^browser-use\/[^/]+$/),
+        },
       },
       googleAuthOptions: {
         scopes: ['https://www.googleapis.com/auth/cloud-platform'],

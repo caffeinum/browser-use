@@ -5,6 +5,7 @@ import { ChatInvokeCompletion, type ChatInvokeUsage } from '../views.js';
 import type { Message } from '../messages.js';
 import { SchemaOptimizer, zodSchemaToJsonSchema } from '../schema.js';
 import { GoogleMessageSerializer } from './serializer.js';
+import { get_browser_use_version } from '../../utils.js';
 
 export interface ChatGoogleOptions {
   model?: string;
@@ -32,6 +33,30 @@ export interface ChatGoogleOptions {
   retryBaseDelay?: number;
   retryMaxDelay?: number;
 }
+
+const buildGoogleHttpOptions = (
+  httpOptions: Record<string, unknown> | undefined
+) => {
+  const resolvedHttpOptions: Record<string, unknown> = {
+    ...(httpOptions ?? {}),
+  };
+  const existingHeaders = resolvedHttpOptions.headers;
+  const headers: Record<string, string> =
+    existingHeaders &&
+    typeof existingHeaders === 'object' &&
+    !Array.isArray(existingHeaders)
+      ? Object.fromEntries(
+          Object.entries(existingHeaders as Record<string, unknown>).map(
+            ([key, value]) => [String(key), String(value)]
+          )
+        )
+      : {};
+
+  headers['x-goog-api-client'] =
+    `browser-use/${get_browser_use_version() || 'unknown'}`;
+  resolvedHttpOptions.headers = headers;
+  return resolvedHttpOptions;
+};
 
 export class ChatGoogle implements BaseChatModel {
   public model: string;
@@ -105,6 +130,7 @@ export class ChatGoogle implements BaseChatModel {
           };
 
     const resolvedVertexAi = vertexai ?? vertexAi;
+    const resolvedHttpOptions = buildGoogleHttpOptions(httpOptions);
 
     const clientOptions: Record<string, unknown> = {
       ...(apiKey != null ? { apiKey } : {}),
@@ -113,7 +139,7 @@ export class ChatGoogle implements BaseChatModel {
       ...(resolvedVertexAi != null ? { vertexai: resolvedVertexAi } : {}),
       ...(project ? { project } : {}),
       ...(location ? { location } : {}),
-      ...(httpOptions ? { httpOptions } : {}),
+      httpOptions: resolvedHttpOptions,
       ...(resolvedGoogleAuthOptions
         ? { googleAuthOptions: resolvedGoogleAuthOptions }
         : {}),
