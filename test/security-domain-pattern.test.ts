@@ -70,6 +70,19 @@ describe('Allowed Domains Security', () => {
 
     expect((session as any)._is_url_allowed('https://127.0.0.1')).toBe(false);
     expect((session as any)._is_url_allowed('https://[::1]')).toBe(false);
+    expect((session as any)._is_url_allowed('https://2130706433')).toBe(false);
+    expect((session as any)._is_url_allowed('https://0x7f000001')).toBe(false);
+    expect((session as any)._is_url_allowed('https://0177.0.0.1')).toBe(false);
+    expect((session as any)._is_url_allowed('https://127.1')).toBe(false);
+    expect((session as any)._is_url_allowed('https://%31%32%37.0.0.1')).toBe(
+      false
+    );
+    expect((session as any)._is_url_allowed('https://１２７.0.0.1')).toBe(
+      false
+    );
+    expect((session as any)._is_url_allowed('https://127。0。0。1')).toBe(
+      false
+    );
     expect((session as any)._is_url_allowed('https://example.com')).toBe(true);
   });
 
