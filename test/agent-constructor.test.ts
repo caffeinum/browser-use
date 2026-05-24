@@ -1003,6 +1003,45 @@ describe('Agent constructor browser session alignment', () => {
     await agent.close();
   });
 
+  it('multi_act caps each action with a wall-clock timeout', async () => {
+    const agent = new Agent({
+      task: 'multi_act action timeout parity',
+      llm: createLlm(),
+    });
+    let sawAbort = false;
+    const executeActionSpy = vi
+      .spyOn(agent.controller.registry as any, 'execute_action')
+      .mockImplementation(async (...args: unknown[]) => {
+        const ctx = args[2] as { signal?: AbortSignal | null };
+        return new Promise<ActionResult>((resolve) => {
+          ctx.signal?.addEventListener(
+            'abort',
+            () => {
+              sawAbort = true;
+              resolve(new ActionResult({ extracted_content: 'too late' }));
+            },
+            { once: true }
+          );
+        });
+      });
+
+    const results = await agent.multi_act(
+      [{ wait: { seconds: 0 } }, { wait: { seconds: 0 } }],
+      {
+        check_for_new_elements: false,
+        action_timeout: 0.01,
+      }
+    );
+
+    expect(executeActionSpy).toHaveBeenCalledTimes(1);
+    expect(sawAbort).toBe(true);
+    expect(results).toHaveLength(1);
+    expect(results[0]?.error).toContain('Action wait timed out after');
+    expect(results[0]?.error).toContain('browser may be unresponsive');
+
+    await agent.close();
+  });
+
   it('copies non-owning BrowserSession instances to avoid shared-agent state', async () => {
     const sharedSession = new BrowserSession({
       browser_profile: new BrowserProfile({}),

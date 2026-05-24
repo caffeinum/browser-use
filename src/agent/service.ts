@@ -17,6 +17,10 @@ import {
 } from '../utils.js';
 import type { Controller } from '../controller/service.js';
 import { Controller as DefaultController } from '../controller/service.js';
+import {
+  isActionTimeoutError,
+  runActionWithTimeout,
+} from '../controller/action-timeout.js';
 import type { FileSystem } from '../filesystem/file-system.js';
 import {
   FileSystem as AgentFileSystem,
@@ -2886,9 +2890,10 @@ export class Agent<
     options: {
       check_for_new_elements?: boolean;
       signal?: AbortSignal | null;
+      action_timeout?: number | null;
     } = {}
   ) {
-    const { signal = null } = options;
+    const { signal = null, action_timeout = null } = options;
     const results: ActionResult[] = [];
 
     if (!this.browser_session) {
@@ -2935,18 +2940,26 @@ export class Agent<
           this.browser_session.active_tab?.page_id ??
           null;
 
-        const actResult = await (
-          this.controller.registry as any
-        ).execute_action(actionName, actionParams, {
-          browser_session: this.browser_session,
-          page_extraction_llm: this.settings.page_extraction_llm,
-          extraction_schema: this.extraction_schema,
-          sensitive_data: this.sensitive_data,
-          available_file_paths: this.available_file_paths,
-          file_system: this.file_system,
-          context: this.context ?? undefined,
+        const actResult = await runActionWithTimeout<ActionResult>(
+          actionName,
+          action_timeout,
           signal,
-        });
+          (actionSignal) =>
+            (this.controller.registry as any).execute_action(
+              actionName,
+              actionParams,
+              {
+                browser_session: this.browser_session,
+                page_extraction_llm: this.settings.page_extraction_llm,
+                extraction_schema: this.extraction_schema,
+                sensitive_data: this.sensitive_data,
+                available_file_paths: this.available_file_paths,
+                file_system: this.file_system,
+                context: this.context ?? undefined,
+                signal: actionSignal,
+              }
+            )
+        );
         results.push(actResult);
 
         // Log action execution
@@ -3000,6 +3013,12 @@ export class Agent<
         this._capture_shared_pinned_tab();
         if (this._shouldPropagateActionError(error)) {
           throw error;
+        }
+
+        if (isActionTimeoutError(error)) {
+          this.logger.error(`❌ Action ${i + 1} failed: ${error.message}`);
+          results.push(new ActionResult({ error: error.message }));
+          return results;
         }
 
         const message = this._formatActionExecutionError(error);

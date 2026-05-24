@@ -68,6 +68,10 @@ import {
 } from '../tools/extraction/schema-utils.js';
 import type { ExtractionResult } from '../tools/extraction/views.js';
 import { getClickDescription } from '../tools/utils.js';
+import {
+  isActionTimeoutError,
+  runActionWithTimeout,
+} from './action-timeout.js';
 
 type BrowserSession = any;
 type Page = any;
@@ -97,6 +101,7 @@ export interface ActParams<Context = unknown> {
   file_system?: FileSystem | null;
   context?: Context | null;
   signal?: AbortSignal | null;
+  action_timeout?: number | null;
 }
 
 const toActionEntries = (action: Record<string, unknown>) => {
@@ -3448,23 +3453,30 @@ You will be given a query and the markdown of a webpage that has been filtered t
       file_system = null,
       context = null,
       signal = null,
+      action_timeout = null,
     }: ActParams<Context>
   ) {
     const entries = toActionEntries(action);
     for (const [actionName, params] of entries) {
       try {
-        const result = await this.registry.execute_action(
+        const result = await runActionWithTimeout(
           actionName,
-          params as Record<string, unknown>,
-          {
-            browser_session,
-            page_extraction_llm,
-            sensitive_data,
-            available_file_paths,
-            file_system,
-            context,
-            signal,
-          }
+          action_timeout,
+          signal,
+          (actionSignal) =>
+            this.registry.execute_action(
+              actionName,
+              params as Record<string, unknown>,
+              {
+                browser_session,
+                page_extraction_llm,
+                sensitive_data,
+                available_file_paths,
+                file_system,
+                context,
+                signal: actionSignal,
+              }
+            )
         );
         if (typeof result === 'string') {
           return new ActionResult({ extracted_content: result });
@@ -3497,6 +3509,11 @@ You will be given a query and the markdown of a webpage that has been filtered t
             });
           }
           throw error;
+        }
+        if (isActionTimeoutError(error)) {
+          return new ActionResult({
+            error: error.message,
+          });
         }
         const message = String(error?.message ?? error ?? '');
         if (

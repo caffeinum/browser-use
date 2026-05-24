@@ -3546,4 +3546,38 @@ describe('Regression Coverage', () => {
     );
     expect(result.extracted_content).toBeNull();
   });
+
+  it('controller.act applies the per-action wall-clock timeout and aborts the handler', async () => {
+    const controller = new Controller();
+    let sawAbort = false;
+
+    controller.registry.action('Hanging action')(async function hanging_action(
+      _params: Record<string, unknown>,
+      { signal }: { signal?: AbortSignal | null }
+    ) {
+      return new Promise<ActionResult>((resolve) => {
+        signal?.addEventListener(
+          'abort',
+          () => {
+            sawAbort = true;
+            resolve(new ActionResult({ extracted_content: 'too late' }));
+          },
+          { once: true }
+        );
+      });
+    });
+
+    const result = await controller.act(
+      { hanging_action: {} },
+      {
+        browser_session: {} as any,
+        action_timeout: 0.01,
+      }
+    );
+
+    expect(sawAbort).toBe(true);
+    expect(result.error).toContain('Action hanging_action timed out after');
+    expect(result.error).toContain('browser may be unresponsive');
+    expect(result.extracted_content).toBeNull();
+  });
 });
