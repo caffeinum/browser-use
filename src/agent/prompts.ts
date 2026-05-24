@@ -328,22 +328,36 @@ ${elementsText}
 `;
   }
 
-  private agentStateDescription() {
-    const todoContents = this.fileSystem.get_todo_contents();
-    const todoText = todoContents || '[empty todo.md, fill it when applicable]';
+  private currentDateString() {
     const now = new Date();
     const pad = (value: number) => String(value).padStart(2, '0');
-    const dateString = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  private userRequestDescription() {
+    return `<user_request>
+${this.task ?? ''}
+</user_request>
+
+`;
+  }
+
+  private stepMetaDescription() {
     let stepInfoDescription =
       this.stepInfo != null
         ? `Step${this.stepInfo.step_number + 1} maximum:${this.stepInfo.max_steps}\n`
         : '';
-    stepInfoDescription += `Today:${dateString}`;
+    stepInfoDescription += `Today:${this.currentDateString()}`;
 
-    let agentState = `<user_request>
-${this.task ?? ''}
-</user_request>
-<file_system>
+    return `<step_info>${stepInfoDescription}</step_info>
+`;
+  }
+
+  private agentStateDescription() {
+    const todoContents = this.fileSystem.get_todo_contents();
+    const todoText = todoContents || '[empty todo.md, fill it when applicable]';
+
+    let agentState = `<file_system>
 ${this.fileSystem.describe()}
 </file_system>
 <todo_contents>
@@ -361,9 +375,6 @@ ${this.planDescription}
       agentState += `<sensitive_data>${this.sensitiveData}</sensitive_data>
 `;
     }
-
-    agentState += `<step_info>${stepInfoDescription}</step_info>
-`;
 
     if (this.availableFilePaths?.length) {
       agentState += `<available_file_paths>${this.availableFilePaths.join('\n')}
@@ -420,7 +431,9 @@ Use with absolute paths</available_file_paths>
       use_vision = false;
     }
 
-    let stateDescription = `<agent_history>
+    let stateDescription = this.userRequestDescription();
+
+    stateDescription += `<agent_history>
 ${(this.agentHistoryDescription ?? '').trim()}
 </agent_history>
 
@@ -452,6 +465,8 @@ ${this.pageFilteredActions}
     if (this.unavailableSkillsInfo) {
       stateDescription += `\n${this.unavailableSkillsInfo}\n`;
     }
+
+    stateDescription += this.stepMetaDescription();
 
     stateDescription = sanitize_surrogates(stateDescription);
 

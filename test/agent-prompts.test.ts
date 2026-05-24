@@ -351,11 +351,29 @@ describe('AgentMessagePrompt browser state enrichment', () => {
     const userMessage = prompt.get_user_message(false) as any;
     const content = String(userMessage.content ?? '');
 
+    const userRequestIndex = content.indexOf('<user_request>');
+    const agentHistoryIndex = content.indexOf('<agent_history>');
+    const agentStateIndex = content.indexOf('<agent_state>');
+    const browserStateIndex = content.indexOf('<browser_state>');
+    const stepInfoIndex = content.indexOf('<step_info>');
+
+    expect(userRequestIndex).toBeGreaterThanOrEqual(0);
+    expect(agentHistoryIndex).toBeGreaterThan(userRequestIndex);
+    expect(agentStateIndex).toBeGreaterThan(agentHistoryIndex);
+    expect(browserStateIndex).toBeGreaterThan(agentStateIndex);
+    expect(stepInfoIndex).toBeGreaterThan(browserStateIndex);
     expect(content).toContain('<step_info>Step1 maximum:5');
     expect(content).toMatch(/Today:\d{4}-\d{2}-\d{2}/);
     expect(content).toContain(
       '<available_file_paths>/tmp/report.pdf\nUse with absolute paths</available_file_paths>'
     );
+
+    const agentState = content.match(
+      /<agent_state>\n([\s\S]*?)\n<\/agent_state>/
+    )?.[1];
+    expect(agentState).toBeTruthy();
+    expect(agentState).not.toContain('<user_request>');
+    expect(agentState).not.toContain('<step_info>');
   });
 
   it('injects unavailable skills info and sanitizes invalid surrogates', () => {
