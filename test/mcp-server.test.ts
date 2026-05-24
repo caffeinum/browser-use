@@ -428,9 +428,15 @@ describe('MCPServer retry_with_browser_use_agent', () => {
     expect(instance.runMaxSteps).toBe(7);
   });
 
-  it('defaults allowed_domains override to empty list when omitted', async () => {
+  it('preserves configured allowed_domains when retry argument is omitted', async () => {
     mockAgentInstances.length = 0;
     const server = new MCPServer('test-mcp', '1.0.0');
+    (server as any).config = {
+      browser_profile: {
+        allowed_domains: ['admin.example'],
+      },
+      llm: {},
+    };
 
     await (server as any).tools.retry_with_browser_use_agent.handler({
       task: 'Retry without domain override input',
@@ -440,8 +446,30 @@ describe('MCPServer retry_with_browser_use_agent', () => {
     const instance = mockAgentInstances[0];
     expect(
       instance.params.browser_session.browser_profile.config.allowed_domains
-    ).toEqual([]);
+    ).toEqual(['admin.example']);
     expect(instance.runMaxSteps).toBe(100);
+  });
+
+  it('does not let explicit empty allowed_domains wipe configured defaults', async () => {
+    mockAgentInstances.length = 0;
+    const server = new MCPServer('test-mcp', '1.0.0');
+    (server as any).config = {
+      browser_profile: {
+        allowed_domains: ['admin.example'],
+      },
+      llm: {},
+    };
+
+    await (server as any).tools.retry_with_browser_use_agent.handler({
+      task: 'Retry without domain override input',
+      allowed_domains: [],
+    });
+
+    expect(mockAgentInstances.length).toBe(1);
+    const instance = mockAgentInstances[0];
+    expect(
+      instance.params.browser_session.browser_profile.config.allowed_domains
+    ).toEqual(['admin.example']);
   });
 
   it('uses configured default model when model argument is omitted', async () => {

@@ -1007,7 +1007,7 @@ export class MCPServer {
         task: z.string(),
         max_steps: z.number().int().optional().default(100),
         model: z.string().optional(),
-        allowed_domains: z.array(z.string()).optional().default([]),
+        allowed_domains: z.array(z.string()).optional(),
         use_vision: z.boolean().optional().default(true),
       }),
       async (args) => {
@@ -1020,11 +1020,13 @@ export class MCPServer {
           typeof args?.model === 'string' ? args.model.trim() : '';
         const maxSteps = Number(args?.max_steps ?? 100);
         const useVision = Boolean(args?.use_vision ?? true);
-        const allowedDomains = Array.isArray(args?.allowed_domains)
+        const allowedDomainValues = Array.isArray(args?.allowed_domains)
           ? args.allowed_domains
               .map((entry: unknown) => String(entry).trim())
               .filter(Boolean)
           : [];
+        const allowedDomains =
+          allowedDomainValues.length > 0 ? allowedDomainValues : undefined;
 
         const llmConfig = this.getDefaultLlmConfig();
         const configuredModel =
