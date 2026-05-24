@@ -18,6 +18,10 @@ import {
 } from './views.js';
 import { CUSTOM_MODEL_PRICING } from './custom-pricing.js';
 import { MODEL_TO_LITELLM } from './mappings.js';
+import {
+  getOpenRouterModelPricing,
+  isOpenRouterPricingModel,
+} from './openrouter-pricing.js';
 
 const logger = createLogger('browser_use.tokens');
 const costLogger = createLogger('browser_use.tokens.cost');
@@ -332,26 +336,32 @@ export class TokenCost {
       };
     }
 
+    if (isOpenRouterPricingModel(modelName)) {
+      const openRouterPricing = await getOpenRouterModelPricing(modelName);
+      if (openRouterPricing) {
+        return openRouterPricing;
+      }
+    }
+
     await this.ensurePricingLoaded();
-    if (!this.pricingData) {
-      return null;
-    }
     const litellmModelName = MODEL_TO_LITELLM[modelName] ?? modelName;
-    const pricing = this.pricingData[litellmModelName];
-    if (!pricing) {
-      return null;
+    const pricing = this.pricingData?.[litellmModelName];
+    if (pricing) {
+      return {
+        model: modelName,
+        input_cost_per_token: pricing.input_cost_per_token ?? null,
+        output_cost_per_token: pricing.output_cost_per_token ?? null,
+        cache_read_input_token_cost:
+          pricing.cache_read_input_token_cost ?? null,
+        cache_creation_input_token_cost:
+          pricing.cache_creation_input_token_cost ?? null,
+        max_tokens: pricing.max_tokens ?? null,
+        max_input_tokens: pricing.max_input_tokens ?? null,
+        max_output_tokens: pricing.max_output_tokens ?? null,
+      };
     }
-    return {
-      model: modelName,
-      input_cost_per_token: pricing.input_cost_per_token ?? null,
-      output_cost_per_token: pricing.output_cost_per_token ?? null,
-      cache_read_input_token_cost: pricing.cache_read_input_token_cost ?? null,
-      cache_creation_input_token_cost:
-        pricing.cache_creation_input_token_cost ?? null,
-      max_tokens: pricing.max_tokens ?? null,
-      max_input_tokens: pricing.max_input_tokens ?? null,
-      max_output_tokens: pricing.max_output_tokens ?? null,
-    };
+
+    return await getOpenRouterModelPricing(modelName);
   }
 
   public get_usage_tokens_for_model(model: string): ModelUsageTokens {
