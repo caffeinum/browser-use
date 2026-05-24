@@ -562,6 +562,16 @@ const isChromeProfileLockError = (error: unknown): boolean => {
   );
 };
 
+const pathContains = (candidate: string, parent: string) => {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return (
+    relative === '' ||
+    (relative !== '' &&
+      !relative.startsWith('..') &&
+      !path.isAbsolute(relative))
+  );
+};
+
 const normalizeDomainEntry = (entry: unknown) =>
   String(entry ?? '')
     .trim()
@@ -797,6 +807,10 @@ export class BrowserProfile {
       return;
     }
 
+    if (this.isBrowserUseManagedProfile(userDataDirText)) {
+      return;
+    }
+
     if (!this.isChromeBackedProfile(userDataDirText)) {
       return;
     }
@@ -846,16 +860,12 @@ export class BrowserProfile {
   }
 
   private isChromeBackedProfile(userDataDirText: string) {
-    const executablePath = String(this.options.executable_path ?? '');
-    const channel = this.options.channel;
-    return (
-      userDataDirText.toLowerCase().includes('chrome') ||
-      executablePath.toLowerCase().includes('chrome') ||
-      channel === BrowserChannel.CHROME ||
-      channel === BrowserChannel.CHROME_BETA ||
-      channel === BrowserChannel.CHROME_DEV ||
-      channel === BrowserChannel.CHROME_CANARY
-    );
+    return userDataDirText.toLowerCase().includes('chrome');
+  }
+
+  private isBrowserUseManagedProfile(userDataDirText: string) {
+    const profilesDir = path.dirname(CONFIG.BROWSER_USE_DEFAULT_USER_DATA_DIR);
+    return pathContains(userDataDirText, profilesDir);
   }
 
   private ensureDefaultDownloadsPath() {

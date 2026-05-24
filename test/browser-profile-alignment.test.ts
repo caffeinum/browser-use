@@ -11,6 +11,7 @@ const importProfileModule = async () => {
 describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
   afterEach(() => {
     delete process.env.BROWSER_USE_DISABLE_EXTENSIONS;
+    delete process.env.BROWSER_USE_CONFIG_DIR;
   });
 
   it('defaults wait_between_actions to 0.1 seconds', async () => {
@@ -158,6 +159,30 @@ describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
       if (copiedUserDataDir) {
         fs.rmSync(copiedUserDataDir, { recursive: true, force: true });
       }
+    }
+  });
+
+  it('keeps browser-use managed Chrome profiles persistent instead of temp-copying them', async () => {
+    const configDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-config-')
+    );
+    process.env.BROWSER_USE_CONFIG_DIR = configDir;
+    const { BrowserProfile } = await importProfileModule();
+
+    try {
+      const profile = new BrowserProfile({
+        executable_path:
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      });
+
+      expect(profile.config.user_data_dir).toBe(
+        path.join(configDir, 'profiles', 'default-google-chrome')
+      );
+      expect(path.basename(profile.config.user_data_dir!)).not.toMatch(
+        /^browser-use-user-data-dir-/
+      );
+    } finally {
+      fs.rmSync(configDir, { recursive: true, force: true });
     }
   });
 });
