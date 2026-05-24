@@ -2997,14 +2997,51 @@ export class Agent<
         }
         this._capture_shared_pinned_tab();
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`❌ Action ${i + 1} failed: ${message}`);
         this._capture_shared_pinned_tab();
-        throw error;
+        if (this._shouldPropagateActionError(error)) {
+          throw error;
+        }
+
+        const message = this._formatActionExecutionError(error);
+        this.logger.error(`❌ Action ${i + 1} failed: ${message}`);
+        results.push(new ActionResult({ error: message }));
+        return results;
       }
     }
 
     return results;
+  }
+
+  private _shouldPropagateActionError(error: unknown) {
+    if (error instanceof Error) {
+      if (error.name === 'InterruptedError' || error.name === 'AbortError') {
+        return true;
+      }
+    }
+    return this._isConnectionLikeError(error);
+  }
+
+  private _isConnectionLikeError(error: unknown) {
+    const name = error instanceof Error ? error.name : '';
+    const message = error instanceof Error ? error.message : String(error);
+    const text = `${name} ${message}`.toLowerCase();
+    return (
+      name === 'ConnectionError' ||
+      text.includes('websocket connection closed') ||
+      text.includes('connection closed') ||
+      text.includes('browser has been closed') ||
+      text.includes('browser closed') ||
+      text.includes('no browser')
+    );
+  }
+
+  private _formatActionExecutionError(error: unknown) {
+    const typeName =
+      error instanceof Error
+        ? error.name || error.constructor.name || 'Error'
+        : 'Error';
+    const message = error instanceof Error ? error.message : String(error);
+    return `${typeName}: ${message}`;
   }
 
   private async _generate_rerun_summary(

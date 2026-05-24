@@ -950,6 +950,59 @@ describe('Agent constructor browser session alignment', () => {
     await agent.close();
   });
 
+  it('multi_act returns partial results when a later action raises a regular error', async () => {
+    const agent = new Agent({
+      task: 'multi_act partial error parity',
+      llm: createLlm(),
+    });
+    const executeActionSpy = vi
+      .spyOn(agent.controller.registry as any, 'execute_action')
+      .mockImplementation(async (...args: unknown[]) => {
+        const params = args[1] as { fail?: boolean } | undefined;
+        if (params?.fail) {
+          throw new Error('second action failed');
+        }
+        return new ActionResult({ extracted_content: 'first action ok' });
+      });
+
+    const results = await agent.multi_act(
+      [
+        { wait: { seconds: 0 } },
+        { wait: { seconds: 0, fail: true } },
+        { wait: { seconds: 0 } },
+      ],
+      { check_for_new_elements: false }
+    );
+
+    expect(executeActionSpy).toHaveBeenCalledTimes(2);
+    expect(results).toHaveLength(2);
+    expect(results[0]?.extracted_content).toBe('first action ok');
+    expect(results[1]?.error).toBe('Error: second action failed');
+
+    await agent.close();
+  });
+
+  it('multi_act still propagates interruption-style action errors', async () => {
+    const agent = new Agent({
+      task: 'multi_act propagates abort errors',
+      llm: createLlm(),
+    });
+    const abortError = new Error('operation aborted');
+    abortError.name = 'AbortError';
+    vi.spyOn(
+      agent.controller.registry as any,
+      'execute_action'
+    ).mockRejectedValue(abortError);
+
+    await expect(
+      agent.multi_act([{ wait: { seconds: 0 } }], {
+        check_for_new_elements: false,
+      })
+    ).rejects.toBe(abortError);
+
+    await agent.close();
+  });
+
   it('copies non-owning BrowserSession instances to avoid shared-agent state', async () => {
     const sharedSession = new BrowserSession({
       browser_profile: new BrowserProfile({}),
