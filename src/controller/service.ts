@@ -685,19 +685,24 @@ export class Controller<Context = unknown> {
             'Unable to perform coordinate click on the current page.'
           );
         }
+        await validateBrowserPageAfterAction(browser_session, page, signal);
         const [actualX, actualY] = convertLlmCoordinatesToViewport(
           params.coordinate_x,
           params.coordinate_y,
           browser_session
         );
-        await dispatchBrowserEventIfAvailable(
-          browser_session,
-          new ClickCoordinateEvent({
-            coordinate_x: actualX,
-            coordinate_y: actualY,
-          }),
-          () => page.mouse.click(actualX, actualY)
-        );
+        try {
+          await dispatchBrowserEventIfAvailable(
+            browser_session,
+            new ClickCoordinateEvent({
+              coordinate_x: actualX,
+              coordinate_y: actualY,
+            }),
+            () => page.mouse.click(actualX, actualY)
+          );
+        } finally {
+          await validateBrowserPageAfterAction(browser_session, page, signal);
+        }
         const coordinateMessage =
           `🖱️ Clicked at coordinates (${params.coordinate_x}, ${params.coordinate_y})` +
           (await detectNewTabNote(tabsBefore));
@@ -1070,9 +1075,19 @@ export class Controller<Context = unknown> {
         try {
           const page = await browser_session.get_current_page?.();
           if (page?.evaluate) {
-            const evaluated = await page.evaluate(
-              () => window.scrollY || window.pageYOffset || 0
-            );
+            await validateBrowserPageAfterAction(browser_session, page, signal);
+            let evaluated: unknown;
+            try {
+              evaluated = await page.evaluate(
+                () => window.scrollY || window.pageYOffset || 0
+              );
+            } finally {
+              await validateBrowserPageAfterAction(
+                browser_session,
+                page,
+                signal
+              );
+            }
             const numeric =
               typeof evaluated === 'number' ? evaluated : Number(evaluated);
             if (Number.isFinite(numeric)) {
@@ -1770,100 +1785,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         throw new BrowserError('No active page for search_page.');
       }
 
-      const searchResult = (await page.evaluate(
-        ({
-          pattern,
-          regex,
-          caseSensitive,
-          contextChars,
-          cssScope,
-          maxResults,
-        }: {
-          pattern: string;
-          regex: boolean;
-          caseSensitive: boolean;
-          contextChars: number;
-          cssScope: string | null;
-          maxResults: number;
-        }) => {
-          const sourceNode = cssScope
-            ? document.querySelector(cssScope)
-            : document.body;
-          if (!sourceNode) {
-            return {
-              error: `CSS scope not found: ${cssScope}`,
-              matches: [],
-              total: 0,
-            };
-          }
-          const sourceText =
-            (sourceNode as HTMLElement).innerText ||
-            sourceNode.textContent ||
-            '';
-          if (!sourceText.trim()) {
-            return {
-              matches: [],
-              total: 0,
-            };
-          }
-
-          const safePattern = regex
-            ? pattern
-            : pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const flags = caseSensitive ? 'g' : 'gi';
-
-          let matcher: RegExp;
-          try {
-            matcher = new RegExp(safePattern, flags);
-          } catch (error: unknown) {
-            return {
-              error: `Invalid regex pattern: ${String(error)}`,
-              matches: [],
-              total: 0,
-            };
-          }
-
-          const matches: Array<{
-            position: number;
-            match: string;
-            snippet: string;
-          }> = [];
-          let foundTotal = 0;
-          let m: RegExpExecArray | null;
-          while ((m = matcher.exec(sourceText)) !== null) {
-            foundTotal += 1;
-            if (matches.length < Math.max(1, maxResults)) {
-              const start = Math.max(0, m.index - Math.max(0, contextChars));
-              const end = Math.min(
-                sourceText.length,
-                m.index + m[0].length + Math.max(0, contextChars)
-              );
-              matches.push({
-                position: m.index,
-                match: m[0],
-                snippet: sourceText.slice(start, end),
-              });
-            }
-            if (m[0].length === 0) {
-              matcher.lastIndex += 1;
-            }
-          }
-
-          return {
-            matches,
-            total: foundTotal,
-            truncated: foundTotal > matches.length,
-          };
-        },
-        {
-          pattern: params.pattern,
-          regex: params.regex,
-          caseSensitive: params.case_sensitive,
-          contextChars: params.context_chars,
-          cssScope: params.css_scope ?? null,
-          maxResults: params.max_results,
-        }
-      )) as {
+      type SearchPageResult = {
         error?: string;
         matches?: Array<{
           position: number;
@@ -1872,7 +1794,107 @@ You will be given a query and the markdown of a webpage that has been filtered t
         }>;
         total?: number;
         truncated?: boolean;
-      } | null;
+      };
+      let searchResult: SearchPageResult | null = null;
+      await validateBrowserPageAfterAction(browser_session, page, signal);
+      try {
+        searchResult = (await page.evaluate(
+          ({
+            pattern,
+            regex,
+            caseSensitive,
+            contextChars,
+            cssScope,
+            maxResults,
+          }: {
+            pattern: string;
+            regex: boolean;
+            caseSensitive: boolean;
+            contextChars: number;
+            cssScope: string | null;
+            maxResults: number;
+          }) => {
+            const sourceNode = cssScope
+              ? document.querySelector(cssScope)
+              : document.body;
+            if (!sourceNode) {
+              return {
+                error: `CSS scope not found: ${cssScope}`,
+                matches: [],
+                total: 0,
+              };
+            }
+            const sourceText =
+              (sourceNode as HTMLElement).innerText ||
+              sourceNode.textContent ||
+              '';
+            if (!sourceText.trim()) {
+              return {
+                matches: [],
+                total: 0,
+              };
+            }
+
+            const safePattern = regex
+              ? pattern
+              : pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const flags = caseSensitive ? 'g' : 'gi';
+
+            let matcher: RegExp;
+            try {
+              matcher = new RegExp(safePattern, flags);
+            } catch (error: unknown) {
+              return {
+                error: `Invalid regex pattern: ${String(error)}`,
+                matches: [],
+                total: 0,
+              };
+            }
+
+            const matches: Array<{
+              position: number;
+              match: string;
+              snippet: string;
+            }> = [];
+            let foundTotal = 0;
+            let m: RegExpExecArray | null;
+            while ((m = matcher.exec(sourceText)) !== null) {
+              foundTotal += 1;
+              if (matches.length < Math.max(1, maxResults)) {
+                const start = Math.max(0, m.index - Math.max(0, contextChars));
+                const end = Math.min(
+                  sourceText.length,
+                  m.index + m[0].length + Math.max(0, contextChars)
+                );
+                matches.push({
+                  position: m.index,
+                  match: m[0],
+                  snippet: sourceText.slice(start, end),
+                });
+              }
+              if (m[0].length === 0) {
+                matcher.lastIndex += 1;
+              }
+            }
+
+            return {
+              matches,
+              total: foundTotal,
+              truncated: foundTotal > matches.length,
+            };
+          },
+          {
+            pattern: params.pattern,
+            regex: params.regex,
+            caseSensitive: params.case_sensitive,
+            contextChars: params.context_chars,
+            cssScope: params.css_scope ?? null,
+            maxResults: params.max_results,
+          }
+        )) as SearchPageResult | null;
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
 
       if (!searchResult) {
         return new ActionResult({ error: 'search_page returned no result' });
@@ -1932,63 +1954,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         throw new BrowserError('No active page for find_elements.');
       }
 
-      const result = (await page.evaluate(
-        ({
-          selector,
-          attributes,
-          maxResults,
-          includeText,
-        }: {
-          selector: string;
-          attributes: string[] | null;
-          maxResults: number;
-          includeText: boolean;
-        }) => {
-          let elements: Element[];
-          try {
-            elements = Array.from(document.querySelectorAll(selector));
-          } catch (error: unknown) {
-            return {
-              error: `Invalid selector: ${String(error)}`,
-              elements: [],
-              total: 0,
-            };
-          }
-
-          const selected = elements.slice(0, Math.max(1, maxResults));
-          const payload = selected.map((el, idx) => {
-            const attrs: Record<string, string> = {};
-            if (attributes?.length) {
-              for (const attr of attributes) {
-                const value = el.getAttribute(attr);
-                if (value != null) {
-                  attrs[attr] = value;
-                }
-              }
-            }
-            return {
-              index: idx + 1,
-              tag: el.tagName.toLowerCase(),
-              text: includeText
-                ? (el.textContent || '').replace(/\s+/g, ' ').trim()
-                : '',
-              attributes: attrs,
-            };
-          });
-
-          return {
-            elements: payload,
-            total: elements.length,
-            truncated: elements.length > selected.length,
-          };
-        },
-        {
-          selector: params.selector,
-          attributes: params.attributes ?? null,
-          maxResults: params.max_results,
-          includeText: params.include_text,
-        }
-      )) as {
+      type FindElementsResult = {
         error?: string;
         elements?: Array<{
           index: number;
@@ -1998,7 +1964,70 @@ You will be given a query and the markdown of a webpage that has been filtered t
         }>;
         total?: number;
         truncated?: boolean;
-      } | null;
+      };
+      let result: FindElementsResult | null = null;
+      await validateBrowserPageAfterAction(browser_session, page, signal);
+      try {
+        result = (await page.evaluate(
+          ({
+            selector,
+            attributes,
+            maxResults,
+            includeText,
+          }: {
+            selector: string;
+            attributes: string[] | null;
+            maxResults: number;
+            includeText: boolean;
+          }) => {
+            let elements: Element[];
+            try {
+              elements = Array.from(document.querySelectorAll(selector));
+            } catch (error: unknown) {
+              return {
+                error: `Invalid selector: ${String(error)}`,
+                elements: [],
+                total: 0,
+              };
+            }
+
+            const selected = elements.slice(0, Math.max(1, maxResults));
+            const payload = selected.map((el, idx) => {
+              const attrs: Record<string, string> = {};
+              if (attributes?.length) {
+                for (const attr of attributes) {
+                  const value = el.getAttribute(attr);
+                  if (value != null) {
+                    attrs[attr] = value;
+                  }
+                }
+              }
+              return {
+                index: idx + 1,
+                tag: el.tagName.toLowerCase(),
+                text: includeText
+                  ? (el.textContent || '').replace(/\s+/g, ' ').trim()
+                  : '',
+                attributes: attrs,
+              };
+            });
+
+            return {
+              elements: payload,
+              total: elements.length,
+              truncated: elements.length > selected.length,
+            };
+          },
+          {
+            selector: params.selector,
+            attributes: params.attributes ?? null,
+            maxResults: params.max_results,
+            includeText: params.include_text,
+          }
+        )) as FindElementsResult | null;
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
 
       if (!result) {
         return new ActionResult({ error: 'find_elements returned no result' });
@@ -2062,6 +2091,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         throw new BrowserError('Unable to access current page for scrolling.');
       }
 
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         // Helper function to get window height with retries
         const getWindowHeight = async (retries = 3): Promise<number> => {
@@ -2700,6 +2730,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
 
       let payload: { ok: boolean; result?: unknown; error?: string } | null =
         null;
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         payload = (await page.evaluate(
           async ({ code }: { code: string }) => {
@@ -2729,16 +2760,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
           { code: validatedCode }
         )) as { ok: boolean; result?: unknown; error?: string } | null;
       } finally {
-        const assertUrlAllowed = (browser_session as any)
-          ?._assert_page_url_allowed_or_rollback;
-        if (typeof assertUrlAllowed === 'function') {
-          await assertUrlAllowed.call(browser_session, page);
-        }
-        const syncCurrentTab = (browser_session as any)
-          ?._syncCurrentTabFromPage;
-        if (typeof syncCurrentTab === 'function') {
-          await syncCurrentTab.call(browser_session, page);
-        }
+        await validateBrowserPageAfterAction(browser_session, page, signal);
       }
 
       if (!payload) {

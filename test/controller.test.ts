@@ -2248,6 +2248,45 @@ describe('Regression Coverage', () => {
     );
   });
 
+  it('search_page blocks disallowed current pages before reading text', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/search?token=secret';
+    const page = {
+      evaluate: vi.fn(async () => ({
+        total: 1,
+        matches: [{ position: 0, match: 'secret', snippet: 'secret' }],
+      })),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Secret'),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    session.update_current_page(page, 'Secret', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'search_page',
+        { pattern: 'secret' },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.evaluate).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
   it('find_elements returns formatted selector results', async () => {
     const controller = new Controller();
     const page = {
@@ -2350,6 +2389,42 @@ describe('Regression Coverage', () => {
       expect.objectContaining({ waitUntil: 'load' })
     );
     expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('evaluate blocks disallowed current pages before JavaScript execution', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/evaluate?token=secret';
+    const page = {
+      evaluate: vi.fn(async () => ({ ok: true, result: 'secret' })),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Secret'),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    session.update_current_page(page, 'Secret', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'evaluate',
+        { code: 'document.body.innerText' },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.evaluate).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
   });
 
   it('evaluate normalizes over-escaped JavaScript before execution', async () => {
