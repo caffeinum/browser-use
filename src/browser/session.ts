@@ -7864,7 +7864,9 @@ export class BrowserSession {
         .then((isVisible: boolean) => {
           if (isVisible) {
             this.logger.debug(
-              `Tab became visible: ${page.url?.() || 'unknown'}`
+              `Tab became visible: ${BrowserSession._redact_url_for_logging(
+                page.url?.() || 'unknown'
+              )}`
             );
             this.human_current_page = page;
           }

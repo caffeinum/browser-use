@@ -2580,6 +2580,32 @@ esac
     }
   });
 
+  it('redacts tab visibility URLs before logging', async () => {
+    const session = new BrowserSession();
+    const debugSpy = vi
+      .spyOn(session.logger, 'debug')
+      .mockImplementation(() => undefined);
+    const page = {
+      evaluate: vi.fn(async () => true),
+      url: vi.fn(() => 'https://example.com/visible?token=abc#section'),
+    } as any;
+
+    try {
+      (session as any)._onTabVisibilityChange(page);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const logs = debugSpy.mock.calls.flat().join('\n');
+      expect(logs).toContain(
+        'https://example.com/visible?<redacted>#<redacted>'
+      );
+      expect(logs).not.toContain('token=abc');
+      expect(logs).not.toContain('#section');
+    } finally {
+      debugSpy.mockRestore();
+    }
+  });
+
   it('rolls back JavaScript navigations to disallowed URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
