@@ -978,6 +978,86 @@ describe('skill-cli direct alignment', () => {
     }
   });
 
+  it('respects domain policy for direct-mode cookie set and import commands', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
+    const stateFile = path.join(tempDir, 'state.json');
+    const cookieFile = path.join(tempDir, 'cookies.json');
+    const browserContext = {
+      addCookies: vi.fn(async () => {}),
+    };
+    const session = {
+      start: vi.fn(async () => {}),
+      tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
+      switch_to_tab: vi.fn(async () => {}),
+      browser_context: browserContext,
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      _get_cookie_access_denial_reason: vi.fn((cookie: any) => {
+        const target = String(cookie?.url ?? cookie?.domain ?? '');
+        return target.includes('evil.test') ? 'not_in_allowed_domains' : null;
+      }),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    fs.writeFileSync(
+      cookieFile,
+      JSON.stringify([
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        { name: 'blocked', value: '1', domain: '.evil.test', path: '/' },
+      ])
+    );
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      const blockedStdout = createWritable();
+      const blockedStderr = createWritable();
+      const blockedSetExitCode = await run_direct_command(
+        ['cookies', 'set', 'blocked', '1', '--url', 'https://evil.test'],
+        {
+          state_file: stateFile,
+          stdout: blockedStdout.stream,
+          stderr: blockedStderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+      const importStdout = createWritable();
+      const importStderr = createWritable();
+      const importExitCode = await run_direct_command(
+        ['cookies', 'import', cookieFile],
+        {
+          state_file: stateFile,
+          stdout: importStdout.stream,
+          stderr: importStderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+
+      expect(blockedSetExitCode).toBe(1);
+      expect(blockedStderr.read()).toContain('Cookie target blocked');
+      expect(importExitCode).toBe(0);
+      expect(importStdout.read()).toContain(`Imported 1 cookies`);
+      expect(importStderr.read()).toBe('');
+      expect(browserContext.addCookies).toHaveBeenCalledTimes(1);
+      expect(browserContext.addCookies).toHaveBeenCalledWith([
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('rejects unknown direct cookie options instead of treating them as positional values', async () => {
     const tempDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-direct-')

@@ -224,6 +224,22 @@ const normalizeSameSite = (value: string | null | undefined) => {
   return undefined;
 };
 
+const getDirectCookieDenialReason = (
+  session: DirectSessionLike,
+  cookie: unknown
+) => {
+  const checker = (session as any)._get_cookie_access_denial_reason;
+  if (typeof checker !== 'function') {
+    return null;
+  }
+  return checker.call(session, cookie);
+};
+
+const filterDirectAllowedCookies = (
+  session: DirectSessionLike,
+  cookies: any[]
+) => cookies.filter((cookie) => !getDirectCookieDenialReason(session, cookie));
+
 export interface DirectCliEnvironment {
   state_file?: string;
   stdout?: StreamLike;
@@ -1119,6 +1135,12 @@ export const run_direct_command = async (
         } else {
           throw new Error('Provide cookie url/domain or open a page first');
         }
+        const denialReason = getDirectCookieDenialReason(session, cookie);
+        if (denialReason) {
+          throw new Error(
+            `Cookie target blocked by domain policy: ${denialReason}`
+          );
+        }
         await session.browser_context.addCookies([cookie]);
         writeLine(environment.stdout, `Set cookie ${name}`);
       } else if (cookieCommand === 'clear') {
@@ -1176,10 +1198,13 @@ export const run_direct_command = async (
         if (!Array.isArray(cookies)) {
           throw new Error('Cookie import file must contain a JSON array');
         }
-        await session.browser_context.addCookies(cookies);
+        const allowedCookies = filterDirectAllowedCookies(session, cookies);
+        if (allowedCookies.length > 0) {
+          await session.browser_context.addCookies(allowedCookies);
+        }
         writeLine(
           environment.stdout,
-          `Imported ${cookies.length} cookies from ${inputPath}`
+          `Imported ${allowedCookies.length} cookies from ${inputPath}`
         );
       } else {
         throw new Error(

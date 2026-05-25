@@ -142,6 +142,17 @@ const parseCookieExpires = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+const getCookieDenialReason = (session: any, cookie: unknown) => {
+  const checker = session?._get_cookie_access_denial_reason;
+  if (typeof checker !== 'function') {
+    return null;
+  }
+  return checker.call(session, cookie);
+};
+
+const filterAllowedCookies = (session: any, cookies: BrowserCookieInit[]) =>
+  cookies.filter((cookie) => !getCookieDenialReason(session, cookie));
+
 export class SkillCliServer {
   readonly registry: SessionRegistry;
 
@@ -613,6 +624,12 @@ export class SkillCliServer {
         throw new Error('Provide cookie url/domain or open a page first');
       }
 
+      const denialReason = getCookieDenialReason(browser_session, cookie);
+      if (denialReason) {
+        throw new Error(
+          `Cookie target blocked by domain policy: ${denialReason}`
+        );
+      }
       await browser_session.browser_context.addCookies([cookie]);
       return { set: name };
     }
@@ -690,8 +707,14 @@ export class SkillCliServer {
         }
         return typedCookie as BrowserCookieInit;
       });
-      await browser_session.browser_context.addCookies(importedCookies);
-      return { file: filePath, imported: importedCookies.length };
+      const allowedCookies = filterAllowedCookies(
+        browser_session,
+        importedCookies
+      );
+      if (allowedCookies.length > 0) {
+        await browser_session.browser_context.addCookies(allowedCookies);
+      }
+      return { file: filePath, imported: allowedCookies.length };
     }
 
     if (action === 'close') {

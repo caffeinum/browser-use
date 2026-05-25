@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { BrowserProfile } from '../src/browser/profile.js';
 import { BrowserSession } from '../src/browser/session.js';
 import {
   Request,
@@ -298,6 +299,72 @@ describe('skill-cli alignment', () => {
           expect.objectContaining({ name: 'other' }),
         ])
       );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('respects domain policy for cookie set and import commands', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-skill-')
+    );
+    const cookiesPath = path.join(tempDir, 'cookies.json');
+    fs.writeFileSync(
+      cookiesPath,
+      JSON.stringify([
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        { name: 'blocked', value: '1', domain: '.evil.test', path: '/' },
+      ])
+    );
+
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    vi.spyOn(session, 'get_current_page').mockResolvedValue({
+      url: () => 'https://example.com',
+    } as any);
+    (session as any).browser_context = {
+      addCookies: vi.fn(async () => {}),
+    };
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    try {
+      const blockedSet = await server.handle_request(
+        new Request({
+          id: 'r-cookie-set-blocked',
+          action: 'cookies_set',
+          session: 'default',
+          params: {
+            name: 'blocked',
+            value: '1',
+            url: 'https://evil.test',
+          },
+        })
+      );
+      const imported = await server.handle_request(
+        new Request({
+          id: 'r-cookie-import-filtered',
+          action: 'cookies_import',
+          session: 'default',
+          params: { file: cookiesPath },
+        })
+      );
+
+      expect(blockedSet.success).toBe(false);
+      expect(String(blockedSet.error)).toContain('Cookie target blocked');
+      expect(imported.success).toBe(true);
+      expect((imported.data as any).imported).toBe(1);
+      expect((session as any).browser_context.addCookies).toHaveBeenCalledTimes(
+        1
+      );
+      expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
