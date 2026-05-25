@@ -3130,15 +3130,24 @@ export class BrowserSession {
     }
 
     try {
-      await this._withAbort(keyboard.press(keys), signal);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Unknown key')) {
-        for (const char of keys) {
-          await this._withAbort(keyboard.press(char), signal);
+      try {
+        await this._withAbort(keyboard.press(keys), signal);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Unknown key')) {
+          for (const char of keys) {
+            await this._withAbort(keyboard.press(char), signal);
+          }
+          return;
         }
-        return;
+        throw error;
       }
-      throw error;
+    } finally {
+      await this._waitForLoad(page, 5000, signal);
+      if (page) {
+        await this._assert_page_url_allowed_or_rollback(page);
+        await this._syncCurrentTabFromPage(page);
+      }
+      this.cachedBrowserState = null;
     }
   }
 
@@ -3164,6 +3173,10 @@ export class BrowserSession {
       }),
       signal
     );
+    await this._waitForLoad(page, 5000, signal);
+    await this._assert_page_url_allowed_or_rollback(page);
+    await this._syncCurrentTabFromPage(page);
+    this.cachedBrowserState = null;
   }
 
   async scroll(

@@ -1022,6 +1022,76 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back keyboard-triggered navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/form';
+    const fakePage = {
+      keyboard: {
+        press: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-enter';
+        }),
+      },
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Form', 'https://example.com/form');
+
+    await expect(session.send_keys('Enter')).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back coordinate click navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/map';
+    const fakePage = {
+      mouse: {
+        click: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-coordinate';
+        }),
+      },
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Map', 'https://example.com/map');
+
+    await expect(session.click_coordinates(10, 20)).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('switches tabs by 4-char tab_id aliases', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
