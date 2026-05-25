@@ -4204,9 +4204,14 @@ export class BrowserSession {
       if (this.browser_context?.addCookies) {
         // Add cookies to context
         if (storageState.cookies && Array.isArray(storageState.cookies)) {
-          await this.browser_context.addCookies(storageState.cookies);
+          const allowedCookies = this._filter_storage_state_cookies(
+            storageState.cookies
+          );
+          if (allowedCookies.length > 0) {
+            await this.browser_context.addCookies(allowedCookies);
+          }
           this.logger.info(
-            `🍪 Loaded ${storageState.cookies.length} cookies from ${path.basename(resolvedPath)}`
+            `🍪 Loaded ${allowedCookies.length} cookies from ${path.basename(resolvedPath)}`
           );
         }
       }
@@ -4337,6 +4342,62 @@ export class BrowserSession {
       normalized.push({ name, value });
     }
     return normalized;
+  }
+
+  private _filter_storage_state_cookies(cookies: unknown[]): any[] {
+    return cookies.filter((cookie) => {
+      const denialReason = this._get_cookie_access_denial_reason(cookie);
+      if (!denialReason) {
+        return true;
+      }
+      const cookieName =
+        cookie && typeof cookie === 'object' && 'name' in cookie
+          ? String((cookie as any).name ?? '')
+          : '';
+      this.logger.warning(
+        `Skipping storage cookie ${cookieName || '<unnamed>'}: ${denialReason}`
+      );
+      return false;
+    });
+  }
+
+  private _get_cookie_access_denial_reason(cookie: unknown): string | null {
+    if (!cookie || typeof cookie !== 'object') {
+      return null;
+    }
+
+    const cookieLike = cookie as {
+      url?: unknown;
+      domain?: unknown;
+      secure?: unknown;
+    };
+    const explicitUrl =
+      typeof cookieLike.url === 'string' ? cookieLike.url.trim() : '';
+    if (explicitUrl) {
+      return this._get_url_access_denial_reason(explicitUrl);
+    }
+
+    const rawDomain =
+      typeof cookieLike.domain === 'string' ? cookieLike.domain.trim() : '';
+    const host = rawDomain.replace(/^\./, '');
+    if (!host) {
+      return null;
+    }
+
+    const protocols =
+      cookieLike.secure === true ? ['https:'] : ['https:', 'http:'];
+    let lastReason: string | null = null;
+    for (const protocol of protocols) {
+      const reason = this._get_url_access_denial_reason(`${protocol}//${host}`);
+      if (!reason) {
+        return null;
+      }
+      if (reason === 'in_prohibited_domains') {
+        return reason;
+      }
+      lastReason = reason;
+    }
+    return lastReason;
   }
 
   // ==================== JavaScript Execution ====================

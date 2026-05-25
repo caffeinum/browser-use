@@ -142,8 +142,12 @@ export class StorageStateWatchdog extends BaseWatchdog {
       origins,
     });
 
-    if (cookies.length > 0 && typeof browserContext.addCookies === 'function') {
-      await browserContext.addCookies(cookies as any[]);
+    const allowedCookies = this._filterCookies(cookies);
+    if (
+      allowedCookies.length > 0 &&
+      typeof browserContext.addCookies === 'function'
+    ) {
+      await browserContext.addCookies(allowedCookies as any[]);
     }
 
     if (origins.length > 0) {
@@ -153,7 +157,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
     await this.event_bus.dispatch(
       new StorageStateLoadedEvent({
         path: targetPath,
-        cookies_count: cookies.length,
+        cookies_count: allowedCookies.length,
         origins_count: origins.length,
       })
     );
@@ -431,6 +435,52 @@ export class StorageStateWatchdog extends BaseWatchdog {
     }
 
     return null;
+  }
+
+  private _filterCookies(cookies: unknown[]) {
+    return cookies.filter((cookie) => {
+      const denialReason = this._getCookieDenialReason(cookie);
+      if (!denialReason) {
+        return true;
+      }
+      const cookieName =
+        cookie && typeof cookie === 'object' && 'name' in cookie
+          ? String((cookie as any).name ?? '')
+          : '';
+      this.browser_session.logger.warning(
+        `[StorageStateWatchdog] Skipping storage cookie ${cookieName || '<unnamed>'}: ${denialReason}`
+      );
+      return false;
+    });
+  }
+
+  private _getCookieDenialReason(cookie: unknown): string | null {
+    const session = this.browser_session as any;
+    if (typeof session._get_cookie_access_denial_reason === 'function') {
+      try {
+        return session._get_cookie_access_denial_reason(cookie);
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    if (!cookie || typeof cookie !== 'object') {
+      return null;
+    }
+    const cookieLike = cookie as { url?: unknown; domain?: unknown };
+    const explicitUrl =
+      typeof cookieLike.url === 'string' ? cookieLike.url.trim() : '';
+    if (explicitUrl) {
+      return this._getOriginDenialReason(explicitUrl);
+    }
+
+    const rawDomain =
+      typeof cookieLike.domain === 'string' ? cookieLike.domain.trim() : '';
+    const host = rawDomain.replace(/^\./, '');
+    if (!host) {
+      return null;
+    }
+    return this._getOriginDenialReason(`https://${host}`);
   }
 
   private _normalizeStorageEntries(entries: unknown) {

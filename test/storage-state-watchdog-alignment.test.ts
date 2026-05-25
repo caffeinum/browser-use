@@ -149,6 +149,59 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('skips storage state cookies blocked by allowed_domains', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify(
+          {
+            cookies: [
+              { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+              {
+                name: 'blocked',
+                value: '1',
+                domain: 'evil.example.com',
+                path: '/',
+              },
+            ],
+            origins: [],
+          },
+          null,
+          2
+        )
+      );
+
+      const addCookies = vi.fn(async () => {});
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+          allowed_domains: ['https://example.com'],
+        },
+      });
+      session.browser_context = {
+        addCookies,
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+
+      const dispatchSpy = vi.spyOn(session.event_bus, 'dispatch');
+      await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
+
+      expect(addCookies).toHaveBeenCalledWith([
+        { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+      ]);
+      const loadedCall = dispatchSpy.mock.calls.find(
+        ([event]) => event instanceof StorageStateLoadedEvent
+      );
+      const loadedEvent = loadedCall?.[0] as StorageStateLoadedEvent;
+      expect(loadedEvent.cookies_count).toBe(1);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('replays origins localStorage and sessionStorage entries on load', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {

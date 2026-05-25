@@ -2449,7 +2449,15 @@ describe('Storage State', () => {
       statePath,
       JSON.stringify(
         {
-          cookies: [{ name: 'sid', value: '123' }],
+          cookies: [
+            { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+            {
+              name: 'blocked',
+              value: '1',
+              domain: 'evil.example.com',
+              path: '/',
+            },
+          ],
           origins: [
             {
               origin: 'https://example.com',
@@ -2489,7 +2497,9 @@ describe('Storage State', () => {
     try {
       await session.load_storage_state(statePath);
 
-      expect(addCookies).toHaveBeenCalledWith([{ name: 'sid', value: '123' }]);
+      expect(addCookies).toHaveBeenCalledWith([
+        { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+      ]);
       expect(newPage).toHaveBeenCalledTimes(1);
       expect(goto).toHaveBeenCalledWith('https://example.com', {
         waitUntil: 'domcontentloaded',
