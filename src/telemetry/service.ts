@@ -12,6 +12,17 @@ const POSTHOG_EVENT_SETTINGS = {
   process_person_profile: true,
 };
 
+const chmodPrivate = (target: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(target, mode);
+  } catch {
+    /* noop */
+  }
+};
+
 export class ProductTelemetry {
   private client: PostHog | null = null;
   private debugLogging: boolean;
@@ -85,12 +96,20 @@ export class ProductTelemetry {
 
     try {
       if (!fs.existsSync(this.userIdFile)) {
-        fs.mkdirSync(path.dirname(this.userIdFile), { recursive: true });
+        fs.mkdirSync(path.dirname(this.userIdFile), {
+          recursive: true,
+          mode: 0o700,
+        });
+        chmodPrivate(path.dirname(this.userIdFile), 0o700);
         this.cachedUserId = uuid7str();
-        fs.writeFileSync(this.userIdFile, this.cachedUserId, 'utf-8');
+        fs.writeFileSync(this.userIdFile, this.cachedUserId, {
+          encoding: 'utf-8',
+          mode: 0o600,
+        });
       } else {
         this.cachedUserId = fs.readFileSync(this.userIdFile, 'utf-8');
       }
+      chmodPrivate(this.userIdFile, 0o600);
     } catch {
       this.cachedUserId = 'UNKNOWN_USER_ID';
     }
