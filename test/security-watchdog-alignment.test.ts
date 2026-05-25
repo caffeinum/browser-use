@@ -29,13 +29,18 @@ describe('security watchdog alignment', () => {
 
     await expect(
       session.event_bus.dispatch_or_throw(
-        new NavigateToUrlEvent({ url: 'https://evil.test' })
+        new NavigateToUrlEvent({
+          url: 'https://evil.test/path?token=secret#fragment',
+        })
       )
     ).rejects.toThrow(/Event NavigateToUrlEvent/);
 
     expect(errors).toHaveLength(1);
     expect(errors[0].error_type).toBe('NavigationBlocked');
-    expect(errors[0].details.url).toBe('https://evil.test');
+    expect(errors[0].message).not.toContain('secret');
+    expect(errors[0].details.url).toBe(
+      'https://evil.test/path?<redacted>#<redacted>'
+    );
   });
 
   it('reacts to disallowed NavigationCompleteEvent and redirects to about:blank', async () => {

@@ -7,6 +7,34 @@ import {
 } from '../events.js';
 import { BaseWatchdog } from './base.js';
 
+const redactUrlForError = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'data:') {
+      return 'data:<redacted>';
+    }
+    if (parsed.protocol === 'blob:') {
+      return parsed.origin && parsed.origin !== 'null'
+        ? `blob:${parsed.origin}/<redacted>`
+        : 'blob:<redacted>';
+    }
+    return `${parsed.origin}${parsed.pathname}${
+      parsed.search ? '?<redacted>' : ''
+    }${parsed.hash ? '#<redacted>' : ''}`;
+  } catch {
+    const queryIndex = url.indexOf('?');
+    const hashIndex = url.indexOf('#');
+    const cutoffCandidates = [queryIndex, hashIndex].filter(
+      (index) => index >= 0
+    );
+    const cutoff =
+      cutoffCandidates.length > 0 ? Math.min(...cutoffCandidates) : url.length;
+    return `${url.slice(0, cutoff)}${queryIndex >= 0 ? '?<redacted>' : ''}${
+      hashIndex >= 0 ? '#<redacted>' : ''
+    }`;
+  }
+};
+
 export class SecurityWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [
     NavigateToUrlEvent,
@@ -21,18 +49,19 @@ export class SecurityWatchdog extends BaseWatchdog {
     if (!denialReason) {
       return;
     }
+    const safeUrl = redactUrlForError(event.url);
 
     await this.event_bus.dispatch(
       new BrowserErrorEvent({
         error_type: 'NavigationBlocked',
-        message: `Navigation blocked to disallowed URL: ${event.url}`,
+        message: `Navigation blocked to disallowed URL: ${safeUrl}`,
         details: {
-          url: event.url,
+          url: safeUrl,
           reason: denialReason,
         },
       })
     );
-    throw new Error(`Navigation to ${event.url} blocked by security policy`);
+    throw new Error(`Navigation to ${safeUrl} blocked by security policy`);
   }
 
   async on_NavigationCompleteEvent(event: NavigationCompleteEvent) {
@@ -40,13 +69,14 @@ export class SecurityWatchdog extends BaseWatchdog {
     if (!denialReason) {
       return;
     }
+    const safeUrl = redactUrlForError(event.url);
 
     await this.event_bus.dispatch(
       new BrowserErrorEvent({
         error_type: 'NavigationBlocked',
-        message: `Navigation blocked to non-allowed URL: ${event.url}`,
+        message: `Navigation blocked to non-allowed URL: ${safeUrl}`,
         details: {
-          url: event.url,
+          url: safeUrl,
           target_id: event.target_id,
           reason: denialReason,
         },
@@ -76,13 +106,14 @@ export class SecurityWatchdog extends BaseWatchdog {
     if (!denialReason) {
       return;
     }
+    const safeUrl = redactUrlForError(event.url);
 
     await this.event_bus.dispatch(
       new BrowserErrorEvent({
         error_type: 'TabCreationBlocked',
-        message: `Tab created with non-allowed URL: ${event.url}`,
+        message: `Tab created with non-allowed URL: ${safeUrl}`,
         details: {
-          url: event.url,
+          url: safeUrl,
           target_id: event.target_id,
           reason: denialReason,
         },
