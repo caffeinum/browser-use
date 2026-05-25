@@ -359,7 +359,7 @@ Core MCP tools include `retry_with_browser_use_agent`, `browser_navigate`, `brow
 - **Sensitive Data Masking** — Credentials are automatically masked in logs and LLM context
 - **Domain Restrictions** — Lock browser navigation to trusted domains
 - **Domain-scoped Secrets** — Credentials are only injected on matching domains
-- **Hard Safety Gate** — `sensitive_data` requires `allowed_domains` by default
+- **Sensitive Data Warning** — Browser-Use warns when `sensitive_data` is used without `allowed_domains`
 - **Chromium Sandbox** — Enabled by default for production security
 
 ```typescript

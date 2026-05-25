@@ -42,12 +42,12 @@ const agent = new Agent({
 ### How It Works
 
 1. **Masking in Logs**: Sensitive values are automatically masked in logs and conversation history
-2. **Domain Scoping**: Credentials are only available on matching domains
+2. **Domain Scoping**: Domain-scoped credentials are only available on matching domains
 3. **Secret Placeholders**: Use `<secret>key</secret>` pattern in prompts to reference credentials
 4. **Memory Isolation**: Sensitive data is not included in LLM context
-5. **Hard Safety Gate**: By default, `sensitive_data` requires `allowed_domains` to be configured
+5. **Unlocked Sensitive Data Warning**: Browser-Use warns when `sensitive_data` is configured without `allowed_domains`
 
-If `sensitive_data` is provided without `allowed_domains`, Agent construction fails with `InsecureSensitiveDataError`.
+If `sensitive_data` is provided without `allowed_domains`, Agent construction continues but logs a security warning. For production credentialed tasks, configure `allowed_domains` so navigation is locked to trusted domains.
 
 ```typescript
 const agent = new Agent({
@@ -59,17 +59,6 @@ const agent = new Agent({
       allowed_domains: ['example.com', '*.example.com'],
     }),
   }),
-});
-```
-
-You can explicitly bypass this check for local testing only:
-
-```typescript
-const agent = new Agent({
-  task: 'Unsafe test run',
-  llm,
-  sensitive_data: { password: 'secret' },
-  allow_insecure_sensitive_data: true, // unsafe: do not use in production
 });
 ```
 
@@ -206,7 +195,7 @@ const profile = new BrowserProfile({
 npx browser-use --allowed-domains "*.example.com,*.trusted.org" -p "Complete login flow"
 ```
 
-Avoid `--allow-insecure` in production. It permits `sensitive_data` usage without domain lock-down.
+Avoid running production credentialed tasks without `allowed_domains`; unlocked `sensitive_data` is warning-only and does not stop navigation by itself.
 
 ### Domain Patterns
 

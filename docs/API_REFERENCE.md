@@ -53,9 +53,8 @@ new Agent(options: AgentOptions)
 | `override_system_message` | `string`                    | No       | `null`                      | Replace system message                   |
 | `extend_system_message`   | `string`                    | No       | `null`                      | Append to system message                 |
 | `include_attributes`      | `string[]`                  | No       | `DEFAULT_INCLUDE_ATTRIBUTES` | Additional HTML attributes to include    |
-| `sensitive_data`          | `SensitiveDataMap`          | No       | `null`                      | Credentials for auto-fill                |
+| `sensitive_data`          | `SensitiveDataMap`          | No       | `null`                      | Credentials for auto-fill; use `allowed_domains` for production credentialed tasks |
 | `session_attachment_mode` | `'copy' \| 'strict' \| 'shared'` | No | `'copy'`                    | How Agent attaches to an existing `BrowserSession` |
-| `allow_insecure_sensitive_data` | `boolean`            | No       | `false`                     | Allow `sensitive_data` without `allowed_domains` (unsafe) |
 | `llm_timeout`             | `number`                    | No       | Auto (model-dependent)      | LLM call timeout (seconds)               |
 | `step_timeout`            | `number`                    | No       | `180`                       | Step execution timeout (seconds)         |
 | `final_response_after_failure` | `boolean`             | No       | `true`                      | Allow one done-only recovery step after hitting `max_failures` |
