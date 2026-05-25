@@ -8,6 +8,14 @@ const chmodPrivateFile = (filePath: string) => {
   }
 };
 
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    fs.chmodSync(dirPath, 0o700);
+  }
+};
+
 export const export_to_ipynb = (agent: CodeAgent, output_path: string) => {
   const notebook = {
     nbformat: 4,
@@ -46,7 +54,7 @@ export const export_to_ipynb = (agent: CodeAgent, output_path: string) => {
   };
 
   const resolved = path.resolve(output_path);
-  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  ensurePrivateDirectoryIfCreated(path.dirname(resolved));
   fs.writeFileSync(resolved, JSON.stringify(notebook, null, 2), {
     encoding: 'utf-8',
     mode: 0o600,

@@ -68,6 +68,14 @@ const chmodPrivateFile = (filePath: string) => {
   }
 };
 
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    fs.chmodSync(dirPath, 0o700);
+  }
+};
+
 const parseStructuredOutput = <T>(
   schema: StructuredOutputParser<T> | null | undefined,
   value: string
@@ -1159,7 +1167,7 @@ export class AgentHistoryList<TStructured = unknown> {
     > | null = null
   ) {
     const dir = path.dirname(filepath);
-    fs.mkdirSync(dir, { recursive: true });
+    ensurePrivateDirectoryIfCreated(dir);
     fs.writeFileSync(
       filepath,
       JSON.stringify(this.toJSON(sensitive_data), null, 2),

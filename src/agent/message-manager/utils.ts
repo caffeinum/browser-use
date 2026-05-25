@@ -8,6 +8,14 @@ const chmodPrivateFile = (filePath: string) => {
   }
 };
 
+const ensurePrivateDirectoryIfCreated = async (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  await fs.promises.mkdir(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    await fs.promises.chmod(dirPath, 0o700);
+  }
+};
+
 const serializeResponse = (response: unknown) => {
   if (!response) {
     return '';
@@ -51,7 +59,7 @@ export const saveConversation = async (
   encoding: BufferEncoding = 'utf-8'
 ) => {
   const targetPath = path.resolve(target);
-  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+  await ensurePrivateDirectoryIfCreated(path.dirname(targetPath));
   const payload = formatConversation(inputMessages, response);
   await fs.promises.writeFile(targetPath, payload, { encoding, mode: 0o600 });
   chmodPrivateFile(targetPath);

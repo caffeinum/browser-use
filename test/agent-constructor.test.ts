@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { BaseChatModel } from '../src/llm/base.js';
@@ -115,6 +116,9 @@ describe('Agent constructor browser session alignment', () => {
       `${agent.agent_directory}/${DEFAULT_FILE_SYSTEM_PATH}`
     );
     expect((agent as any)._file_system_path).toBe(agent.agent_directory);
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(agent.agent_directory).mode & 0o777).toBe(0o700);
+    }
 
     await agent.close();
   });

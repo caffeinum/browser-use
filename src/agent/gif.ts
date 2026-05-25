@@ -26,6 +26,18 @@ const chmodPrivateFile = (filePath: string) => {
   }
 };
 
+const ensurePrivateDirectoryIfCreated = async (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  await fs.promises.mkdir(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    try {
+      await fs.promises.chmod(dirPath, 0o700);
+    } catch {
+      /* best effort */
+    }
+  }
+};
+
 export const decode_unicode_escapes_to_utf8 = (text: string) => {
   if (!text.includes('\\u')) {
     return text;
@@ -325,10 +337,8 @@ export const create_history_gif = async (
   const ctx = canvas.getContext('2d');
   const encoder = new GIFEncoder(width, height);
 
-  await fs.promises.mkdir(path.dirname(path.resolve(output_path)), {
-    recursive: true,
-  });
   const resolvedOutputPath = path.resolve(output_path);
+  await ensurePrivateDirectoryIfCreated(path.dirname(resolvedOutputPath));
   const writeStream = fs.createWriteStream(resolvedOutputPath, {
     mode: 0o600,
   });

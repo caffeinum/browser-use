@@ -18,7 +18,8 @@ describe('message-manager utils alignment', () => {
   it('formats saved conversations without RESPONSE header (python c011 parity)', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-msg-'));
     tempDirs.push(tempDir);
-    const targetPath = path.join(tempDir, 'conversation.txt');
+    const targetDir = path.join(tempDir, 'nested');
+    const targetPath = path.join(targetDir, 'conversation.txt');
 
     await saveConversation(
       [new SystemMessage('system instructions'), new UserMessage('hello')],
@@ -34,6 +35,7 @@ describe('message-manager utils alignment', () => {
     expect(content).toContain('"ok": true');
     expect(content).not.toContain(' RESPONSE');
     if (process.platform !== 'win32') {
+      expect(fs.statSync(targetDir).mode & 0o777).toBe(0o700);
       expect(fs.statSync(targetPath).mode & 0o777).toBe(0o600);
     }
   });

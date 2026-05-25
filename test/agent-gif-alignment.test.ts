@@ -37,7 +37,8 @@ describe('agent gif alignment', () => {
   it('writes generated GIFs as private files', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-gif-'));
     try {
-      const outputPath = path.join(tempDir, 'history.gif');
+      const outputDir = path.join(tempDir, 'nested');
+      const outputPath = path.join(outputDir, 'history.gif');
       const canvas = createCanvas(2, 2);
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#fff';
@@ -62,6 +63,7 @@ describe('agent gif alignment', () => {
 
       expect(fs.existsSync(outputPath)).toBe(true);
       if (process.platform !== 'win32') {
+        expect(fs.statSync(outputDir).mode & 0o777).toBe(0o700);
         expect(fs.statSync(outputPath).mode & 0o777).toBe(0o600);
       }
     } finally {

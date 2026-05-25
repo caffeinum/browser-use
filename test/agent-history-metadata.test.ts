@@ -43,20 +43,23 @@ describe('Agent history metadata alignment', () => {
       )
     );
 
-    const filePath = path.join(
-      os.tmpdir(),
-      `agent-history-metadata-${Date.now()}.json`
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'agent-history-metadata-')
     );
+    const historyDir = path.join(tempDir, 'nested');
+    const filePath = path.join(historyDir, 'history.json');
 
     try {
       history.save_to_file(filePath);
       const loaded = AgentHistoryList.load_from_file(filePath, AgentOutput);
       expect(loaded.history[0].state_message).toBe('snapshot text');
       expect(loaded.history[0].metadata?.step_interval).toBe(1);
-    } finally {
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(historyDir).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
       }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 

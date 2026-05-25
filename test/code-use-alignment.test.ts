@@ -200,7 +200,8 @@ describe('code-use alignment', () => {
 
   it('exports notebooks with private file permissions', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'code-use-export-'));
-    const outputPath = path.join(tempDir, 'session.ipynb');
+    const outputDir = path.join(tempDir, 'nested');
+    const outputPath = path.join(outputDir, 'session.ipynb');
     const session = new BrowserSession();
     const agent = new CodeAgent({
       task: 'Export data',
@@ -217,6 +218,7 @@ describe('code-use alignment', () => {
       expect(fs.existsSync(outputPath)).toBe(true);
       expect(fs.readFileSync(outputPath, 'utf-8')).toContain('secret-output');
       if (process.platform !== 'win32') {
+        expect(fs.statSync(outputDir).mode & 0o777).toBe(0o700);
         expect(fs.statSync(outputPath).mode & 0o777).toBe(0o600);
       }
     } finally {

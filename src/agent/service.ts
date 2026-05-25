@@ -298,8 +298,10 @@ interface AgentConstructorParams<Context, AgentStructuredOutput> {
 }
 
 const ensureDir = (target: string) => {
-  if (!fs.existsSync(target)) {
-    fs.mkdirSync(target, { recursive: true });
+  const existed = fs.existsSync(target);
+  fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    fs.chmodSync(target, 0o700);
   }
 };
 
@@ -4768,7 +4770,7 @@ export class Agent<
     if (this.settings.save_conversation_path) {
       const dir = this.settings.save_conversation_path;
       const filepath = path.join(dir, `step_${this.state.n_steps}.json`);
-      await fs.promises.mkdir(path.dirname(filepath), { recursive: true });
+      ensureDir(path.dirname(filepath));
       await fs.promises.writeFile(
         filepath,
         JSON.stringify(
