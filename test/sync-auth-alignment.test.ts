@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DeviceAuthClient } from '../src/sync/auth.js';
+import { DeviceAuthClient, save_cloud_api_token } from '../src/sync/auth.js';
 
 describe('DeviceAuthClient alignment', () => {
   const originalConfigDir = process.env.BROWSER_USE_CONFIG_DIR;
@@ -60,5 +60,24 @@ describe('DeviceAuthClient alignment', () => {
     expect(fs.existsSync(authFile)).toBe(true);
     client.clear_auth();
     expect(fs.existsSync(authFile)).toBe(false);
+  });
+
+  it('stores cloud auth and device id files with private permissions', () => {
+    save_cloud_api_token('bu_saved_token', 'user-1');
+    const client = new DeviceAuthClient('https://api.example.com', {
+      post: vi.fn(async () => ({ data: {} })),
+    } as any);
+
+    expect(client.device_id).toBeTruthy();
+    const authFile = path.join(tempDir, 'cloud_auth.json');
+    const deviceIdFile = path.join(tempDir, 'device_id');
+    expect(fs.existsSync(authFile)).toBe(true);
+    expect(fs.existsSync(deviceIdFile)).toBe(true);
+
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(tempDir).mode & 0o777).toBe(0o700);
+      expect(fs.statSync(authFile).mode & 0o777).toBe(0o600);
+      expect(fs.statSync(deviceIdFile).mode & 0o777).toBe(0o600);
+    }
   });
 });

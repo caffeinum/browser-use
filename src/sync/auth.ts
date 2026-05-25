@@ -21,7 +21,25 @@ const DEVICE_ID_PATH = () => path.join(CONFIG_DIR(), 'device_id');
 const CLOUD_AUTH_PATH = () => path.join(CONFIG_DIR(), 'cloud_auth.json');
 
 const ensureDir = () => {
-  fs.mkdirSync(CONFIG_DIR(), { recursive: true });
+  fs.mkdirSync(CONFIG_DIR(), { recursive: true, mode: 0o700 });
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(CONFIG_DIR(), 0o700);
+    } catch {
+      /* noop */
+    }
+  }
+};
+
+const writePrivateFile = (filePath: string, contents: string) => {
+  fs.writeFileSync(filePath, contents, { encoding: 'utf-8', mode: 0o600 });
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(filePath, 0o600);
+    } catch {
+      /* noop */
+    }
+  }
 };
 
 const loadAuthConfig = (): CloudAuthConfigData => {
@@ -40,12 +58,7 @@ const loadAuthConfig = (): CloudAuthConfigData => {
 
 const saveAuthConfig = (config: CloudAuthConfigData) => {
   ensureDir();
-  fs.writeFileSync(CLOUD_AUTH_PATH(), JSON.stringify(config, null, 2), 'utf-8');
-  try {
-    fs.chmodSync(CLOUD_AUTH_PATH(), 0o600);
-  } catch {
-    /* noop */
-  }
+  writePrivateFile(CLOUD_AUTH_PATH(), JSON.stringify(config, null, 2));
 };
 
 export const load_cloud_auth_config = (): CloudAuthConfigData =>
@@ -79,7 +92,7 @@ const getOrCreateDeviceId = () => {
   }
 
   const deviceId = uuid7str();
-  fs.writeFileSync(DEVICE_ID_PATH(), deviceId, 'utf-8');
+  writePrivateFile(DEVICE_ID_PATH(), deviceId);
   return deviceId;
 };
 
