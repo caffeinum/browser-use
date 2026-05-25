@@ -699,8 +699,9 @@ export class SkillCliServer {
           await browser_session.browser_context.clearCookies();
           return { cleared: true };
         }
-        const allCookies =
-          (await browser_session.get_cookies()) as BrowserCookieInit[];
+        const allCookies = (await browser_session.get_cookies({
+          include_blocked: true,
+        })) as BrowserCookieInit[];
         const { allowedCookies, blockedCookies } = partitionAllowedCookies(
           browser_session,
           allCookies
@@ -724,8 +725,9 @@ export class SkillCliServer {
       }
 
       assertCookieUrlAllowed(browser_session, url);
-      const allCookies =
-        (await browser_session.get_cookies()) as BrowserCookieInit[];
+      const allCookies = (await browser_session.get_cookies({
+        include_blocked: true,
+      })) as BrowserCookieInit[];
       const remainingCookies = allCookies.filter(
         (cookie: BrowserCookieInit) => !cookieMatchesUrl(cookie, url)
       );

@@ -125,7 +125,7 @@ interface DirectSessionLike {
   close_tab?: (identifier: number | string) => Promise<unknown>;
   select_dropdown_option?: (node: any, value: string) => Promise<unknown>;
   wait_for_element?: (selector: string, timeout: number) => Promise<unknown>;
-  get_cookies?: () => Promise<any[]>;
+  get_cookies?: (options?: { include_blocked?: boolean }) => Promise<any[]>;
 }
 
 const normalizeCookieDomain = (value: string | null | undefined) =>
@@ -1216,7 +1216,8 @@ export const run_direct_command = async (
             await session.browser_context.clearCookies();
             writeLine(environment.stdout, 'Cleared cookies');
           } else {
-            const allCookies = (await session.get_cookies?.()) ?? [];
+            const allCookies =
+              (await session.get_cookies?.({ include_blocked: true })) ?? [];
             const { allowedCookies, blockedCookies } =
               partitionDirectAllowedCookies(session, allCookies);
             if (allowedCookies.length === 0 && blockedCookies.length > 0) {
@@ -1240,7 +1241,8 @@ export const run_direct_command = async (
           }
         } else {
           assertDirectCookieUrlAllowed(session, url);
-          const allCookies = (await session.get_cookies?.()) ?? [];
+          const allCookies =
+            (await session.get_cookies?.({ include_blocked: true })) ?? [];
           const remaining = allCookies.filter(
             (cookie) => !cookieMatchesUrl(cookie, url)
           );

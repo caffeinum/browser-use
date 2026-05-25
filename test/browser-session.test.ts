@@ -3346,6 +3346,30 @@ describe('Direct Playwright Operations', () => {
 });
 
 describe('Storage State', () => {
+  it('filters BrowserSession.get_cookies by allowed_domains by default', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    session.browser_context = {
+      cookies: vi.fn(async () => [
+        { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+        { name: 'blocked', value: '1', domain: 'evil.test', path: '/' },
+      ]),
+    } as any;
+
+    await expect(session.get_cookies()).resolves.toEqual([
+      { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+    ]);
+    await expect(
+      session.get_cookies({ include_blocked: true })
+    ).resolves.toEqual([
+      { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+      { name: 'blocked', value: '1', domain: 'evil.test', path: '/' },
+    ]);
+  });
+
   it('saves storage state through BrowserSession with private permissions', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
     const statePath = path.join(tempDir, 'state.json');

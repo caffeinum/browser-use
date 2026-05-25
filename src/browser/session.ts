@@ -4193,11 +4193,16 @@ export class BrowserSession {
   /**
    * Get all cookies from the current browser context
    */
-  async get_cookies(): Promise<Array<Record<string, any>>> {
-    if (this.browser_context?.cookies) {
-      return await this.browser_context.cookies();
+  async get_cookies(
+    options: { include_blocked?: boolean } = {}
+  ): Promise<Array<Record<string, any>>> {
+    const cookies = this.browser_context?.cookies
+      ? await this.browser_context.cookies()
+      : [];
+    if (options.include_blocked || !this._has_url_access_restrictions()) {
+      return cookies;
     }
-    return [];
+    return this._filter_cookies_for_exposure(cookies);
   }
 
   /**
@@ -4497,6 +4502,23 @@ export class BrowserSession {
           : '';
       this.logger.warning(
         `Skipping storage cookie ${cookieName || '<unnamed>'}: ${denialReason}`
+      );
+      return false;
+    });
+  }
+
+  private _filter_cookies_for_exposure(cookies: unknown[]): any[] {
+    return cookies.filter((cookie) => {
+      const denialReason = this._get_cookie_access_denial_reason(cookie);
+      if (!denialReason) {
+        return true;
+      }
+      const cookieName =
+        cookie && typeof cookie === 'object' && 'name' in cookie
+          ? String((cookie as any).name ?? '')
+          : '';
+      this.logger.debug(
+        `Skipping exposed cookie ${cookieName || '<unnamed>'}: ${denialReason}`
       );
       return false;
     });
