@@ -296,6 +296,7 @@ describe('actor alignment', () => {
     let pageUrl = 'https://example.com/start';
     const rawPage = {
       evaluate: vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
         pageUrl = 'https://evil.test/from-page-evaluate?token=secret';
         return 'ok';
       }),

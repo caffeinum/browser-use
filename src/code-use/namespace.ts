@@ -95,14 +95,14 @@ export const create_namespace = (
     await browser_session.validate_page_after_action(page);
     try {
       if (typeof code === 'function') {
-        return page.evaluate(code as any, ...args);
+        return await page.evaluate(code as any, ...args);
       }
 
       if (args.length === 0) {
-        return page.evaluate(code);
+        return await page.evaluate(code);
       }
 
-      return page.evaluate(buildExpression(code, args));
+      return await page.evaluate(buildExpression(code, args));
     } finally {
       await browser_session.validate_page_after_action(page);
     }

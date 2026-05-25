@@ -82,6 +82,7 @@ describe('code-use alignment', () => {
     let pageUrl = 'https://example.com/start';
     const page = {
       evaluate: vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
         pageUrl = 'https://evil.test/from-evaluate?token=secret';
         return 'ok';
       }),

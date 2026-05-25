@@ -83,12 +83,12 @@ export class Page {
     await this.browser_session.validate_page_after_action(page);
     try {
       if (typeof page_function === 'function') {
-        return page.evaluate(page_function as any, ...args);
+        return await page.evaluate(page_function as any, ...args);
       }
       if (args.length === 0) {
-        return page.evaluate(page_function);
+        return await page.evaluate(page_function);
       }
-      return page.evaluate(buildExpression(page_function, args));
+      return await page.evaluate(buildExpression(page_function, args));
     } finally {
       await this.browser_session.validate_page_after_action(page);
     }
