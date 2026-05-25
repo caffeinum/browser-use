@@ -353,6 +353,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
           url: string,
           options?: Record<string, unknown>
         ) => Promise<unknown>;
+        url?: () => string;
         evaluate?: (
           fn: (payload: {
             localStorageEntries: Array<{ name: string; value: string }>;
@@ -405,6 +406,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
           url: string,
           options?: Record<string, unknown>
         ) => Promise<unknown>;
+        url?: () => string;
         evaluate?: (
           fn: (payload: {
             localStorageEntries: Array<{ name: string; value: string }>;
@@ -424,6 +426,22 @@ export class StorageStateWatchdog extends BaseWatchdog {
           waitUntil: 'domcontentloaded',
           timeout: 5_000,
         });
+        const finalUrl = typeof page.url === 'function' ? page.url() : origin;
+        const finalDenialReason = this._getOriginDenialReason(finalUrl);
+        if (finalDenialReason) {
+          this.browser_session.logger.warning(
+            `[StorageStateWatchdog] Skipping storage origin ${origin} after redirect to blocked URL: ${finalDenialReason}`
+          );
+          try {
+            await page.goto?.('about:blank', {
+              waitUntil: 'load',
+              timeout: 5_000,
+            });
+          } catch {
+            // The temporary page is closed below; resetting first is best effort.
+          }
+          continue;
+        }
         await page.evaluate?.(
           (payload) => {
             for (const entry of payload.localStorageEntries) {

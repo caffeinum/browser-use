@@ -4489,6 +4489,7 @@ export class BrowserSession {
           url: string,
           options?: Record<string, unknown>
         ) => Promise<unknown>;
+        url?: () => string;
         evaluate?: (
           fn: (payload: {
             localStorageEntries: Array<{ name: string; value: string }>;
@@ -4549,6 +4550,24 @@ export class BrowserSession {
           waitUntil: 'domcontentloaded',
           timeout: 5_000,
         });
+        const finalUrl = typeof page.url === 'function' ? page.url() : origin;
+        const finalDenialReason = this._get_url_access_denial_reason(finalUrl);
+        if (finalDenialReason) {
+          this.logger.warning(
+            `Skipping storage origin ${BrowserSession._redact_url_for_logging(
+              origin
+            )} after redirect to blocked URL: ${finalDenialReason}`
+          );
+          try {
+            await page.goto?.('about:blank', {
+              waitUntil: 'load',
+              timeout: 5_000,
+            });
+          } catch {
+            // The temporary page is closed below; resetting first is best effort.
+          }
+          continue;
+        }
         await page.evaluate?.(
           (payload) => {
             for (const entry of payload.localStorageEntries) {

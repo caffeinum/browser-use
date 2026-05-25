@@ -396,6 +396,73 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('skips replaying origin storage after redirect to blocked URL', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify(
+          {
+            cookies: [],
+            origins: [
+              {
+                origin: 'https://example.com',
+                localStorage: [{ name: 'token', value: 'abc' }],
+              },
+            ],
+          },
+          null,
+          2
+        )
+      );
+
+      let pageUrl = 'about:blank';
+      const goto = vi.fn(async (url: string) => {
+        pageUrl =
+          url === 'https://example.com'
+            ? 'https://evil.test/after-redirect'
+            : url;
+      });
+      const evaluate = vi.fn(async () => {});
+      const close = vi.fn(async () => {});
+      const newPage = vi.fn(async () => ({
+        goto,
+        url: vi.fn(() => pageUrl),
+        evaluate,
+        close,
+      }));
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+          allowed_domains: ['https://example.com'],
+        },
+      });
+      session.browser_context = {
+        addCookies: vi.fn(async () => {}),
+        newPage,
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+
+      await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
+
+      expect(newPage).toHaveBeenCalledTimes(1);
+      expect(goto).toHaveBeenCalledWith('https://example.com', {
+        waitUntil: 'domcontentloaded',
+        timeout: 5000,
+      });
+      expect(goto).toHaveBeenCalledWith('about:blank', {
+        waitUntil: 'load',
+        timeout: 5000,
+      });
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('merges existing storage state entries when saving', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {
