@@ -3148,6 +3148,7 @@ export class BrowserSession {
     const signal = options.signal ?? null;
     this._throwIfAborted(signal);
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     const keyboard = page?.keyboard;
     if (!keyboard) {
       throw new BrowserError(
@@ -3187,6 +3188,7 @@ export class BrowserSession {
     const signal = options.signal ?? null;
     this._throwIfAborted(signal);
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     if (!page?.mouse?.click) {
       throw new BrowserError(
         'Unable to perform coordinate click on the current page.'
@@ -3218,6 +3220,7 @@ export class BrowserSession {
     }
 
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     if (!page?.evaluate) {
       throw new BrowserError('Unable to access current page for scrolling.');
     }
@@ -3295,6 +3298,7 @@ export class BrowserSession {
     const signal = options.signal ?? null;
     this._throwIfAborted(signal);
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     if (!page?.evaluate) {
       throw new BrowserError('Unable to access page for scrolling.');
     }
@@ -3344,6 +3348,7 @@ export class BrowserSession {
     const signal = options.signal ?? null;
     this._throwIfAborted(signal);
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     if (!page?.evaluate) {
       throw new BrowserError(
         'Unable to evaluate dropdown options on current page.'
@@ -3353,49 +3358,54 @@ export class BrowserSession {
       throw new BrowserError('DOM element does not include an XPath selector.');
     }
 
-    const payload = await this._withAbort(
-      page.evaluate(
-        ({ xpath }: { xpath: string }) => {
-          const element = document.evaluate(
-            xpath,
-            document,
-            null,
-            XPathResult.FIRST_ORDERED_NODE_TYPE,
-            null
-          ).singleNodeValue as HTMLElement | null;
-          if (!element) return null;
+    let payload: unknown;
+    try {
+      payload = await this._withAbort(
+        page.evaluate(
+          ({ xpath }: { xpath: string }) => {
+            const element = document.evaluate(
+              xpath,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            ).singleNodeValue as HTMLElement | null;
+            if (!element) return null;
 
-          if (element.tagName?.toLowerCase() === 'select') {
-            const options = Array.from(
-              (element as HTMLSelectElement).options
-            ).map((opt, index) => ({
-              text: opt.textContent?.trim() ?? '',
-              value: (opt.value ?? '').trim(),
-              index,
-            }));
-            return { type: 'select', options };
-          }
+            if (element.tagName?.toLowerCase() === 'select') {
+              const options = Array.from(
+                (element as HTMLSelectElement).options
+              ).map((opt, index) => ({
+                text: opt.textContent?.trim() ?? '',
+                value: (opt.value ?? '').trim(),
+                index,
+              }));
+              return { type: 'select', options };
+            }
 
-          const ariaRoles = new Set(['menu', 'listbox', 'combobox']);
-          const role = element.getAttribute('role');
-          if (role && ariaRoles.has(role)) {
-            const nodes = element.querySelectorAll(
-              '[role="menuitem"],[role="option"]'
-            );
-            const options = Array.from(nodes).map((node, index) => ({
-              text: node.textContent?.trim() ?? '',
-              value: node.textContent?.trim() ?? '',
-              index,
-            }));
-            return { type: 'aria', options };
-          }
+            const ariaRoles = new Set(['menu', 'listbox', 'combobox']);
+            const role = element.getAttribute('role');
+            if (role && ariaRoles.has(role)) {
+              const nodes = element.querySelectorAll(
+                '[role="menuitem"],[role="option"]'
+              );
+              const options = Array.from(nodes).map((node, index) => ({
+                text: node.textContent?.trim() ?? '',
+                value: node.textContent?.trim() ?? '',
+                index,
+              }));
+              return { type: 'aria', options };
+            }
 
-          return null;
-        },
-        { xpath: element_node.xpath }
-      ),
-      signal
-    );
+            return null;
+          },
+          { xpath: element_node.xpath }
+        ),
+        signal
+      );
+    } finally {
+      await this.validate_page_after_action(page, signal);
+    }
 
     if (!payload || !Array.isArray((payload as any).options)) {
       throw new BrowserError('No options found for the specified dropdown.');
@@ -3454,6 +3464,7 @@ export class BrowserSession {
       throw new BrowserError('No active page for selection.');
     }
 
+    await this.validate_page_after_action(page, signal);
     try {
       const formatAvailableOptions = (
         opts: Array<{ index: number; text: string; value: string }>
@@ -3731,6 +3742,7 @@ export class BrowserSession {
     }
 
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     try {
       await this._withAbort(
         locatorWithUpload.setInputFiles(file_path, { timeout: 5000 }),
@@ -3749,6 +3761,7 @@ export class BrowserSession {
       return;
     }
 
+    await this.validate_page_after_action(page, signal);
     const previousUrl = this.currentUrl;
     try {
       await this._withAbort(page.goBack(), signal);
@@ -3980,6 +3993,7 @@ export class BrowserSession {
     if (!page || !node?.xpath) {
       return null;
     }
+    await this.validate_page_after_action(page);
     try {
       const locator = page.locator(`xpath=${node.xpath}`);
       const count = await locator.count();
@@ -4008,6 +4022,7 @@ export class BrowserSession {
       throw new Error('Element not found');
     }
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     try {
       await this._withAbort(locator.click({ timeout: 5000 }), signal);
       if (clear) {
@@ -4031,6 +4046,7 @@ export class BrowserSession {
       throw new Error('Element not found');
     }
     const page = await this._withAbort(this.get_current_page(), signal);
+    await this.validate_page_after_action(page, signal);
     const performClick = async () => {
       await this._withAbort(locator.click({ timeout: 5000 }), signal);
     };
@@ -4458,6 +4474,7 @@ export class BrowserSession {
     if (!page) {
       throw new Error('No page available to execute JavaScript');
     }
+    await this.validate_page_after_action(page);
     try {
       return await page.evaluate(script);
     } finally {
@@ -4667,6 +4684,7 @@ export class BrowserSession {
     if (!page?.goForward) {
       return;
     }
+    await this.validate_page_after_action(page);
     try {
       await page.goForward({ timeout: 10000, waitUntil: 'load' });
       await this._waitForStableNetwork(page);
@@ -4701,6 +4719,7 @@ export class BrowserSession {
     if (!page?.reload) {
       return;
     }
+    await this.validate_page_after_action(page);
     try {
       this.currentPageLoadingStatus = null;
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -4728,6 +4747,7 @@ export class BrowserSession {
     if (!page) {
       throw new Error('No page available');
     }
+    await this.validate_page_after_action(page);
     try {
       await page.waitForSelector(selector, { state: 'visible', timeout });
     } finally {
@@ -5694,6 +5714,7 @@ export class BrowserSession {
       return null;
     }
 
+    await this.validate_page_after_action(page);
     try {
       // Use XPath to locate the element
       const element_handle = await page
@@ -5724,6 +5745,7 @@ export class BrowserSession {
       return null;
     }
 
+    await this.validate_page_after_action(page);
     try {
       // Use CSS selector to locate the element
       const element_handle = await page.locator(css_selector).elementHandle();
@@ -5759,6 +5781,7 @@ export class BrowserSession {
       return null;
     }
 
+    await this.validate_page_after_action(page);
     try {
       // Build selector: filter by element type and text
       const selector = element_type

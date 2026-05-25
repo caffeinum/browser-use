@@ -1297,6 +1297,43 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('blocks element clicks when the current page is already disallowed', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/pre-click?token=secret';
+    const fakePage = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      locator: vi.fn(() => ({
+        count: vi.fn(async () => 1),
+        click: vi.fn(async () => {}),
+      })),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+
+    session.update_current_page(fakePage, 'Blocked', pageUrl);
+
+    await expect(
+      session._click_element_node({ xpath: '/html/body/button[1]' } as any)
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(fakePage.locator).not.toHaveBeenCalled();
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('rolls back keyboard-triggered navigation to disallowed URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
@@ -1325,6 +1362,39 @@ esac
       URLNotAllowedError
     );
 
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('blocks keyboard input when the current page is already disallowed', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/pre-keyboard?token=secret';
+    const press = vi.fn(async () => {});
+    const fakePage = {
+      keyboard: { press },
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Blocked', pageUrl);
+
+    await expect(session.send_keys('Enter')).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(press).not.toHaveBeenCalled();
     expect(fakePage.goto).toHaveBeenCalledWith(
       'about:blank',
       expect.objectContaining({ waitUntil: 'load' })
