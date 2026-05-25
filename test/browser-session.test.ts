@@ -1843,6 +1843,66 @@ describe('Storage State', () => {
     }
   });
 
+  it('loads origin storage through BrowserSession without violating allowed_domains', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
+    const statePath = path.join(tempDir, 'state.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify(
+        {
+          cookies: [{ name: 'sid', value: '123' }],
+          origins: [
+            {
+              origin: 'https://example.com',
+              localStorage: [{ name: 'token', value: 'abc' }],
+              sessionStorage: [{ name: 'sid', value: 'xyz' }],
+            },
+            {
+              origin: 'https://evil.example.com',
+              localStorage: [{ name: 'blocked', value: '1' }],
+            },
+          ],
+        },
+        null,
+        2
+      )
+    );
+
+    const addCookies = vi.fn(async () => {});
+    const goto = vi.fn(async () => {});
+    const evaluate = vi.fn(async () => {});
+    const close = vi.fn(async () => {});
+    const newPage = vi.fn(async () => ({
+      goto,
+      evaluate,
+      close,
+    }));
+    const session = new BrowserSession({
+      profile: {
+        allowed_domains: ['https://example.com'],
+      },
+    });
+    session.browser_context = {
+      addCookies,
+      newPage,
+    } as any;
+
+    try {
+      await session.load_storage_state(statePath);
+
+      expect(addCookies).toHaveBeenCalledWith([{ name: 'sid', value: '123' }]);
+      expect(newPage).toHaveBeenCalledTimes(1);
+      expect(goto).toHaveBeenCalledWith('https://example.com', {
+        waitUntil: 'domcontentloaded',
+        timeout: 5000,
+      });
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('saves and loads storage state', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
     const statePath = path.join(tempDir, 'state.json');

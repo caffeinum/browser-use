@@ -227,6 +227,53 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('does not navigate to blocked origins while loading storage state', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify(
+          {
+            cookies: [],
+            origins: [
+              {
+                origin: 'https://evil.example.com',
+                localStorage: [{ name: 'token', value: 'abc' }],
+              },
+            ],
+          },
+          null,
+          2
+        )
+      );
+
+      const newPage = vi.fn(async () => ({
+        goto: vi.fn(async () => {}),
+        evaluate: vi.fn(async () => {}),
+        close: vi.fn(async () => {}),
+      }));
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+          allowed_domains: ['https://example.com'],
+        },
+      });
+      session.browser_context = {
+        addCookies: vi.fn(async () => {}),
+        newPage,
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+
+      await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
+
+      expect(newPage).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('merges existing storage state entries when saving', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {

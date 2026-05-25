@@ -339,6 +339,13 @@ export class StorageStateWatchdog extends BaseWatchdog {
       if (!origin || !/^https?:\/\//i.test(origin)) {
         continue;
       }
+      const denialReason = this._getOriginDenialReason(origin);
+      if (denialReason) {
+        this.browser_session.logger.warning(
+          `[StorageStateWatchdog] Skipping storage origin ${origin}: ${denialReason}`
+        );
+        continue;
+      }
 
       const localStorageEntries = this._normalizeStorageEntries(
         originState?.localStorage
@@ -403,6 +410,27 @@ export class StorageStateWatchdog extends BaseWatchdog {
         }
       }
     }
+  }
+
+  private _getOriginDenialReason(origin: string): string | null {
+    const session = this.browser_session as any;
+    if (typeof session._get_url_access_denial_reason === 'function') {
+      try {
+        return session._get_url_access_denial_reason(origin);
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    if (typeof session._is_url_allowed === 'function') {
+      try {
+        return session._is_url_allowed(origin) ? null : 'blocked';
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    return null;
   }
 
   private _normalizeStorageEntries(entries: unknown) {
