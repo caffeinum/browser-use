@@ -956,7 +956,7 @@ export class BrowserProfile {
 
   private async ensureDefaultExtensionsDownloaded() {
     const cacheDir = CONFIG.BROWSER_USE_EXTENSIONS_DIR;
-    await fsp.mkdir(cacheDir, { recursive: true });
+    createPrivateDirectory(cacheDir);
     const extensionPaths: string[] = [];
     const loadedNames: string[] = [];
 
@@ -1041,7 +1041,10 @@ export class BrowserProfile {
           response.on('data', (chunk) => chunks.push(chunk));
           response.on('end', async () => {
             try {
-              await fsp.writeFile(outputPath, Buffer.concat(chunks));
+              await fsp.writeFile(outputPath, Buffer.concat(chunks), {
+                mode: 0o600,
+              });
+              chmodPrivatePath(outputPath, 0o600);
               resolve();
             } catch (error) {
               reject(error);
@@ -1056,7 +1059,7 @@ export class BrowserProfile {
     if (fs.existsSync(extractDir)) {
       await fsp.rm(extractDir, { recursive: true, force: true });
     }
-    await fsp.mkdir(extractDir, { recursive: true });
+    createPrivateDirectory(extractDir);
 
     const buffer = await fsp.readFile(crxPath);
     try {

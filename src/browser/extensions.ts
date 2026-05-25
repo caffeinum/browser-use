@@ -16,6 +16,25 @@ import { createLogger } from '../logging-config.js';
 
 const logger = createLogger('browser_use.extensions');
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const createPrivateDirectory = (dirPath: string) => {
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  chmodPrivatePath(dirPath, 0o700);
+};
+
+const createPrivateWriteStream = (filePath: string) =>
+  createWriteStream(filePath, { mode: 0o600 });
+
 export interface BrowserExtensionDescriptor {
   name: string;
   webstore_id?: string;
@@ -78,15 +97,12 @@ async function downloadCrx(crxUrl: string, crxPath: string): Promise<boolean> {
       return false;
     }
 
-    // Ensure directory exists
     const dir = path.dirname(crxPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    createPrivateDirectory(dir);
 
-    // Download file
-    const fileStream = createWriteStream(crxPath);
+    const fileStream = createPrivateWriteStream(crxPath);
     await pipeline(Readable.fromWeb(response.body as any), fileStream);
+    chmodPrivatePath(crxPath, 0o600);
 
     logger.info(`[✅] Downloaded to ${crxPath}`);
     return true;
@@ -104,10 +120,7 @@ async function unpackCrx(
   unpackedPath: string
 ): Promise<boolean> {
   try {
-    // Ensure unpacked directory exists
-    if (!fs.existsSync(unpackedPath)) {
-      fs.mkdirSync(unpackedPath, { recursive: true });
-    }
+    createPrivateDirectory(unpackedPath);
 
     // Extract zip file (CRX is essentially a ZIP with extra header)
     await extract(crxPath, { dir: path.resolve(unpackedPath) });

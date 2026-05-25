@@ -1,0 +1,101 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { ReadableStream } from 'node:stream/web';
+import AdmZip from 'adm-zip';
+import { loadOrInstallExtension } from '../src/browser/extensions.js';
+
+const modeOf = (targetPath: string) => fs.statSync(targetPath).mode & 0o777;
+
+describe('Browser extension cache alignment', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('downloads CRX files into private extension cache paths', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-extension-cache-')
+    );
+    const extensionsDir = path.join(tempDir, 'extensions');
+    const extensionId = 'abcdefghijklmnopabcdefghijklmnop';
+    const extensionName = 'Test Extension';
+    const crxPath = path.join(
+      extensionsDir,
+      `${extensionId}__${extensionName}.crx`
+    );
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        statusText: 'OK',
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(Buffer.from('not-a-zip'));
+            controller.close();
+          },
+        }),
+      })
+    );
+
+    try {
+      await loadOrInstallExtension(
+        { name: extensionName, webstore_id: extensionId },
+        extensionsDir
+      );
+
+      expect(fs.existsSync(crxPath)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(modeOf(extensionsDir)).toBe(0o700);
+        expect(modeOf(crxPath)).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('unpacks existing CRX files into private extension directories', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-extension-unpack-')
+    );
+    const extensionsDir = path.join(tempDir, 'extensions');
+    const crxPath = path.join(tempDir, 'extension.crx');
+    const unpackedPath = path.join(extensionsDir, 'unpacked-extension');
+
+    try {
+      const zip = new AdmZip();
+      zip.addFile(
+        'manifest.json',
+        Buffer.from(
+          JSON.stringify({
+            manifest_version: 3,
+            name: 'Existing Extension',
+            version: '1.0.0',
+          })
+        )
+      );
+      zip.writeZip(crxPath);
+
+      const extension = await loadOrInstallExtension(
+        {
+          name: 'Existing Extension',
+          webstore_id: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          crx_path: crxPath,
+          unpacked_path: unpackedPath,
+        },
+        extensionsDir
+      );
+
+      expect(extension.version).toBe('1.0.0');
+      expect(fs.existsSync(path.join(unpackedPath, 'manifest.json'))).toBe(
+        true
+      );
+      if (process.platform !== 'win32') {
+        expect(modeOf(unpackedPath)).toBe(0o700);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});

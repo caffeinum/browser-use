@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
+import AdmZip from 'adm-zip';
 
 const importProfileModule = async () => {
   vi.resetModules();
   return await import('../src/browser/profile.js');
 };
+
+const modeOf = (targetPath: string) => fs.statSync(targetPath).mode & 0o777;
 
 describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
   afterEach(() => {
@@ -88,6 +93,91 @@ describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
     expect(fs.existsSync(downloadsPath!)).toBe(true);
     if (process.platform !== 'win32') {
       expect(fs.statSync(downloadsPath!).mode & 0o777).toBe(0o700);
+    }
+  });
+
+  it('downloads default extension CRX files with private permissions', async () => {
+    const { BrowserProfile } = await importProfileModule();
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-extension-download-')
+    );
+    const outputPath = path.join(tempDir, 'extension.crx');
+    const getSpy = vi.spyOn(https, 'get').mockImplementation(((
+      _url: string | URL,
+      callback: (
+        response: EventEmitter & {
+          statusCode: number;
+          headers: Record<string, string>;
+          resume: () => void;
+        }
+      ) => void
+    ) => {
+      const response = new EventEmitter() as EventEmitter & {
+        statusCode: number;
+        headers: Record<string, string>;
+        resume: () => void;
+      };
+      response.statusCode = 200;
+      response.headers = {};
+      response.resume = vi.fn();
+
+      queueMicrotask(() => {
+        callback(response);
+        response.emit('data', Buffer.from('fake-crx'));
+        response.emit('end');
+      });
+
+      return new EventEmitter();
+    }) as any);
+
+    try {
+      const profile = new BrowserProfile({ enable_default_extensions: false });
+      await (profile as any).downloadExtension(
+        'https://example.test/extension.crx',
+        outputPath
+      );
+
+      expect(fs.readFileSync(outputPath, 'utf-8')).toBe('fake-crx');
+      if (process.platform !== 'win32') {
+        expect(modeOf(outputPath)).toBe(0o600);
+      }
+    } finally {
+      getSpy.mockRestore();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('extracts default extensions into private directories', async () => {
+    const { BrowserProfile } = await importProfileModule();
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-extension-extract-')
+    );
+    const crxPath = path.join(tempDir, 'extension.crx');
+    const extractDir = path.join(tempDir, 'unpacked-extension');
+
+    try {
+      const zip = new AdmZip();
+      zip.addFile(
+        'manifest.json',
+        Buffer.from(
+          JSON.stringify({
+            manifest_version: 3,
+            name: 'Test Extension',
+            version: '1.0.0',
+          })
+        )
+      );
+      zip.writeZip(crxPath);
+
+      const profile = new BrowserProfile({ enable_default_extensions: false });
+      await (profile as any).extractExtension(crxPath, extractDir);
+
+      expect(fs.existsSync(path.join(extractDir, 'manifest.json'))).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(modeOf(extractDir)).toBe(0o700);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 
