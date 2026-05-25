@@ -572,7 +572,7 @@ export class Registry<Context = unknown> {
             return replacement;
           }
           missing.add(placeholder);
-          return `<secret>${placeholder}</secret>`;
+          return '';
         });
       }
       if (Array.isArray(value)) {
