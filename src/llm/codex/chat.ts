@@ -226,13 +226,13 @@ export class ChatCodex implements BaseChatModel {
     return '';
   }
 
-  private getModelParamsForResponses(): Record<string, unknown> {
+  private getModelParamsForResponses(baseURL: string): Record<string, unknown> {
     const modelParams: Record<string, unknown> = {
       store: false,
       reasoning: { effort: this.reasoningEffort },
     };
 
-    if (this.maxCompletionTokens !== null) {
+    if (this.maxCompletionTokens !== null && !isCodexBackendURL(baseURL)) {
       modelParams.max_output_tokens = this.maxCompletionTokens;
     }
     if (this.topP !== null) {
@@ -277,14 +277,15 @@ export class ChatCodex implements BaseChatModel {
 
   private buildRequest(
     messages: Message[],
-    zodSchemaCandidate: any
+    zodSchemaCandidate: any,
+    baseURL: string
   ): Record<string, unknown> {
     const serializer = new ResponsesAPIMessageSerializer();
     const inputMessages = serializer.serialize(messages);
     const request: Record<string, unknown> = {
       model: this.model,
       input: inputMessages,
-      ...this.getModelParamsForResponses(),
+      ...this.getModelParamsForResponses(baseURL),
     };
 
     if (!zodSchemaCandidate) {
@@ -370,10 +371,14 @@ export class ChatCodex implements BaseChatModel {
     forceRefresh: boolean
   ): Promise<ChatInvokeCompletion<T | string>> {
     const zodSchemaCandidate = this.getZodSchemaCandidate(output_format);
-    const request = this.buildRequest(messages, zodSchemaCandidate);
 
     try {
       const clientConfig = await this.resolveClientConfig(forceRefresh);
+      const request = this.buildRequest(
+        messages,
+        zodSchemaCandidate,
+        clientConfig.baseURL
+      );
       const client = this.createClient(clientConfig);
       const response = await (client as any).responses.create(
         request,

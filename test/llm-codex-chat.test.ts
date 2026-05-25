@@ -116,9 +116,22 @@ describe('ChatCodex', () => {
       model: 'gpt-5.1-codex',
       store: false,
       reasoning: { effort: 'medium' },
-      max_output_tokens: 2048,
       input: [{ role: 'user', content: 'hello' }],
     });
+    expect(request).not.toHaveProperty('max_output_tokens');
+  });
+
+  it('keeps max output tokens for custom Responses-compatible endpoints', async () => {
+    const llm = new ChatCodex({
+      apiKey: 'opaque-token',
+      baseURL: 'https://responses.example.test/v1',
+      maxCompletionTokens: 2048,
+    });
+
+    await llm.ainvoke([new UserMessage('hello')]);
+
+    const request = responsesCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.max_output_tokens).toBe(2048);
   });
 
   it('uses Responses JSON schema format for zod structured output', async () => {
