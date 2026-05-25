@@ -272,7 +272,9 @@ describe('skill-cli direct alignment', () => {
       path.join(os.tmpdir(), 'browser-use-direct-')
     );
     const stateFile = path.join(tempDir, 'state.json');
-    const staleUserDataDir = path.join(tempDir, 'stale-profile');
+    const staleUserDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
     const stdout = createWritable();
     const stderr = createWritable();
     const killProcessSpy = vi.fn(async () => {});
@@ -306,7 +308,6 @@ describe('skill-cli direct alignment', () => {
       },
       stateFile
     );
-    fs.mkdirSync(staleUserDataDir, { recursive: true });
 
     try {
       const exitCode = await run_direct_command(['open', 'example.com'], {
@@ -335,6 +336,7 @@ describe('skill-cli direct alignment', () => {
     } finally {
       clear_direct_state(stateFile);
       fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.rmSync(staleUserDataDir, { recursive: true, force: true });
     }
   });
 
@@ -343,7 +345,50 @@ describe('skill-cli direct alignment', () => {
       path.join(os.tmpdir(), 'browser-use-direct-')
     );
     const stateFile = path.join(tempDir, 'state.json');
-    const userDataDir = path.join(tempDir, 'owned-profile');
+    const userDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const killProcessSpy = vi.fn(async () => {});
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        browser_pid: 321,
+        user_data_dir: userDataDir,
+        owns_user_data_dir: true,
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(['close'], {
+        state_file: stateFile,
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        kill_process: killProcessSpy,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(killProcessSpy).toHaveBeenCalledWith(321);
+      expect(fs.existsSync(userDataDir)).toBe(false);
+      expect(fs.existsSync(stateFile)).toBe(false);
+      expect(stderr.read()).toBe('');
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.rmSync(userDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not remove unsafe owned profile paths from direct state', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
+    const stateFile = path.join(tempDir, 'state.json');
+    const userDataDir = path.join(tempDir, 'not-a-direct-owned-profile');
     const stdout = createWritable();
     const stderr = createWritable();
     const killProcessSpy = vi.fn(async () => {});
@@ -370,7 +415,7 @@ describe('skill-cli direct alignment', () => {
 
       expect(exitCode).toBe(0);
       expect(killProcessSpy).toHaveBeenCalledWith(321);
-      expect(fs.existsSync(userDataDir)).toBe(false);
+      expect(fs.existsSync(userDataDir)).toBe(true);
       expect(fs.existsSync(stateFile)).toBe(false);
       expect(stderr.read()).toBe('');
     } finally {

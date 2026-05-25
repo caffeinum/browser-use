@@ -343,8 +343,28 @@ const writePrivateBufferFile = (filePath: string, contents: Buffer) => {
   }
 };
 
+const isOwnedDirectUserDataDir = (userDataDir: string) => {
+  if (!userDataDir || !fs.existsSync(userDataDir)) {
+    return false;
+  }
+
+  try {
+    const resolvedDir = fs.realpathSync(userDataDir);
+    const resolvedTmp = fs.realpathSync(os.tmpdir());
+    return (
+      path.dirname(resolvedDir) === resolvedTmp &&
+      path.basename(resolvedDir).startsWith('browser-use-direct-')
+    );
+  } catch {
+    return false;
+  }
+};
+
 const cleanupOwnedDirectUserDataDir = (state: DirectModeState) => {
   if (!state.owns_user_data_dir || !state.user_data_dir) {
+    return;
+  }
+  if (!isOwnedDirectUserDataDir(state.user_data_dir)) {
     return;
   }
   try {
