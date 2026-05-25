@@ -93,13 +93,23 @@ export class TunnelManager {
     return path.join(this.tunnel_dir, `${port}.log`);
   }
 
+  private ensure_tunnel_dir() {
+    fs.mkdirSync(this.tunnel_dir, { recursive: true, mode: 0o700 });
+    if (process.platform !== 'win32') {
+      fs.chmodSync(this.tunnel_dir, 0o700);
+    }
+  }
+
   private save_tunnel_info(port: number, pid: number, url: string) {
-    fs.mkdirSync(this.tunnel_dir, { recursive: true });
+    this.ensure_tunnel_dir();
     fs.writeFileSync(
       this.get_tunnel_file(port),
       JSON.stringify({ port, pid, url }),
-      'utf-8'
+      { encoding: 'utf-8', mode: 0o600 }
     );
+    if (process.platform !== 'win32') {
+      fs.chmodSync(this.get_tunnel_file(port), 0o600);
+    }
   }
 
   private load_tunnel_info(port: number): TunnelInfo | null {
@@ -193,9 +203,12 @@ export class TunnelManager {
       return { error: (error as Error).message };
     }
 
-    fs.mkdirSync(this.tunnel_dir, { recursive: true });
+    this.ensure_tunnel_dir();
     const logPath = this.get_tunnel_log_file(port);
-    const logFd = fs.openSync(logPath, 'w');
+    const logFd = fs.openSync(logPath, 'w', 0o600);
+    if (process.platform !== 'win32') {
+      fs.chmodSync(logPath, 0o600);
+    }
     try {
       const child = this.spawn_impl(
         binaryPath,

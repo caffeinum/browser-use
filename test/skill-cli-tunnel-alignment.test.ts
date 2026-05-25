@@ -141,4 +141,44 @@ describe('skill-cli tunnel alignment', () => {
       fs.rmSync(tunnelDir, { recursive: true, force: true });
     }
   });
+
+  it('stores tunnel metadata and logs with private permissions', async () => {
+    const tunnelDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-tunnel-')
+    );
+    const logPath = path.join(tunnelDir, '3000.log');
+    const infoPath = path.join(tunnelDir, '3000.json');
+    const spawnImpl = vi.fn(() => {
+      fs.writeFileSync(logPath, 'https://demo.trycloudflare.com');
+      return {
+        pid: 4321,
+        unref: vi.fn(),
+      } as any;
+    });
+
+    try {
+      const manager = new TunnelManager({
+        tunnel_dir: tunnelDir,
+        binary_resolver: () => '/usr/bin/cloudflared',
+        spawn_impl: spawnImpl as any,
+        is_process_alive: () => true,
+        sleep_impl: vi.fn(async () => {}),
+      });
+
+      await expect(manager.start_tunnel(3000)).resolves.toEqual({
+        port: 3000,
+        url: 'https://demo.trycloudflare.com',
+      });
+      expect(fs.existsSync(infoPath)).toBe(true);
+      expect(fs.existsSync(logPath)).toBe(true);
+
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(tunnelDir).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(infoPath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(logPath).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tunnelDir, { recursive: true, force: true });
+    }
+  });
 });
