@@ -2027,6 +2027,27 @@ export class Agent<
     }
   }
 
+  private _filter_cookies_for_domain_policy(
+    browser_session: BrowserSession,
+    cookies: unknown[]
+  ) {
+    const checker = (browser_session as any)._get_cookie_access_denial_reason;
+    if (typeof checker !== 'function') {
+      return cookies;
+    }
+
+    return cookies.filter((cookie) => {
+      try {
+        return checker.call(browser_session, cookie) == null;
+      } catch (error) {
+        this.logger.debug(
+          `Skipping skill cookie because domain policy check failed: ${(error as Error).message}`
+        );
+        return false;
+      }
+    });
+  }
+
   private async _register_skills_as_actions() {
     if (!this.skill_service || this._skills_registered) {
       return;
@@ -2069,32 +2090,37 @@ export class Agent<
 
           try {
             const cookiesRaw = await browser_session.get_cookies();
-            const cookies = Array.isArray(cookiesRaw)
-              ? cookiesRaw
-                  .map((cookie) => {
-                    const record =
-                      cookie && typeof cookie === 'object'
-                        ? (cookie as Record<string, unknown>)
-                        : null;
-                    const name =
-                      record && typeof record.name === 'string'
-                        ? record.name
-                        : null;
-                    const value =
-                      record && typeof record.value === 'string'
-                        ? record.value
-                        : '';
-                    return name ? { name, value } : null;
-                  })
-                  .filter(
-                    (
-                      cookie
-                    ): cookie is {
-                      name: string;
-                      value: string;
-                    } => cookie != null
-                  )
-              : [];
+            const allowedCookies = this._filter_cookies_for_domain_policy(
+              browser_session,
+              Array.isArray(cookiesRaw) ? cookiesRaw : []
+            );
+            const cookies =
+              allowedCookies.length > 0
+                ? allowedCookies
+                    .map((cookie) => {
+                      const record =
+                        cookie && typeof cookie === 'object'
+                          ? (cookie as Record<string, unknown>)
+                          : null;
+                      const name =
+                        record && typeof record.name === 'string'
+                          ? record.name
+                          : null;
+                      const value =
+                        record && typeof record.value === 'string'
+                          ? record.value
+                          : '';
+                      return name ? { name, value } : null;
+                    })
+                    .filter(
+                      (
+                        cookie
+                      ): cookie is {
+                        name: string;
+                        value: string;
+                      } => cookie != null
+                    )
+                : [];
 
             const result = await this.skill_service.execute_skill({
               skill_id: skill.id,
@@ -2163,19 +2189,21 @@ export class Agent<
       }
 
       const currentCookies = await this.browser_session.get_cookies();
+      const allowedCookies = this._filter_cookies_for_domain_policy(
+        this.browser_session,
+        Array.isArray(currentCookies) ? currentCookies : []
+      );
       const cookieNames = new Set<string>();
-      if (Array.isArray(currentCookies)) {
-        for (const cookie of currentCookies) {
-          if (!cookie || typeof cookie !== 'object') {
-            continue;
-          }
-          const name =
-            typeof (cookie as Record<string, unknown>).name === 'string'
-              ? String((cookie as Record<string, unknown>).name)
-              : '';
-          if (name) {
-            cookieNames.add(name);
-          }
+      for (const cookie of allowedCookies) {
+        if (!cookie || typeof cookie !== 'object') {
+          continue;
+        }
+        const name =
+          typeof (cookie as Record<string, unknown>).name === 'string'
+            ? String((cookie as Record<string, unknown>).name)
+            : '';
+        if (name) {
+          cookieNames.add(name);
         }
       }
 

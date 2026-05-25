@@ -98,6 +98,71 @@ describe('Agent skills alignment', () => {
     await agent.close();
   });
 
+  it('filters skill cookies by BrowserSession domain policy', async () => {
+    const browserSession = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    vi.spyOn(browserSession, 'get_cookies').mockResolvedValue([
+      {
+        name: 'auth_token',
+        value: 'allowed-cookie',
+        domain: 'example.com',
+        path: '/',
+      } as any,
+      {
+        name: 'evil_token',
+        value: 'blocked-cookie',
+        domain: 'evil.test',
+        path: '/',
+      } as any,
+    ]);
+
+    const skillService: SkillService = {
+      get_all_skills: vi.fn(
+        async () =>
+          [
+            {
+              id: 'skill-weather',
+              title: 'Get Weather Data',
+              description: 'Fetch weather for a city',
+              parameters: [
+                { name: 'city', type: 'string', required: true },
+                { name: 'auth_token', type: 'cookie', required: true },
+              ],
+              output_schema: null,
+            },
+          ] as any
+      ),
+      execute_skill: vi.fn(async () => ({
+        success: true,
+        result: 'ok',
+      })),
+      close: vi.fn(async () => {}),
+    };
+
+    const agent = new Agent({
+      task: 'use weather skill',
+      llm: createLlm(),
+      browser_session: browserSession,
+      skill_service: skillService,
+    });
+
+    await (agent as any)._register_skills_as_actions();
+    await agent.controller.registry.execute_action(
+      'get_weather_data',
+      { city: 'Berlin' },
+      { browser_session: browserSession }
+    );
+
+    expect(
+      (skillService.execute_skill as any).mock.calls[0][0].cookies
+    ).toEqual([{ name: 'auth_token', value: 'allowed-cookie' }]);
+
+    await agent.close();
+  });
+
   it('keeps skills registration retryable when skill list is empty (python c011 parity)', async () => {
     const skillService: SkillService = {
       get_all_skills: vi.fn(async () => []),
@@ -228,6 +293,59 @@ describe('Agent skills alignment', () => {
     expect(unavailableInfo).toContain('private_area ("Private Area")');
     expect(unavailableInfo).toContain('session_id: Login first');
     expect(unavailableInfo).not.toContain('Open Skill');
+
+    await agent.close();
+  });
+
+  it('ignores blocked cookies when building unavailable skill info', async () => {
+    const browserSession = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    vi.spyOn(browserSession, 'get_cookies').mockResolvedValue([
+      {
+        name: 'session_id',
+        value: 'blocked',
+        domain: 'evil.test',
+        path: '/',
+      } as any,
+    ]);
+
+    const skillService: SkillService = {
+      get_all_skills: vi.fn(
+        async () =>
+          [
+            {
+              id: 'skill-private',
+              title: 'Private Area',
+              description: 'Needs authenticated cookie',
+              parameters: [
+                {
+                  name: 'session_id',
+                  type: 'cookie',
+                  required: true,
+                  description: 'Login first',
+                },
+              ],
+              output_schema: null,
+            },
+          ] as any
+      ),
+      execute_skill: vi.fn(async () => ({ success: true, result: null })),
+      close: vi.fn(async () => {}),
+    };
+
+    const agent = new Agent({
+      task: 'inspect missing skills',
+      llm: createLlm(),
+      browser_session: browserSession,
+      skill_service: skillService,
+    });
+
+    const unavailableInfo = await (agent as any)._get_unavailable_skills_info();
+    expect(unavailableInfo).toContain('private_area ("Private Area")');
+    expect(unavailableInfo).toContain('session_id: Login first');
 
     await agent.close();
   });
