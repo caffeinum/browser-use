@@ -1129,6 +1129,79 @@ describe('skill-cli direct alignment', () => {
     }
   });
 
+  it('does not clear blocked subdomain cookies for a parent URL in direct mode', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
+    const stateFile = path.join(tempDir, 'state.json');
+    const browserContext = {
+      addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
+    };
+    const session = {
+      start: vi.fn(async () => {}),
+      tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
+      browser_context: browserContext,
+      get_cookies: vi.fn(async () => [
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        {
+          name: 'blocked',
+          value: '1',
+          domain: '.evil.example.com',
+          path: '/',
+        },
+      ]),
+      _get_cookie_access_denial_reason: vi.fn((cookie: any) => {
+        const target = String(cookie?.url ?? cookie?.domain ?? '');
+        return target.includes('evil.example.com')
+          ? 'not_in_allowed_domains'
+          : null;
+      }),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      const stdout = createWritable();
+      const stderr = createWritable();
+      const exitCode = await run_direct_command(
+        ['cookies', 'clear', '--url', 'https://example.com'],
+        {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+
+      expect(exitCode).toBe(0);
+      expect(stderr.read()).toBe('');
+      expect(stdout.read()).toContain(
+        'Cleared 1 cookies matching https://example.com'
+      );
+      expect(browserContext.clearCookies).toHaveBeenCalled();
+      expect(browserContext.addCookies).toHaveBeenCalledWith([
+        {
+          name: 'blocked',
+          value: '1',
+          domain: '.evil.example.com',
+          path: '/',
+        },
+      ]);
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('rejects unknown direct cookie options instead of treating them as positional values', async () => {
     const tempDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-direct-')

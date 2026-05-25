@@ -491,6 +491,52 @@ describe('skill-cli alignment', () => {
     }
   });
 
+  it('does not clear blocked subdomain cookies when clearing a parent URL', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    vi.spyOn(session, 'get_cookies').mockResolvedValue([
+      { name: 'sid', value: '123', domain: '.example.com', path: '/' } as any,
+      {
+        name: 'blocked',
+        value: '1',
+        domain: '.evil.example.com',
+        path: '/',
+      } as any,
+    ]);
+    (session as any).browser_context = {
+      addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
+    };
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    const response = await server.handle_request(
+      new Request({
+        id: 'r-cookie-clear-parent-url',
+        action: 'cookies_clear',
+        session: 'default',
+        params: { url: 'https://example.com' },
+      })
+    );
+
+    expect(response.success).toBe(true);
+    expect((response.data as any).count).toBe(1);
+    expect((session as any).browser_context.clearCookies).toHaveBeenCalled();
+    expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
+      {
+        name: 'blocked',
+        value: '1',
+        domain: '.evil.example.com',
+        path: '/',
+      },
+    ]);
+  });
+
   it('supports screenshot action with inline and file outputs', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-shot-'));
     const screenshotPath = path.join(tempDir, 'capture.png');

@@ -198,13 +198,7 @@ const cookieMatchesUrl = (
   if (!hostname || !domain) {
     return false;
   }
-  if (
-    !(
-      hostname === domain ||
-      hostname.endsWith(`.${domain}`) ||
-      domain.endsWith(`.${hostname}`)
-    )
-  ) {
+  if (!(hostname === domain || hostname.endsWith(`.${domain}`))) {
     return false;
   }
   if (!cookiePathMatches(cookie.path, parsedUrl?.pathname || '/')) {
