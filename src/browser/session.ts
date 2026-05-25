@@ -103,6 +103,29 @@ const writePrivateStorageFile = (filePath: string, contents: string) => {
   chmodPrivateStorageFile(filePath);
 };
 
+const chmodPrivateFileBestEffort = (filePath: string) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    try {
+      fs.chmodSync(dirPath, 0o700);
+    } catch {
+      /* best effort */
+    }
+  }
+};
+
 type SystemChromeVariant =
   | 'chrome'
   | 'chrome-canary'
@@ -6024,10 +6047,12 @@ export class BrowserSession {
           finalTracePath = path.join(tracesPath, traceFilename);
         }
 
+        ensurePrivateDirectoryIfCreated(path.dirname(finalTracePath));
         this.logger.info(
           `🎥 Saving browser_context trace to ${finalTracePath}...`
         );
         await this.browser_context.tracing.stop({ path: finalTracePath });
+        chmodPrivateFileBestEffort(finalTracePath);
       } catch (error) {
         this.logger.warning(
           `Failed to save trace recording: ${(error as Error).message}`

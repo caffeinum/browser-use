@@ -23,6 +23,25 @@ type PageLike = {
   video?: () => { path?: () => Promise<string> } | null;
 };
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed) {
+    chmodPrivatePath(dirPath, 0o700);
+  }
+};
+
 export class RecordingWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [
     BrowserConnectedEvent,
@@ -83,7 +102,7 @@ export class RecordingWatchdog extends BaseWatchdog {
       return;
     }
     const resolvedPath = path.resolve(configuredPath);
-    fs.mkdirSync(resolvedPath, { recursive: true });
+    ensurePrivateDirectoryIfCreated(resolvedPath);
     this.browser_session.browser_profile.config.record_video_dir = resolvedPath;
   }
 
@@ -226,7 +245,11 @@ export class RecordingWatchdog extends BaseWatchdog {
         configuredPath,
         `${Date.now()}-${this.browser_session.id.slice(-6)}.cdp-screencast.ndjson`
       );
-      const stream = fs.createWriteStream(filePath, { flags: 'a' });
+      const stream = fs.createWriteStream(filePath, {
+        flags: 'a',
+        mode: 0o600,
+      });
+      chmodPrivatePath(filePath, 0o600);
 
       const handler = (payload: any) => {
         const frameData = typeof payload?.data === 'string' ? payload.data : '';
@@ -313,6 +336,7 @@ export class RecordingWatchdog extends BaseWatchdog {
       fs.existsSync(this._cdpScreencastPath) &&
       fs.statSync(this._cdpScreencastPath).size > 0
     ) {
+      chmodPrivatePath(this._cdpScreencastPath, 0o600);
       this.browser_session.add_downloaded_file(this._cdpScreencastPath);
     }
 

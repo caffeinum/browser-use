@@ -44,6 +44,12 @@ describe('recording watchdog alignment', () => {
       expect(
         fs.existsSync(session.browser_profile.config.record_video_dir!)
       ).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(
+          fs.statSync(session.browser_profile.config.record_video_dir!).mode &
+            0o777
+        ).toBe(0o700);
+      }
 
       await session.event_bus.dispatch_or_throw(
         new AgentFocusChangedEvent({
@@ -277,6 +283,42 @@ describe('recording watchdog alignment', () => {
         .filter((entry) => entry.endsWith('.cdp-screencast.ndjson'));
       expect(artifacts.length).toBeGreaterThan(0);
       expect(fs.existsSync(artifacts[0])).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(artifacts[0]).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('saves trace recordings as private files', async () => {
+    const tmpRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-trace-private-')
+    );
+    try {
+      const tracesDir = path.join(tmpRoot, 'traces');
+      const session = new BrowserSession({
+        profile: {
+          traces_dir: tracesDir,
+        },
+      });
+      session.browser_context = {
+        tracing: {
+          stop: vi.fn(async ({ path: tracePath }: { path: string }) => {
+            fs.writeFileSync(tracePath, 'trace-data');
+          }),
+        },
+      } as any;
+
+      await session.save_trace_recording();
+
+      const [traceFile] = fs.readdirSync(tracesDir);
+      const tracePath = path.join(tracesDir, traceFile);
+      expect(tracePath).toMatch(/BrowserSession_.*\.zip$/);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(tracesDir).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(tracePath).mode & 0o777).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }

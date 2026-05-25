@@ -35,6 +35,11 @@ describe('har recording watchdog alignment', () => {
         absoluteHarPath
       );
       expect(fs.existsSync(path.dirname(absoluteHarPath))).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(path.dirname(absoluteHarPath)).mode & 0o777).toBe(
+          0o700
+        );
+      }
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
@@ -102,6 +107,9 @@ describe('har recording watchdog alignment', () => {
       await session.event_bus.dispatch_or_throw(new BrowserStoppedEvent());
 
       expect(errors).toHaveLength(0);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(harPath).mode & 0o777).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
@@ -180,6 +188,9 @@ describe('har recording watchdog alignment', () => {
       expect(har.log.entries[0].request.url).toBe(
         'https://example.com/data.json'
       );
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(harPath).mode & 0o777).toBe(0o600);
+      }
 
       await session.event_bus.dispatch_or_throw(new BrowserStoppedEvent());
       expect(cdpSession.off).toHaveBeenCalled();
@@ -222,6 +233,9 @@ describe('har recording watchdog alignment', () => {
       expect(Array.isArray(har.log.entries)).toBe(true);
       expect(har.log.entries).toHaveLength(0);
       expect(errors).toHaveLength(0);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(harPath).mode & 0o777).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }

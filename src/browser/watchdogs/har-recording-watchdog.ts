@@ -71,6 +71,33 @@ const normalizeHeaders = (input: unknown): Record<string, string> => {
   return {};
 };
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed) {
+    chmodPrivatePath(dirPath, 0o700);
+  }
+};
+
+const writePrivateFile = (filePath: string, contents: string) => {
+  fs.writeFileSync(filePath, contents, {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  chmodPrivatePath(filePath, 0o600);
+};
+
 export class HarRecordingWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [
     BrowserStartEvent,
@@ -125,6 +152,7 @@ export class HarRecordingWatchdog extends BaseWatchdog {
     }
 
     try {
+      chmodPrivatePath(resolvedPath, 0o600);
       const stat = fs.statSync(resolvedPath);
       if (stat.size === 0) {
         await this.event_bus.dispatch(
@@ -170,7 +198,7 @@ export class HarRecordingWatchdog extends BaseWatchdog {
     if (!resolvedPath) {
       return null;
     }
-    fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    ensurePrivateDirectoryIfCreated(path.dirname(resolvedPath));
     this.browser_session.browser_profile.config.record_har_path = resolvedPath;
     return resolvedPath;
   }
@@ -379,8 +407,9 @@ export class HarRecordingWatchdog extends BaseWatchdog {
     };
 
     const tempPath = `${resolvedPath}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(harObject, null, 2), 'utf-8');
+    writePrivateFile(tempPath, JSON.stringify(harObject, null, 2));
     fs.renameSync(tempPath, resolvedPath);
+    chmodPrivatePath(resolvedPath, 0o600);
   }
 
   private async _teardownCapture() {
