@@ -63,6 +63,9 @@ describe('logging config alignment', () => {
     const debugOutput = fs.readFileSync(debugFile, 'utf-8');
     expect(debugOutput).toContain('debug-only-message');
     expect(debugOutput).toContain('info-message');
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(debugFile).mode & 0o777).toBe(0o600);
+    }
 
     logging.setupLogging({
       stream: process.stderr,
@@ -102,6 +105,9 @@ describe('logging config alignment', () => {
     expect(infoOutput).toContain('info-message');
     expect(infoOutput).toContain('warning-message');
     expect(infoOutput).not.toContain('debug-message');
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(infoFile).mode & 0o777).toBe(0o600);
+    }
 
     logging.setupLogging({
       stream: process.stderr,

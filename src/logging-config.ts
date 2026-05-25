@@ -78,6 +78,21 @@ const ensureFilePathReady = (filePath: string) => {
   fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });
 };
 
+const createPrivateLogStream = (filePath: string) => {
+  const resolved = path.resolve(filePath);
+  ensureFilePathReady(resolved);
+  const fd = fs.openSync(resolved, 'a', 0o600);
+  if (process.platform !== 'win32') {
+    fs.chmodSync(resolved, 0o600);
+  }
+  return fs.createWriteStream(resolved, {
+    fd,
+    flags: 'a',
+    encoding: 'utf-8',
+    autoClose: true,
+  });
+};
+
 const closeFileStreams = () => {
   if (debugLogStream) {
     debugLogStream.end();
@@ -176,21 +191,13 @@ export const setupLogging = (options: SetupLoggingOptions = {}) => {
   const debugLogFile =
     options.debugLogFile ?? process.env.BROWSER_USE_DEBUG_LOG_FILE ?? null;
   if (debugLogFile && debugLogFile.trim().length > 0) {
-    ensureFilePathReady(debugLogFile);
-    debugLogStream = fs.createWriteStream(path.resolve(debugLogFile), {
-      flags: 'a',
-      encoding: 'utf-8',
-    });
+    debugLogStream = createPrivateLogStream(debugLogFile);
   }
 
   const infoLogFile =
     options.infoLogFile ?? process.env.BROWSER_USE_INFO_LOG_FILE ?? null;
   if (infoLogFile && infoLogFile.trim().length > 0) {
-    ensureFilePathReady(infoLogFile);
-    infoLogStream = fs.createWriteStream(path.resolve(infoLogFile), {
-      flags: 'a',
-      encoding: 'utf-8',
-    });
+    infoLogStream = createPrivateLogStream(infoLogFile);
   }
 
   configured = true;
