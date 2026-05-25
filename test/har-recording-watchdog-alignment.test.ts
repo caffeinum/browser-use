@@ -200,6 +200,86 @@ describe('har recording watchdog alignment', () => {
     }
   });
 
+  it('filters HAR fallback entries by domain policy', async () => {
+    const tmpRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-har-watchdog-filtered-')
+    );
+    try {
+      const harPath = path.join(tmpRoot, 'filtered.har');
+      const session = new BrowserSession({
+        profile: {
+          record_har_path: harPath,
+          allowed_domains: ['https://example.com'],
+        },
+      });
+      const watchdog = new HarRecordingWatchdog({ browser_session: session });
+      session.attach_watchdog(watchdog);
+
+      const listeners: Record<string, (payload: any) => void> = {};
+      const cdpSession = {
+        send: vi.fn(async () => ({})),
+        on: vi.fn((event: string, handler: (payload: any) => void) => {
+          listeners[event] = handler;
+        }),
+        off: vi.fn(),
+        detach: vi.fn(async () => {}),
+      };
+      vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue(
+        cdpSession as any
+      );
+
+      await session.event_bus.dispatch_or_throw(new BrowserStartEvent());
+      await session.event_bus.dispatch_or_throw(
+        new BrowserConnectedEvent({
+          cdp_url: 'http://127.0.0.1:9222',
+        })
+      );
+
+      for (const [requestId, url] of [
+        ['allowed-request', 'https://example.com/data.json'],
+        ['blocked-request', 'https://evil.test/secret.json?token=secret'],
+      ]) {
+        listeners['Network.requestWillBeSent']?.({
+          requestId,
+          timestamp: 1,
+          wallTime: 1_700_000_000,
+          request: {
+            url,
+            method: 'GET',
+            headers: {
+              authorization: 'Bearer secret',
+            },
+          },
+        });
+        listeners['Network.responseReceived']?.({
+          requestId,
+          timestamp: 1.05,
+          response: {
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+            mimeType: 'application/json',
+          },
+        });
+        listeners['Network.loadingFinished']?.({
+          requestId,
+          timestamp: 1.2,
+          encodedDataLength: 123,
+        });
+      }
+
+      await session.event_bus.dispatch_or_throw(new BrowserStopEvent());
+
+      const har = JSON.parse(fs.readFileSync(harPath, 'utf-8'));
+      expect(har.log.entries).toHaveLength(1);
+      expect(har.log.entries[0].request.url).toBe(
+        'https://example.com/data.json'
+      );
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
   it('writes an empty HAR fallback on BrowserStopEvent without network entries', async () => {
     const tmpRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-har-watchdog-empty-fallback-')

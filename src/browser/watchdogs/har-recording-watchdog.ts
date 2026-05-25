@@ -222,6 +222,13 @@ export class HarRecordingWatchdog extends BaseWatchdog {
         if (!requestId || !url.toLowerCase().startsWith('https://')) {
           return;
         }
+        const denialReason = this._getUrlDenialReason(url);
+        if (denialReason) {
+          this.browser_session.logger.debug(
+            `[HarRecordingWatchdog] Skipping HAR entry blocked by domain policy: ${denialReason}`
+          );
+          return;
+        }
         const tsRequest =
           typeof payload?.timestamp === 'number' ? payload.timestamp : null;
         this._entries.set(requestId, {
@@ -410,6 +417,27 @@ export class HarRecordingWatchdog extends BaseWatchdog {
     writePrivateFile(tempPath, JSON.stringify(harObject, null, 2));
     fs.renameSync(tempPath, resolvedPath);
     chmodPrivatePath(resolvedPath, 0o600);
+  }
+
+  private _getUrlDenialReason(url: string): string | null {
+    const session = this.browser_session as any;
+    if (typeof session._get_url_access_denial_reason === 'function') {
+      try {
+        return session._get_url_access_denial_reason(url);
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    if (typeof session._is_url_allowed === 'function') {
+      try {
+        return session._is_url_allowed(url) ? null : 'blocked';
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    return null;
   }
 
   private async _teardownCapture() {
