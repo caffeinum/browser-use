@@ -82,6 +82,72 @@ describe('Config alignment with latest py-browser-use defaults', () => {
             api_key: string | null;
           };
           expect(persistedDefault.api_key).toBeNull();
+          if (process.platform !== 'win32') {
+            expect(fs.statSync(tempDir).mode & 0o777).toBe(0o700);
+            expect(fs.statSync(configPath).mode & 0o777).toBe(0o600);
+          }
+        }
+      );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('tightens permissions on existing config files that may contain api keys', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-config-')
+    );
+    try {
+      const configPath = path.join(tempDir, 'config.json');
+      const now = new Date().toISOString();
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(
+          {
+            browser_profile: {
+              'profile-1': {
+                id: 'profile-1',
+                default: true,
+                created_at: now,
+              },
+            },
+            llm: {
+              'llm-1': {
+                id: 'llm-1',
+                default: true,
+                created_at: now,
+                model: 'gpt-4.1-mini',
+                api_key: 'sk-secret',
+              },
+            },
+            agent: {
+              'agent-1': {
+                id: 'agent-1',
+                default: true,
+                created_at: now,
+              },
+            },
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      );
+      if (process.platform !== 'win32') {
+        fs.chmodSync(configPath, 0o644);
+      }
+
+      await withEnv(
+        {
+          BROWSER_USE_CONFIG_DIR: tempDir,
+          BROWSER_USE_CONFIG_PATH: configPath,
+        },
+        async () => {
+          const { CONFIG } = await importConfigModule();
+          expect(CONFIG.get_default_llm().api_key).toBe('sk-secret');
+          if (process.platform !== 'win32') {
+            expect(fs.statSync(configPath).mode & 0o777).toBe(0o600);
+          }
         }
       );
     } finally {

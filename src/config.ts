@@ -80,8 +80,29 @@ export const is_running_in_docker = () => {
   return false;
 };
 
-const ensure_dir = (target: string) =>
-  fs.mkdirSync(target, { recursive: true });
+const chmod_private = (target: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(target, mode);
+  } catch {
+    /* noop */
+  }
+};
+
+const ensure_dir = (target: string) => {
+  fs.mkdirSync(target, { recursive: true, mode: 0o700 });
+  chmod_private(target, 0o700);
+};
+
+const write_private_config_file = (config_path: string, config: unknown) => {
+  fs.writeFileSync(config_path, JSON.stringify(config, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  chmod_private(config_path, 0o600);
+};
 
 class OldConfig {
   private _dirs_created = false;
@@ -516,13 +537,14 @@ const load_and_migrate_config = (config_path: string): DBStyleConfigJSON => {
     const parent = path.dirname(config_path);
     ensure_dir(parent);
     const fresh = create_default_config();
-    fs.writeFileSync(config_path, JSON.stringify(fresh, null, 2), 'utf-8');
+    write_private_config_file(config_path, fresh);
     return fresh;
   }
 
   try {
     const raw = JSON.parse(fs.readFileSync(config_path, 'utf-8'));
     if (looks_like_new_format(raw)) {
+      chmod_private(config_path, 0o600);
       return sanitize_db_config(raw as DBStyleConfigJSON);
     }
 
@@ -530,7 +552,7 @@ const load_and_migrate_config = (config_path: string): DBStyleConfigJSON => {
       `Old config format detected at ${config_path}, creating fresh config`
     );
     const fresh = create_default_config();
-    fs.writeFileSync(config_path, JSON.stringify(fresh, null, 2), 'utf-8');
+    write_private_config_file(config_path, fresh);
     return fresh;
   } catch (error) {
     logger.error(
@@ -538,7 +560,7 @@ const load_and_migrate_config = (config_path: string): DBStyleConfigJSON => {
     );
     const fresh = create_default_config();
     try {
-      fs.writeFileSync(config_path, JSON.stringify(fresh, null, 2), 'utf-8');
+      write_private_config_file(config_path, fresh);
     } catch (write_error) {
       logger.error(
         `Failed to write fresh config: ${(write_error as Error).message}`
