@@ -87,6 +87,12 @@ const execFileAsync = promisify(execFile);
 const PLAYWRIGHT_OPTION_KEY_OVERRIDES: Record<string, string> = {
   extra_http_headers: 'extraHTTPHeaders',
 };
+const DOMAIN_POLICY_UNFILTERABLE_RECORDING_KEYS = new Set([
+  'record_video_dir',
+  'record_video_size',
+  'record_video',
+  'recordVideo',
+]);
 const EMPTY_DOM_RETRY_DELAY_MS = 250;
 const REMOTE_RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const;
 const REMOTE_RECONNECT_ATTEMPT_TIMEOUT_MS = 15_000;
@@ -1680,6 +1686,12 @@ export class BrowserSession {
         continue;
       }
       if (rawKey === 'permissions' && this._has_url_access_restrictions()) {
+        continue;
+      }
+      if (
+        DOMAIN_POLICY_UNFILTERABLE_RECORDING_KEYS.has(rawKey) &&
+        this._has_url_access_restrictions()
+      ) {
         continue;
       }
       if (
@@ -6684,6 +6696,15 @@ export class BrowserSession {
    * Note: Currently optional as it may cause performance issues in some cases
    */
   private async _startContextTracing(): Promise<void> {
+    if (
+      this.browser_profile.traces_dir &&
+      this._has_url_access_restrictions()
+    ) {
+      this.logger.warning(
+        'Skipping trace recording because domain restrictions are active and trace artifacts cannot be URL-filtered.'
+      );
+      return;
+    }
     if (this.browser_profile.traces_dir && this.browser_context) {
       try {
         this.logger.debug(
@@ -6707,6 +6728,12 @@ export class BrowserSession {
    * Save browser trace recording
    */
   private async _saveTraceRecording(): Promise<void> {
+    if (
+      this.browser_profile.traces_dir &&
+      this._has_url_access_restrictions()
+    ) {
+      return;
+    }
     if (this.browser_profile.traces_dir && this.browser_context) {
       try {
         const tracesPath = this.browser_profile.traces_dir;

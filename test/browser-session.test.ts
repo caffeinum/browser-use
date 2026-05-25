@@ -404,6 +404,23 @@ esac
     expect(playwrightOptions.permissions).toBeUndefined();
   });
 
+  it('does not configure unfilterable recording options when domain policy is active', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        record_video_dir: '/tmp/browser-use-videos',
+        record_video_size: { width: 800, height: 600 },
+      }),
+    });
+
+    const playwrightOptions = (session as any)._toPlaywrightOptions(
+      session.browser_profile.kwargs_for_new_context()
+    );
+
+    expect(playwrightOptions.recordVideoDir).toBeUndefined();
+    expect(playwrightOptions.recordVideoSize).toBeUndefined();
+  });
+
   it('requires scoped http_credentials when domain policy is active', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

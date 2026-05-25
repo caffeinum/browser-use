@@ -66,6 +66,55 @@ describe('recording watchdog alignment', () => {
     }
   });
 
+  it('skips trace and video recording when domain policy is active', async () => {
+    const tmpRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-recording-policy-')
+    );
+    try {
+      const session = new BrowserSession({
+        profile: {
+          allowed_domains: ['https://example.com'],
+          traces_dir: path.join(tmpRoot, 'traces'),
+          record_video_dir: path.join(tmpRoot, 'videos'),
+        },
+      });
+      const page = {
+        on: vi.fn(),
+        off: vi.fn(),
+        url: vi.fn(() => 'https://example.com/record'),
+      } as any;
+      session.browser_context = {
+        pages: vi.fn(() => [page]),
+      } as any;
+      session.agent_current_page = page;
+
+      const watchdog = new RecordingWatchdog({ browser_session: session });
+      session.attach_watchdog(watchdog);
+
+      const startSpy = vi.spyOn(session, 'start_trace_recording');
+      const cdpSpy = vi.spyOn(session, 'get_or_create_cdp_session');
+
+      await session.event_bus.dispatch_or_throw(
+        new BrowserConnectedEvent({
+          cdp_url: 'http://127.0.0.1:9222',
+        })
+      );
+      await session.event_bus.dispatch_or_throw(
+        new TabCreatedEvent({
+          target_id: 'target-video',
+          url: 'https://example.com/video-tab',
+        })
+      );
+
+      expect(startSpy).not.toHaveBeenCalled();
+      expect(cdpSpy).not.toHaveBeenCalled();
+      expect(page.on).not.toHaveBeenCalledWith('close', expect.any(Function));
+      expect(fs.existsSync(path.join(tmpRoot, 'videos'))).toBe(false);
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
   it('emits BrowserErrorEvent when starting trace recording fails', async () => {
     const session = new BrowserSession({
       profile: {

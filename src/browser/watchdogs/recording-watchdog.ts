@@ -57,8 +57,12 @@ export class RecordingWatchdog extends BaseWatchdog {
   private _cdpScreencastHandler: ((payload: any) => void) | null = null;
   private _cdpScreencastPath: string | null = null;
   private _cdpScreencastStream: fs.WriteStream | null = null;
+  private _warnedDomainPolicyRecordingDisabled = false;
 
   async on_BrowserConnectedEvent() {
+    if (this._recordingDisabledByDomainPolicy()) {
+      return;
+    }
     this._prepareVideoDirectory();
     this._attachVideoListenersToKnownPages();
     await this._startCdpScreencastIfConfigured();
@@ -75,6 +79,9 @@ export class RecordingWatchdog extends BaseWatchdog {
   }
 
   async on_AgentFocusChangedEvent(event: AgentFocusChangedEvent) {
+    if (this._recordingDisabledByDomainPolicy()) {
+      return;
+    }
     this._attachVideoListenersToKnownPages();
     await this._startCdpScreencastIfConfigured();
     if (!this._traceStarted) {
@@ -86,6 +93,9 @@ export class RecordingWatchdog extends BaseWatchdog {
   }
 
   async on_TabCreatedEvent() {
+    if (this._recordingDisabledByDomainPolicy()) {
+      return;
+    }
     this._attachVideoListenersToKnownPages();
     await this._startCdpScreencastIfConfigured();
   }
@@ -93,6 +103,33 @@ export class RecordingWatchdog extends BaseWatchdog {
   protected override onDetached() {
     void this._stopCdpScreencastIfStarted();
     this._detachVideoListeners();
+  }
+
+  private _recordingDisabledByDomainPolicy() {
+    const hasRestrictions =
+      typeof (this.browser_session as any)._has_url_access_restrictions ===
+      'function'
+        ? (this.browser_session as any)._has_url_access_restrictions()
+        : false;
+    if (!hasRestrictions) {
+      return false;
+    }
+
+    const hasRecordingConfigured = Boolean(
+      this.browser_session.browser_profile.traces_dir ||
+      this.browser_session.browser_profile.config.record_video_dir
+    );
+    if (!hasRecordingConfigured) {
+      return false;
+    }
+
+    if (!this._warnedDomainPolicyRecordingDisabled) {
+      this.browser_session.logger.warning(
+        '[RecordingWatchdog] Skipping trace/video recording because domain restrictions are active and recording artifacts cannot be URL-filtered.'
+      );
+      this._warnedDomainPolicyRecordingDisabled = true;
+    }
+    return true;
   }
 
   private _prepareVideoDirectory() {
