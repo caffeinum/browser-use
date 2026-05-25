@@ -2374,25 +2374,33 @@ You will be given a query and the markdown of a webpage that has been filtered t
             throw new BrowserError('Unable to access page for scrolling.');
           }
 
-          const success = await page.evaluate(
-            ({ text }: { text: string }) => {
-              const iterator = document.createNodeIterator(
-                document.body,
-                NodeFilter.SHOW_ELEMENT
-              );
-              let node: Node | null;
-              while ((node = iterator.nextNode())) {
-                const el = node as HTMLElement;
-                if (!el || !el.textContent) continue;
-                if (el.textContent.toLowerCase().includes(text.toLowerCase())) {
-                  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  return true;
+          await validateBrowserPageAfterAction(browser_session, page);
+          let success = false;
+          try {
+            success = await page.evaluate(
+              ({ text }: { text: string }) => {
+                const iterator = document.createNodeIterator(
+                  document.body,
+                  NodeFilter.SHOW_ELEMENT
+                );
+                let node: Node | null;
+                while ((node = iterator.nextNode())) {
+                  const el = node as HTMLElement;
+                  if (!el || !el.textContent) continue;
+                  if (
+                    el.textContent.toLowerCase().includes(text.toLowerCase())
+                  ) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return true;
+                  }
                 }
-              }
-              return false;
-            },
-            { text: params.text }
-          );
+                return false;
+              },
+              { text: params.text }
+            );
+          } finally {
+            await validateBrowserPageAfterAction(browser_session, page);
+          }
 
           if (!success) {
             throw new BrowserError(`Text '${params.text}' not found on page`);
@@ -2831,6 +2839,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
               'Keyboard input is not available on the current page.'
             );
           }
+          await validateBrowserPageAfterAction(browser_session, page);
           try {
             await keyboard.press(params.keys);
           } catch (error) {
@@ -2844,6 +2853,8 @@ You will be given a query and the markdown of a webpage that has been filtered t
             } else {
               throw error;
             }
+          } finally {
+            await validateBrowserPageAfterAction(browser_session, page);
           }
           return null;
         }
@@ -2929,43 +2940,49 @@ You will be given a query and the markdown of a webpage that has been filtered t
         );
       }
 
-      const payload = await page.evaluate(
-        ({ xpath }: { xpath: string }) => {
-          const element = document.evaluate(
-            xpath,
-            document,
-            null,
-            XPathResult.FIRST_ORDERED_NODE_TYPE,
-            null
-          ).singleNodeValue as HTMLElement | null;
-          if (!element) return null;
-          if (element.tagName?.toLowerCase() === 'select') {
-            const options = Array.from(
-              (element as HTMLSelectElement).options
-            ).map((opt, index) => ({
-              text: opt.textContent?.trim() ?? '',
-              value: (opt.value ?? '').trim(),
-              index,
-            }));
-            return { type: 'select', options };
-          }
-          const ariaRoles = new Set(['menu', 'listbox', 'combobox']);
-          const role = element.getAttribute('role');
-          if (role && ariaRoles.has(role)) {
-            const nodes = element.querySelectorAll(
-              '[role="menuitem"],[role="option"]'
-            );
-            const options = Array.from(nodes).map((node, index) => ({
-              text: node.textContent?.trim() ?? '',
-              value: node.textContent?.trim() ?? '',
-              index,
-            }));
-            return { type: 'aria', options };
-          }
-          return null;
-        },
-        { xpath: domElement.xpath }
-      );
+      await validateBrowserPageAfterAction(browser_session, page, signal);
+      let payload: any = null;
+      try {
+        payload = await page.evaluate(
+          ({ xpath }: { xpath: string }) => {
+            const element = document.evaluate(
+              xpath,
+              document,
+              null,
+              XPathResult.FIRST_ORDERED_NODE_TYPE,
+              null
+            ).singleNodeValue as HTMLElement | null;
+            if (!element) return null;
+            if (element.tagName?.toLowerCase() === 'select') {
+              const options = Array.from(
+                (element as HTMLSelectElement).options
+              ).map((opt, index) => ({
+                text: opt.textContent?.trim() ?? '',
+                value: (opt.value ?? '').trim(),
+                index,
+              }));
+              return { type: 'select', options };
+            }
+            const ariaRoles = new Set(['menu', 'listbox', 'combobox']);
+            const role = element.getAttribute('role');
+            if (role && ariaRoles.has(role)) {
+              const nodes = element.querySelectorAll(
+                '[role="menuitem"],[role="option"]'
+              );
+              const options = Array.from(nodes).map((node, index) => ({
+                text: node.textContent?.trim() ?? '',
+                value: node.textContent?.trim() ?? '',
+                index,
+              }));
+              return { type: 'aria', options };
+            }
+            return null;
+          },
+          { xpath: domElement.xpath }
+        );
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
 
       if (!payload || !payload.options?.length) {
         throw new BrowserError('No options found for the specified dropdown.');
@@ -3058,6 +3075,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         throw new BrowserError('No active page for selection.');
       }
 
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       for (const frame of page.frames ?? []) {
         try {
           const typeInfo = await frame.evaluate((xpath: string) => {
@@ -3245,6 +3263,8 @@ You will be given a query and the markdown of a webpage that has been filtered t
             throw error;
           }
           continue;
+        } finally {
+          await validateBrowserPageAfterAction(browser_session, page, signal);
         }
       }
 
@@ -3277,6 +3297,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         await page?.keyboard?.press('Enter');
         await page?.keyboard?.press('Escape');
@@ -3310,6 +3331,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         await gotoSheetsRange(page, params.cell_or_range, signal);
         await page?.keyboard?.press('ControlOrMeta+C');
@@ -3342,6 +3364,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         await gotoSheetsRange(page, params.cell_or_range, signal);
         await page?.evaluate?.((value: string) => {
@@ -3373,6 +3396,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         await gotoSheetsRange(page, params.cell_or_range, signal);
         await page?.keyboard?.press('Backspace');
@@ -3398,6 +3422,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         await gotoSheetsRange(page, params.cell_or_range, signal);
         return new ActionResult({
@@ -3422,6 +3447,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       try {
         await page?.keyboard?.type(params.text, { delay: 100 });
         await page?.keyboard?.press('Enter');

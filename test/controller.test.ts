@@ -1224,6 +1224,42 @@ describe('Regression Coverage', () => {
     expect(result.extracted_content).toContain('Scrolled to text: checkout');
   });
 
+  it('scroll_to_text fallback blocks disallowed current pages before evaluating text', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    (session as any).dispatch_browser_event = undefined;
+    let pageUrl = 'https://evil.test/scroll-text?token=secret';
+    const page = {
+      evaluate: vi.fn(async () => true),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    session.update_current_page(page, 'Blocked', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'scroll_to_text',
+        { text: 'secret' },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.evaluate).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
   it('find_text dispatches ScrollToTextEvent when browser event bus is available', async () => {
     const controller = new Controller();
     const dispatchSpy = vi.fn(async (event: ScrollToTextEvent) => ({
@@ -2100,6 +2136,167 @@ describe('Regression Coverage', () => {
     expect(result.extracted_content).toContain('Inputted text hello');
     expect(page.keyboard.type).toHaveBeenCalledWith('hello', { delay: 100 });
     expect(validatePageAfterAction).toHaveBeenCalledWith(page, null);
+  });
+
+  it('sheets_input blocks disallowed current pages before keyboard input', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://docs.google.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/sheets?token=secret';
+    const page = {
+      keyboard: {
+        press: vi.fn(async () => {}),
+        type: vi.fn(async () => {}),
+      },
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    session.update_current_page(page, 'Blocked', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'sheets_input',
+        { text: 'hello' },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.keyboard.type).not.toHaveBeenCalled();
+    expect(page.keyboard.press).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
+  it('send_keys fallback blocks disallowed current pages before keyboard input', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    (session as any).dispatch_browser_event = undefined;
+    let pageUrl = 'https://evil.test/keys?token=secret';
+    const page = {
+      keyboard: {
+        press: vi.fn(async () => {}),
+      },
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    session.update_current_page(page, 'Blocked', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'send_keys',
+        { keys: 'Enter' },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.keyboard.press).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
+  it('get_dropdown_options fallback blocks disallowed current pages before evaluating options', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    (session as any).dispatch_browser_event = undefined;
+    let pageUrl = 'https://evil.test/dropdown?token=secret';
+    const page = {
+      evaluate: vi.fn(async () => ({
+        type: 'select',
+        options: [{ index: 0, text: 'Secret', value: 'secret' }],
+      })),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue({
+      xpath: '/html/body/select',
+    } as any);
+    session.update_current_page(page, 'Blocked', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'get_dropdown_options',
+        { index: 1 },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.evaluate).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
+  it('select_dropdown_option fallback blocks disallowed current pages before frame evaluation', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    (session as any).dispatch_browser_event = undefined;
+    let pageUrl = 'https://evil.test/select?token=secret';
+    const frame = {
+      evaluate: vi.fn(async () => ({ found: true, type: 'select' })),
+    };
+    const page = {
+      frames: [frame],
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue({
+      xpath: '/html/body/select',
+    } as any);
+    session.update_current_page(page, 'Blocked', pageUrl);
+
+    await expect(
+      controller.registry.execute_action(
+        'select_dropdown_option',
+        { index: 1, text: 'Secret' },
+        { browser_session: session as any }
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(frame.evaluate).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
   });
 
   it('select_dropdown_option matches options case-insensitively by text/value', async () => {
