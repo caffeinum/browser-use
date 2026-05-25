@@ -1960,6 +1960,7 @@ describe('Regression Coverage', () => {
     const browserSession = {
       get_current_page: vi.fn(async () => page),
       _scrollContainer: vi.fn(async () => {}),
+      validate_page_after_action: vi.fn(async () => {}),
     };
 
     const result = await controller.registry.execute_action(
@@ -1969,6 +1970,10 @@ describe('Regression Coverage', () => {
     );
 
     expect(browserSession._scrollContainer).toHaveBeenCalledWith(500);
+    expect(browserSession.validate_page_after_action).toHaveBeenCalledWith(
+      page,
+      null
+    );
     expect(result.long_term_memory).toContain('by 0.5 pages');
   });
 
@@ -1982,6 +1987,7 @@ describe('Regression Coverage', () => {
       get_current_page: vi.fn(async () => page),
       get_dom_element_by_index: vi.fn(async () => null),
       _scrollContainer: vi.fn(async () => {}),
+      validate_page_after_action: vi.fn(async () => {}),
     };
 
     const result = await controller.registry.execute_action(
@@ -1991,6 +1997,10 @@ describe('Regression Coverage', () => {
     );
 
     expect(result.error).toBe('Element index 77 not found in browser state');
+    expect(browserSession.validate_page_after_action).toHaveBeenCalledWith(
+      page,
+      null
+    );
   });
 
   it('get_dropdown_options dispatches GetDropdownOptionsEvent when browser event bus is available', async () => {

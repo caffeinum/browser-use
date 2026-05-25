@@ -2050,47 +2050,48 @@ You will be given a query and the markdown of a webpage that has been filtered t
         throw new BrowserError('Unable to access current page for scrolling.');
       }
 
-      // Helper function to get window height with retries
-      const getWindowHeight = async (retries = 3): Promise<number> => {
-        for (let i = 0; i < retries; i++) {
-          throwIfAborted(signal);
+      try {
+        // Helper function to get window height with retries
+        const getWindowHeight = async (retries = 3): Promise<number> => {
+          for (let i = 0; i < retries; i++) {
+            throwIfAborted(signal);
+            try {
+              const height = await page.evaluate(() => window.innerHeight);
+              return height || 0;
+            } catch (error) {
+              if (i === retries - 1) {
+                throw new Error(`Scroll failed due to an error: ${error}`, {
+                  cause: error,
+                });
+              }
+              await waitWithSignal(1000, signal);
+            }
+          }
+          return 0;
+        };
+
+        const windowHeight = await getWindowHeight();
+        const pagesScrolled = params.pages ?? params.num_pages ?? 1;
+        const scrollAmount = Math.floor(windowHeight * pagesScrolled);
+        const dy = params.down ? scrollAmount : -scrollAmount;
+        const direction = params.down ? 'down' : 'up';
+        let scrollTarget = 'the page';
+
+        // Element-specific scrolling if index is provided
+        if (params.index !== undefined && params.index !== null) {
           try {
-            const height = await page.evaluate(() => window.innerHeight);
-            return height || 0;
-          } catch (error) {
-            if (i === retries - 1) {
-              throw new Error(`Scroll failed due to an error: ${error}`, {
-                cause: error,
+            const elementNode = await browser_session.get_dom_element_by_index(
+              params.index,
+              { signal }
+            );
+            if (!elementNode) {
+              return new ActionResult({
+                error: `Element index ${params.index} not found in browser state`,
               });
             }
-            await waitWithSignal(1000, signal);
-          }
-        }
-        return 0;
-      };
 
-      const windowHeight = await getWindowHeight();
-      const pagesScrolled = params.pages ?? params.num_pages ?? 1;
-      const scrollAmount = Math.floor(windowHeight * pagesScrolled);
-      const dy = params.down ? scrollAmount : -scrollAmount;
-      const direction = params.down ? 'down' : 'up';
-      let scrollTarget = 'the page';
-
-      // Element-specific scrolling if index is provided
-      if (params.index !== undefined && params.index !== null) {
-        try {
-          const elementNode = await browser_session.get_dom_element_by_index(
-            params.index,
-            { signal }
-          );
-          if (!elementNode) {
-            return new ActionResult({
-              error: `Element index ${params.index} not found in browser state`,
-            });
-          }
-
-          // Try direct container scrolling (no events that might close dropdowns)
-          const containerScrollJs = `
+            // Try direct container scrolling (no events that might close dropdowns)
+            const containerScrollJs = `
 						(params) => {
 							const { dy, elementXPath } = params;
 
@@ -2171,87 +2172,90 @@ You will be given a query and the markdown of a webpage that has been filtered t
 						}
 						`;
 
-          const scrollParams = { dy, elementXPath: elementNode.xpath };
-          const result = (await page.evaluate(
-            containerScrollJs,
-            scrollParams
-          )) as any;
+            const scrollParams = { dy, elementXPath: elementNode.xpath };
+            const result = (await page.evaluate(
+              containerScrollJs,
+              scrollParams
+            )) as any;
 
-          if (result.success) {
-            if (result.containerType === 'element') {
-              let containerInfo = result.containerTag;
-              if (result.containerId) {
-                containerInfo += `#${result.containerId}`;
-              } else if (result.containerClass) {
-                containerInfo += `.${result.containerClass.split(' ')[0]}`;
+            if (result.success) {
+              if (result.containerType === 'element') {
+                let containerInfo = result.containerTag;
+                if (result.containerId) {
+                  containerInfo += `#${result.containerId}`;
+                } else if (result.containerClass) {
+                  containerInfo += `.${result.containerClass.split(' ')[0]}`;
+                }
+                scrollTarget = `element ${params.index}'s scroll container (${containerInfo})`;
+                // Don't do additional page scrolling since we successfully scrolled the container
+              } else {
+                scrollTarget = `the page (fallback from element ${params.index})`;
               }
-              scrollTarget = `element ${params.index}'s scroll container (${containerInfo})`;
-              // Don't do additional page scrolling since we successfully scrolled the container
             } else {
-              scrollTarget = `the page (fallback from element ${params.index})`;
+              // Container scroll failed, need page-level scrolling
+              scrollLogger.debug(
+                `Container scroll failed for element ${params.index}: ${result.reason || 'Unknown'}`
+              );
+              scrollTarget = `the page (no container found for element ${params.index})`;
+              // This will trigger page-level scrolling below
             }
-          } else {
-            // Container scroll failed, need page-level scrolling
+          } catch (error) {
             scrollLogger.debug(
-              `Container scroll failed for element ${params.index}: ${result.reason || 'Unknown'}`
+              `Element-specific scrolling failed for index ${params.index}: ${error}`
             );
-            scrollTarget = `the page (no container found for element ${params.index})`;
-            // This will trigger page-level scrolling below
+            scrollTarget = `the page (fallback from element ${params.index})`;
+            // Fall through to page-level scrolling
           }
-        } catch (error) {
-          scrollLogger.debug(
-            `Element-specific scrolling failed for index ${params.index}: ${error}`
-          );
-          scrollTarget = `the page (fallback from element ${params.index})`;
-          // Fall through to page-level scrolling
         }
-      }
 
-      // Page-level scrolling (default or fallback)
-      if (
-        scrollTarget === 'the page' ||
-        scrollTarget.includes('fallback') ||
-        scrollTarget.includes('no container found') ||
-        scrollTarget.includes('mouse wheel failed')
-      ) {
-        scrollLogger.debug(
-          `🔄 Performing page-level scrolling. Reason: ${scrollTarget}`
-        );
-        try {
-          await dispatchBrowserEventIfAvailable(
-            browser_session,
-            new ScrollEvent({
-              direction,
-              amount: Math.abs(dy),
-            }),
-            () => (browser_session as any)._scrollContainer(dy)
-          );
-        } catch (error) {
-          // Hard fallback: always works on root scroller
-          await page.evaluate((y: number) => window.scrollBy(0, y), dy);
+        // Page-level scrolling (default or fallback)
+        if (
+          scrollTarget === 'the page' ||
+          scrollTarget.includes('fallback') ||
+          scrollTarget.includes('no container found') ||
+          scrollTarget.includes('mouse wheel failed')
+        ) {
           scrollLogger.debug(
-            'Smart scroll failed; used window.scrollBy fallback',
-            error
+            `🔄 Performing page-level scrolling. Reason: ${scrollTarget}`
           );
+          try {
+            await dispatchBrowserEventIfAvailable(
+              browser_session,
+              new ScrollEvent({
+                direction,
+                amount: Math.abs(dy),
+              }),
+              () => (browser_session as any)._scrollContainer(dy)
+            );
+          } catch (error) {
+            // Hard fallback: always works on root scroller
+            await page.evaluate((y: number) => window.scrollBy(0, y), dy);
+            scrollLogger.debug(
+              'Smart scroll failed; used window.scrollBy fallback',
+              error
+            );
+          }
         }
+
+        // Create descriptive message
+        let longTermMemory: string;
+        if (pagesScrolled === 1.0) {
+          longTermMemory = `Scrolled ${direction} ${scrollTarget} by one page`;
+        } else {
+          longTermMemory = `Scrolled ${direction} ${scrollTarget} by ${pagesScrolled} pages`;
+        }
+
+        const msg = `🔍 ${longTermMemory}`;
+        scrollLogger.info(msg);
+
+        return new ActionResult({
+          extracted_content: msg,
+          include_in_memory: true,
+          long_term_memory: longTermMemory,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
       }
-
-      // Create descriptive message
-      let longTermMemory: string;
-      if (pagesScrolled === 1.0) {
-        longTermMemory = `Scrolled ${direction} ${scrollTarget} by one page`;
-      } else {
-        longTermMemory = `Scrolled ${direction} ${scrollTarget} by ${pagesScrolled} pages`;
-      }
-
-      const msg = `🔍 ${longTermMemory}`;
-      scrollLogger.info(msg);
-
-      return new ActionResult({
-        extracted_content: msg,
-        include_in_memory: true,
-        long_term_memory: longTermMemory,
-      });
     };
 
     // Register scroll action with multiple names for LLM compatibility
