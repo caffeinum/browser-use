@@ -665,9 +665,11 @@ export function is_new_tab_page(url: string): boolean {
  *
  * Supports optional glob patterns and schemes:
  * - *.example.com will match sub.example.com and example.com
- * - *google.com will match google.com, agoogle.com, and www.google.com
  * - http*://example.com will match http://example.com, https://example.com
  * - chrome-extension://* will match chrome-extension://aaaaaaaaaaaa and chrome-extension://bbbbbbbbbbbbb
+ *
+ * Host wildcards are intentionally limited to the *.domain form; embedded host
+ * wildcards such as *google.com are rejected.
  *
  * When no scheme is specified, https is used by default for security.
  * For example, 'example.com' will match 'https://example.com' but not 'http://example.com'.
