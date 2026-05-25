@@ -120,6 +120,7 @@ interface DirectSessionLike {
   go_forward?: () => Promise<unknown>;
   get_page_html?: () => Promise<string>;
   execute_javascript?: (script: string) => Promise<unknown>;
+  validate_page_after_action?: (page: any) => Promise<unknown>;
   switch_to_tab?: (identifier: number | string) => Promise<unknown>;
   close_tab?: (identifier: number | string) => Promise<unknown>;
   select_dropdown_option?: (node: any, value: string) => Promise<unknown>;
@@ -143,6 +144,13 @@ const parseCookieHostname = (url: string | null | undefined) => {
   } catch {
     return '';
   }
+};
+
+const validateDirectPageAfterAction = async (
+  session: DirectSessionLike,
+  page: any
+) => {
+  await session.validate_page_after_action?.(page);
 };
 
 const parseCookieUrl = (url: string | null | undefined) => {
@@ -1097,7 +1105,12 @@ export const run_direct_command = async (
       if (!locator?.hover) {
         throw new Error('Hover is not available for this element');
       }
-      await locator.hover({ timeout: 5000 });
+      const page = await session.get_current_page?.();
+      try {
+        await locator.hover({ timeout: 5000 });
+      } finally {
+        await validateDirectPageAfterAction(session, page);
+      }
       writeLine(environment.stdout, `Hovered element [${index}]`);
     } else if (command === 'dblclick') {
       const { node, index } = await requireDirectNodeByIndex(session, args[1]);
@@ -1105,7 +1118,12 @@ export const run_direct_command = async (
       if (!locator?.dblclick) {
         throw new Error('Double-click is not available for this element');
       }
-      await locator.dblclick({ timeout: 5000 });
+      const page = await session.get_current_page?.();
+      try {
+        await locator.dblclick({ timeout: 5000 });
+      } finally {
+        await validateDirectPageAfterAction(session, page);
+      }
       writeLine(environment.stdout, `Double-clicked element [${index}]`);
     } else if (command === 'rightclick') {
       const { node, index } = await requireDirectNodeByIndex(session, args[1]);
@@ -1113,7 +1131,12 @@ export const run_direct_command = async (
       if (!locator?.click) {
         throw new Error('Right-click is not available for this element');
       }
-      await locator.click({ button: 'right', timeout: 5000 });
+      const page = await session.get_current_page?.();
+      try {
+        await locator.click({ button: 'right', timeout: 5000 });
+      } finally {
+        await validateDirectPageAfterAction(session, page);
+      }
       writeLine(environment.stdout, `Right-clicked element [${index}]`);
     } else if (command === 'cookies') {
       const cookieCommand = args[1] ?? '';

@@ -124,8 +124,16 @@ describe('skill-cli alignment', () => {
       dblclick: vi.fn(async () => {}),
       click: vi.fn(async () => {}),
     };
+    const page = {
+      url: vi.fn(() => 'https://example.com'),
+      waitForLoadState: vi.fn(async () => {}),
+    };
     vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue({} as any);
     vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page as any);
+    const validateSpy = vi
+      .spyOn(session, 'validate_page_after_action')
+      .mockResolvedValue();
     const registry = new SessionRegistry({
       session_factory: () => session,
     });
@@ -165,6 +173,54 @@ describe('skill-cli alignment', () => {
       button: 'right',
       timeout: 5000,
     });
+    expect(validateSpy).toHaveBeenCalledTimes(3);
+    expect(validateSpy).toHaveBeenCalledWith(page);
+  });
+
+  it('rolls back disallowed navigations from hover actions', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/start';
+    const page = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    const locator = {
+      hover: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-skill-hover?token=secret';
+      }),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page as any);
+    vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue({} as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+    const registry = new SessionRegistry({
+      session_factory: () => session,
+    });
+    const server = new SkillCliServer({ registry });
+
+    const response = await server.handle_request(
+      new Request({
+        id: 'r10',
+        action: 'hover',
+        session: 'default',
+        params: { index: 1 },
+      })
+    );
+
+    expect(response.success).toBe(false);
+    expect(response.error).toContain('allowed_domains');
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
   });
 
   it('supports wait and cookie commands', async () => {

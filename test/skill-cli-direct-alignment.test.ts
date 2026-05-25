@@ -561,6 +561,7 @@ describe('skill-cli direct alignment', () => {
         url: () => 'https://example.com',
         waitForFunction,
       })),
+      validate_page_after_action: vi.fn(async () => {}),
       event_bus: { stop: vi.fn(async () => {}) },
       detach_all_watchdogs: vi.fn(),
     };
@@ -663,6 +664,7 @@ describe('skill-cli direct alignment', () => {
         button: 'right',
         timeout: 5000,
       });
+      expect(session.validate_page_after_action).toHaveBeenCalledTimes(3);
       expect(stderr.read()).toBe('');
     } finally {
       clear_direct_state(stateFile);

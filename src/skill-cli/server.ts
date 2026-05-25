@@ -199,6 +199,18 @@ export class SkillCliServer {
     return node;
   }
 
+  private async _run_with_page_validation(
+    browser_session: any,
+    action: () => Promise<unknown>
+  ) {
+    const page = await browser_session.get_current_page?.();
+    try {
+      return await action();
+    } finally {
+      await browser_session.validate_page_after_action?.(page);
+    }
+  }
+
   private async _read_node_data(
     browser_session: any,
     node: any,
@@ -305,7 +317,9 @@ export class SkillCliServer {
       if (!locator?.hover) {
         throw new Error('Hover is not available for this element');
       }
-      await locator.hover({ timeout: 5000 });
+      await this._run_with_page_validation(browser_session, async () =>
+        locator.hover({ timeout: 5000 })
+      );
       return { hovered: Number(params.index) };
     }
 
@@ -321,7 +335,9 @@ export class SkillCliServer {
       if (!locator?.dblclick) {
         throw new Error('Double-click is not available for this element');
       }
-      await locator.dblclick({ timeout: 5000 });
+      await this._run_with_page_validation(browser_session, async () =>
+        locator.dblclick({ timeout: 5000 })
+      );
       return { double_clicked: Number(params.index) };
     }
 
@@ -337,7 +353,9 @@ export class SkillCliServer {
       if (!locator?.click) {
         throw new Error('Right-click is not available for this element');
       }
-      await locator.click({ button: 'right', timeout: 5000 });
+      await this._run_with_page_validation(browser_session, async () =>
+        locator.click({ button: 'right', timeout: 5000 })
+      );
       return { right_clicked: Number(params.index) };
     }
 
