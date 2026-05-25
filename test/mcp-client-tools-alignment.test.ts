@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { formatMcpToolArgsForLog, MCPClient } from '../src/mcp/client.js';
+import {
+  formatMcpCommandForLog,
+  formatMcpToolArgsForLog,
+  MCPClient,
+} from '../src/mcp/client.js';
 import { Tools } from '../src/tools/service.js';
 import { Controller } from '../src/controller/service.js';
 
@@ -92,5 +96,35 @@ describe('MCPClient tools alignment', () => {
     expect(formatted).not.toContain('sk-test');
     expect(formatted).not.toContain('secret-token');
     expect(formatted).not.toContain('<input value=secret>');
+  });
+
+  it('redacts sensitive MCP process arguments for connection logs', () => {
+    const formatted = formatMcpCommandForLog('node', [
+      'server.js',
+      '--api-key',
+      'sk-test',
+      '--token=secret-token',
+      'OPENAI_API_KEY=env-secret',
+      '--header',
+      'Authorization: Bearer bearer-secret',
+      '--url=https://example.com/cb?token=query-secret#frag',
+      '--safe',
+      'visible',
+    ]);
+
+    expect(formatted).toContain('node server.js');
+    expect(formatted).toContain('--api-key <redacted>');
+    expect(formatted).toContain('--token=<redacted>');
+    expect(formatted).toContain('OPENAI_API_KEY=<redacted>');
+    expect(formatted).toContain('Authorization:<redacted>');
+    expect(formatted).toContain(
+      '--url=https://example.com/cb?<redacted>#<redacted>'
+    );
+    expect(formatted).toContain('--safe visible');
+    expect(formatted).not.toContain('sk-test');
+    expect(formatted).not.toContain('secret-token');
+    expect(formatted).not.toContain('env-secret');
+    expect(formatted).not.toContain('bearer-secret');
+    expect(formatted).not.toContain('query-secret');
   });
 });
