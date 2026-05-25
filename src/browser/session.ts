@@ -2228,6 +2228,8 @@ export class BrowserSession {
 
     const activePage = await this.get_current_page();
     if (activePage) {
+      await this._assert_page_url_allowed_or_rollback(activePage);
+      await this._syncCurrentTabFromPage(activePage);
       try {
         this.currentUrl = normalize_url(activePage.url());
       } catch {

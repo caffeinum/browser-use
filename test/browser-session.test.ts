@@ -404,6 +404,39 @@ esac
     });
   });
 
+  it('rolls back disallowed existing pages during start', async () => {
+    let pageUrl = 'https://evil.test/start?token=secret';
+    const page = {
+      isClosed: () => false,
+      on: vi.fn(),
+      url: () => pageUrl,
+      title: vi.fn(async () => pageUrl),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    };
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+      browser: {
+        contexts: () => [
+          {
+            pages: () => [page],
+          },
+        ],
+      } as any,
+    });
+
+    await expect(session.start()).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('clones provided browser_profile to avoid shared mutable state', () => {
     const profile = new BrowserProfile({
       keep_alive: null,
