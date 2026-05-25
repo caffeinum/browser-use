@@ -389,6 +389,21 @@ esac
     expect(playwrightOptions.extraHttpHeaders).toBeUndefined();
   });
 
+  it('does not configure global permissions when domain policy is active', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        permissions: ['clipboard-read', 'notifications'],
+      }),
+    });
+
+    const playwrightOptions = (session as any)._toPlaywrightOptions(
+      session.browser_profile.kwargs_for_new_context()
+    );
+
+    expect(playwrightOptions.permissions).toBeUndefined();
+  });
+
   it('requires scoped http_credentials when domain policy is active', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

@@ -1679,6 +1679,9 @@ export class BrowserSession {
       ) {
         continue;
       }
+      if (rawKey === 'permissions' && this._has_url_access_restrictions()) {
+        continue;
+      }
       if (
         rawKey === 'http_credentials' &&
         this._has_url_access_restrictions()

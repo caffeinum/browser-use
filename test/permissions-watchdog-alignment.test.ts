@@ -66,6 +66,67 @@ describe('permissions watchdog alignment', () => {
     ]);
   });
 
+  it('scopes permission grants to concrete allowed origins when domain policy is active', async () => {
+    const session = new BrowserSession({
+      profile: {
+        allowed_domains: ['https://example.com', '*.wild.test'],
+        permissions: ['geolocation', 'clipboard-read'],
+      },
+    });
+    const grantPermissions = vi.fn(async () => {});
+    session.browser_context = {
+      grantPermissions,
+    } as any;
+
+    const watchdog = new PermissionsWatchdog({ browser_session: session });
+    session.attach_watchdog(watchdog);
+
+    await session.event_bus.dispatch_or_throw(
+      new BrowserConnectedEvent({ cdp_url: 'ws://localhost:9222' })
+    );
+
+    expect(grantPermissions).toHaveBeenCalledTimes(1);
+    expect(grantPermissions).toHaveBeenCalledWith(
+      ['geolocation', 'clipboard-read'],
+      { origin: 'https://example.com' }
+    );
+  });
+
+  it('uses CDP scoped origins when granting permissions under domain policy', async () => {
+    const session = new BrowserSession({
+      profile: {
+        allowed_domains: ['https://example.com'],
+        permissions: ['notifications'],
+      },
+    });
+    const cdpSend = vi.fn(async () => ({}));
+    const cdpDetach = vi.fn(async () => {});
+    session.browser = {
+      newBrowserCDPSession: vi.fn(async () => ({
+        send: cdpSend,
+        detach: cdpDetach,
+      })),
+    } as any;
+    const grantPermissions = vi.fn(async () => {});
+    session.browser_context = {
+      grantPermissions,
+    } as any;
+
+    const watchdog = new PermissionsWatchdog({ browser_session: session });
+    session.attach_watchdog(watchdog);
+
+    await session.event_bus.dispatch_or_throw(
+      new BrowserConnectedEvent({ cdp_url: 'ws://localhost:9222' })
+    );
+
+    expect(cdpSend).toHaveBeenCalledWith('Browser.grantPermissions', {
+      permissions: ['notifications'],
+      origin: 'https://example.com',
+    });
+    expect(cdpDetach).toHaveBeenCalledTimes(1);
+    expect(grantPermissions).not.toHaveBeenCalled();
+  });
+
   it('falls back to playwright grantPermissions when CDP grant fails', async () => {
     const session = new BrowserSession({
       profile: {
