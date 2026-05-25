@@ -3183,16 +3183,16 @@ export class BrowserSession {
       );
     }
 
-    await this._withAbort(
-      page.mouse.click(coordinate_x, coordinate_y, {
-        button: options.button ?? 'left',
-      }),
-      signal
-    );
-    await this._waitForLoad(page, 5000, signal);
-    await this._assert_page_url_allowed_or_rollback(page);
-    await this._syncCurrentTabFromPage(page);
-    this.cachedBrowserState = null;
+    try {
+      await this._withAbort(
+        page.mouse.click(coordinate_x, coordinate_y, {
+          button: options.button ?? 'left',
+        }),
+        signal
+      );
+    } finally {
+      await this.validate_page_after_action(page, signal);
+    }
   }
 
   async scroll(
@@ -3212,66 +3212,70 @@ export class BrowserSession {
       throw new BrowserError('Unable to access current page for scrolling.');
     }
 
-    const node = options.node ?? null;
-    if (node?.xpath) {
-      const scrolled = await this._withAbort(
-        page.evaluate(
-          (payload: {
-            xpath: string;
-            direction: 'up' | 'down' | 'left' | 'right';
-            amount: number;
-          }) => {
-            const root = document.evaluate(
-              payload.xpath,
-              document,
-              null,
-              XPathResult.FIRST_ORDERED_NODE_TYPE,
-              null
-            ).singleNodeValue as HTMLElement | null;
-            if (!root) {
-              return false;
-            }
-            const topDelta =
-              payload.direction === 'up'
-                ? -payload.amount
-                : payload.direction === 'down'
-                  ? payload.amount
-                  : 0;
-            const leftDelta =
-              payload.direction === 'left'
-                ? -payload.amount
-                : payload.direction === 'right'
-                  ? payload.amount
-                  : 0;
-            root.scrollBy({
-              top: topDelta,
-              left: leftDelta,
-              behavior: 'auto',
-            });
-            return true;
-          },
-          { xpath: node.xpath, direction, amount: normalizedAmount }
-        ),
-        signal
-      );
-      if (scrolled) {
+    try {
+      const node = options.node ?? null;
+      if (node?.xpath) {
+        const scrolled = await this._withAbort(
+          page.evaluate(
+            (payload: {
+              xpath: string;
+              direction: 'up' | 'down' | 'left' | 'right';
+              amount: number;
+            }) => {
+              const root = document.evaluate(
+                payload.xpath,
+                document,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+              ).singleNodeValue as HTMLElement | null;
+              if (!root) {
+                return false;
+              }
+              const topDelta =
+                payload.direction === 'up'
+                  ? -payload.amount
+                  : payload.direction === 'down'
+                    ? payload.amount
+                    : 0;
+              const leftDelta =
+                payload.direction === 'left'
+                  ? -payload.amount
+                  : payload.direction === 'right'
+                    ? payload.amount
+                    : 0;
+              root.scrollBy({
+                top: topDelta,
+                left: leftDelta,
+                behavior: 'auto',
+              });
+              return true;
+            },
+            { xpath: node.xpath, direction, amount: normalizedAmount }
+          ),
+          signal
+        );
+        if (scrolled) {
+          return;
+        }
+      }
+
+      if (direction === 'up' || direction === 'down') {
+        const pixels =
+          direction === 'down' ? -normalizedAmount : normalizedAmount;
+        await this._withAbort(this._scrollContainer(pixels), signal);
         return;
       }
-    }
 
-    if (direction === 'up' || direction === 'down') {
-      const pixels =
-        direction === 'down' ? -normalizedAmount : normalizedAmount;
-      await this._withAbort(this._scrollContainer(pixels), signal);
-      return;
+      const horizontalDelta =
+        direction === 'left' ? -normalizedAmount : normalizedAmount;
+      await this._withAbort(
+        page.evaluate((x: number) => window.scrollBy(x, 0), horizontalDelta),
+        signal
+      );
+    } finally {
+      await this.validate_page_after_action(page, signal);
     }
-
-    const horizontalDelta =
-      direction === 'left' ? -normalizedAmount : normalizedAmount;
-    await this._withAbort(
-      page.evaluate((x: number) => window.scrollBy(x, 0), horizontalDelta),
-      signal
-    );
   }
 
   async scroll_to_text(
@@ -3285,37 +3289,41 @@ export class BrowserSession {
       throw new BrowserError('Unable to access page for scrolling.');
     }
 
-    const success = await this._withAbort(
-      page.evaluate(
-        (payload: { text: string; direction: 'up' | 'down' }) => {
-          const query = payload.text.toLowerCase();
-          const iterator = document.createNodeIterator(
-            document.body,
-            NodeFilter.SHOW_ELEMENT
-          );
-          let node: Node | null;
-          while ((node = iterator.nextNode())) {
-            const el = node as HTMLElement;
-            if (!el || !el.textContent) {
-              continue;
+    try {
+      const success = await this._withAbort(
+        page.evaluate(
+          (payload: { text: string; direction: 'up' | 'down' }) => {
+            const query = payload.text.toLowerCase();
+            const iterator = document.createNodeIterator(
+              document.body,
+              NodeFilter.SHOW_ELEMENT
+            );
+            let node: Node | null;
+            while ((node = iterator.nextNode())) {
+              const el = node as HTMLElement;
+              if (!el || !el.textContent) {
+                continue;
+              }
+              if (el.textContent.toLowerCase().includes(query)) {
+                el.scrollIntoView({
+                  behavior: 'smooth',
+                  block: payload.direction === 'up' ? 'start' : 'center',
+                });
+                return true;
+              }
             }
-            if (el.textContent.toLowerCase().includes(query)) {
-              el.scrollIntoView({
-                behavior: 'smooth',
-                block: payload.direction === 'up' ? 'start' : 'center',
-              });
-              return true;
-            }
-          }
-          return false;
-        },
-        { text, direction: options.direction ?? 'down' }
-      ),
-      signal
-    );
+            return false;
+          },
+          { text, direction: options.direction ?? 'down' }
+        ),
+        signal
+      );
 
-    if (!success) {
-      throw new BrowserError(`Text '${text}' not found on page`);
+      if (!success) {
+        throw new BrowserError(`Text '${text}' not found on page`);
+      }
+    } finally {
+      await this.validate_page_after_action(page, signal);
     }
   }
 
@@ -3436,57 +3444,166 @@ export class BrowserSession {
       throw new BrowserError('No active page for selection.');
     }
 
-    const formatAvailableOptions = (
-      opts: Array<{ index: number; text: string; value: string }>
-    ) =>
-      opts
-        .map(
-          (opt) =>
-            `  - [${opt.index}] text=${JSON.stringify(opt.text)} value=${JSON.stringify(opt.value)}`
-        )
-        .join('\n');
+    try {
+      const formatAvailableOptions = (
+        opts: Array<{ index: number; text: string; value: string }>
+      ) =>
+        opts
+          .map(
+            (opt) =>
+              `  - [${opt.index}] text=${JSON.stringify(opt.text)} value=${JSON.stringify(opt.value)}`
+          )
+          .join('\n');
 
-    const pageFrames = (() => {
-      const framesAccessor = (page as any).frames;
-      if (typeof framesAccessor === 'function') {
+      const pageFrames = (() => {
+        const framesAccessor = (page as any).frames;
+        if (typeof framesAccessor === 'function') {
+          try {
+            const result = framesAccessor.call(page);
+            return Array.isArray(result) ? result : [];
+          } catch {
+            return [];
+          }
+        }
+        return Array.isArray(framesAccessor) ? framesAccessor : [];
+      })();
+
+      for (const frame of pageFrames) {
         try {
-          const result = framesAccessor.call(page);
-          return Array.isArray(result) ? result : [];
-        } catch {
-          return [];
-        }
-      }
-      return Array.isArray(framesAccessor) ? framesAccessor : [];
-    })();
+          const typeInfo: any = await this._withAbort(
+            frame.evaluate((xpath: string) => {
+              const element = document.evaluate(
+                xpath,
+                document,
+                null,
+                XPathResult.FIRST_ORDERED_NODE_TYPE,
+                null
+              ).singleNodeValue as HTMLElement | null;
+              if (!element) return { found: false };
+              const tagName = element.tagName?.toLowerCase();
+              const role = element.getAttribute?.('role');
+              if (tagName === 'select') return { found: true, type: 'select' };
+              if (role && ['menu', 'listbox', 'combobox'].includes(role))
+                return { found: true, type: 'aria' };
+              return { found: false };
+            }, element_node.xpath),
+            signal
+          );
 
-    for (const frame of pageFrames) {
-      try {
-        const typeInfo: any = await this._withAbort(
-          frame.evaluate((xpath: string) => {
-            const element = document.evaluate(
-              xpath,
-              document,
-              null,
-              XPathResult.FIRST_ORDERED_NODE_TYPE,
-              null
-            ).singleNodeValue as HTMLElement | null;
-            if (!element) return { found: false };
-            const tagName = element.tagName?.toLowerCase();
-            const role = element.getAttribute?.('role');
-            if (tagName === 'select') return { found: true, type: 'select' };
-            if (role && ['menu', 'listbox', 'combobox'].includes(role))
-              return { found: true, type: 'aria' };
-            return { found: false };
-          }, element_node.xpath),
-          signal
-        );
+          if (!typeInfo?.found) {
+            continue;
+          }
 
-        if (!typeInfo?.found) {
-          continue;
-        }
+          if (typeInfo.type === 'select') {
+            const selection: any = await this._withAbort(
+              frame.evaluate(
+                ({
+                  xpath,
+                  optionText,
+                }: {
+                  xpath: string;
+                  optionText: string;
+                }) => {
+                  const root = document.evaluate(
+                    xpath,
+                    document,
+                    null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,
+                    null
+                  ).singleNodeValue as HTMLSelectElement | null;
+                  if (!root || root.tagName?.toLowerCase() !== 'select') {
+                    return { found: false };
+                  }
 
-        if (typeInfo.type === 'select') {
-          const selection: any = await this._withAbort(
+                  const options = Array.from(root.options).map(
+                    (opt, index) => ({
+                      index,
+                      text: opt.textContent?.trim() ?? '',
+                      value: (opt.value ?? '').trim(),
+                    })
+                  );
+                  const targetRaw = optionText.trim();
+                  const targetLower = optionText.trim().toLowerCase();
+
+                  let matchedIndex = options.findIndex(
+                    (opt) => opt.text === targetRaw || opt.value === targetRaw
+                  );
+                  if (matchedIndex < 0) {
+                    matchedIndex = options.findIndex(
+                      (opt) =>
+                        opt.text.trim().toLowerCase() === targetLower ||
+                        opt.value.trim().toLowerCase() === targetLower
+                    );
+                  }
+                  if (matchedIndex < 0) {
+                    return { found: true, success: false, options };
+                  }
+
+                  const matched = options[matchedIndex];
+                  root.value = matched.value;
+                  root.dispatchEvent(new Event('input', { bubbles: true }));
+                  root.dispatchEvent(new Event('change', { bubbles: true }));
+                  const selectedOption =
+                    root.selectedIndex >= 0
+                      ? root.options[root.selectedIndex]
+                      : null;
+                  const selectedText =
+                    selectedOption?.textContent?.trim() ?? '';
+                  const selectedValue = (root.value ?? '').trim();
+                  const selectedValueLower = selectedValue.trim().toLowerCase();
+                  const selectedTextLower = selectedText.trim().toLowerCase();
+                  const matchedValueLower = String(matched.value ?? '')
+                    .trim()
+                    .toLowerCase();
+                  const matchedTextLower = String(matched.text ?? '')
+                    .trim()
+                    .toLowerCase();
+                  const verified =
+                    selectedValueLower === matchedValueLower ||
+                    selectedTextLower === matchedTextLower;
+
+                  return {
+                    found: true,
+                    success: verified,
+                    options,
+                    selectedText,
+                    selectedValue,
+                    matched,
+                  };
+                },
+                { xpath: element_node.xpath, optionText: text }
+              ),
+              signal
+            );
+
+            if (selection?.found && selection.success) {
+              const matchedText = selection.matched?.text ?? text;
+              const matchedValue = selection.matched?.value ?? '';
+              const msg = `Selected option ${matchedText} (${matchedValue})`;
+              return {
+                message: msg,
+                short_term_memory: msg,
+                long_term_memory: msg,
+                matched_text: String(matchedText),
+                matched_value: String(matchedValue),
+              } satisfies Record<string, string>;
+            }
+            if (selection?.found) {
+              const details = formatAvailableOptions(
+                (selection.options as Array<{
+                  index: number;
+                  text: string;
+                  value: string;
+                }>) ?? []
+              );
+              throw new BrowserError(
+                `Could not select option '${text}' for index ${element_node.highlight_index ?? 'unknown'}.\nAvailable options:\n${details}`
+              );
+            }
+            continue;
+          }
+
+          const clicked: any = await this._withAbort(
             frame.evaluate(
               ({
                 xpath,
@@ -3501,15 +3618,15 @@ export class BrowserSession {
                   null,
                   XPathResult.FIRST_ORDERED_NODE_TYPE,
                   null
-                ).singleNodeValue as HTMLSelectElement | null;
-                if (!root || root.tagName?.toLowerCase() !== 'select') {
-                  return { found: false };
-                }
-
-                const options = Array.from(root.options).map((opt, index) => ({
+                ).singleNodeValue as HTMLElement | null;
+                if (!root) return false;
+                const nodes = root.querySelectorAll(
+                  '[role="menuitem"],[role="option"]'
+                );
+                const options = Array.from(nodes).map((node, index) => ({
                   index,
-                  text: opt.textContent?.trim() ?? '',
-                  value: (opt.value ?? '').trim(),
+                  text: node.textContent?.trim() ?? '',
+                  value: node.textContent?.trim() ?? '',
                 }));
                 const targetRaw = optionText.trim();
                 const targetLower = optionText.trim().toLowerCase();
@@ -3527,36 +3644,12 @@ export class BrowserSession {
                 if (matchedIndex < 0) {
                   return { found: true, success: false, options };
                 }
-
-                const matched = options[matchedIndex];
-                root.value = matched.value;
-                root.dispatchEvent(new Event('input', { bubbles: true }));
-                root.dispatchEvent(new Event('change', { bubbles: true }));
-                const selectedOption =
-                  root.selectedIndex >= 0
-                    ? root.options[root.selectedIndex]
-                    : null;
-                const selectedText = selectedOption?.textContent?.trim() ?? '';
-                const selectedValue = (root.value ?? '').trim();
-                const selectedValueLower = selectedValue.trim().toLowerCase();
-                const selectedTextLower = selectedText.trim().toLowerCase();
-                const matchedValueLower = String(matched.value ?? '')
-                  .trim()
-                  .toLowerCase();
-                const matchedTextLower = String(matched.text ?? '')
-                  .trim()
-                  .toLowerCase();
-                const verified =
-                  selectedValueLower === matchedValueLower ||
-                  selectedTextLower === matchedTextLower;
-
+                (nodes[matchedIndex] as HTMLElement).click();
                 return {
                   found: true,
-                  success: verified,
+                  success: true,
                   options,
-                  selectedText,
-                  selectedValue,
-                  matched,
+                  matched: options[matchedIndex],
                 };
               },
               { xpath: element_node.xpath, optionText: text }
@@ -3564,21 +3657,19 @@ export class BrowserSession {
             signal
           );
 
-          if (selection?.found && selection.success) {
-            const matchedText = selection.matched?.text ?? text;
-            const matchedValue = selection.matched?.value ?? '';
-            const msg = `Selected option ${matchedText} (${matchedValue})`;
+          if (clicked?.found && clicked.success) {
+            const matchedText = clicked.matched?.text ?? text;
+            const msg = `Selected menu item ${matchedText}`;
             return {
               message: msg,
               short_term_memory: msg,
               long_term_memory: msg,
               matched_text: String(matchedText),
-              matched_value: String(matchedValue),
             } satisfies Record<string, string>;
           }
-          if (selection?.found) {
+          if (clicked?.found) {
             const details = formatAvailableOptions(
-              (selection.options as Array<{
+              (clicked.options as Array<{
                 index: number;
                 text: string;
                 value: string;
@@ -3588,90 +3679,20 @@ export class BrowserSession {
               `Could not select option '${text}' for index ${element_node.highlight_index ?? 'unknown'}.\nAvailable options:\n${details}`
             );
           }
+        } catch (error) {
+          if (error instanceof BrowserError) {
+            throw error;
+          }
           continue;
         }
-
-        const clicked: any = await this._withAbort(
-          frame.evaluate(
-            ({ xpath, optionText }: { xpath: string; optionText: string }) => {
-              const root = document.evaluate(
-                xpath,
-                document,
-                null,
-                XPathResult.FIRST_ORDERED_NODE_TYPE,
-                null
-              ).singleNodeValue as HTMLElement | null;
-              if (!root) return false;
-              const nodes = root.querySelectorAll(
-                '[role="menuitem"],[role="option"]'
-              );
-              const options = Array.from(nodes).map((node, index) => ({
-                index,
-                text: node.textContent?.trim() ?? '',
-                value: node.textContent?.trim() ?? '',
-              }));
-              const targetRaw = optionText.trim();
-              const targetLower = optionText.trim().toLowerCase();
-
-              let matchedIndex = options.findIndex(
-                (opt) => opt.text === targetRaw || opt.value === targetRaw
-              );
-              if (matchedIndex < 0) {
-                matchedIndex = options.findIndex(
-                  (opt) =>
-                    opt.text.trim().toLowerCase() === targetLower ||
-                    opt.value.trim().toLowerCase() === targetLower
-                );
-              }
-              if (matchedIndex < 0) {
-                return { found: true, success: false, options };
-              }
-              (nodes[matchedIndex] as HTMLElement).click();
-              return {
-                found: true,
-                success: true,
-                options,
-                matched: options[matchedIndex],
-              };
-            },
-            { xpath: element_node.xpath, optionText: text }
-          ),
-          signal
-        );
-
-        if (clicked?.found && clicked.success) {
-          const matchedText = clicked.matched?.text ?? text;
-          const msg = `Selected menu item ${matchedText}`;
-          return {
-            message: msg,
-            short_term_memory: msg,
-            long_term_memory: msg,
-            matched_text: String(matchedText),
-          } satisfies Record<string, string>;
-        }
-        if (clicked?.found) {
-          const details = formatAvailableOptions(
-            (clicked.options as Array<{
-              index: number;
-              text: string;
-              value: string;
-            }>) ?? []
-          );
-          throw new BrowserError(
-            `Could not select option '${text}' for index ${element_node.highlight_index ?? 'unknown'}.\nAvailable options:\n${details}`
-          );
-        }
-      } catch (error) {
-        if (error instanceof BrowserError) {
-          throw error;
-        }
-        continue;
       }
-    }
 
-    throw new BrowserError(
-      `Could not select option '${text}' for index ${element_node.highlight_index ?? 'unknown'}`
-    );
+      throw new BrowserError(
+        `Could not select option '${text}' for index ${element_node.highlight_index ?? 'unknown'}`
+      );
+    } finally {
+      await this.validate_page_after_action(page, signal);
+    }
   }
 
   async upload_file(
@@ -3700,16 +3721,14 @@ export class BrowserSession {
     }
 
     const page = await this._withAbort(this.get_current_page(), signal);
-    await this._withAbort(
-      locatorWithUpload.setInputFiles(file_path, { timeout: 5000 }),
-      signal
-    );
-    await this._waitForLoad(page, 5000, signal);
-    if (page) {
-      await this._assert_page_url_allowed_or_rollback(page);
-      await this._syncCurrentTabFromPage(page);
+    try {
+      await this._withAbort(
+        locatorWithUpload.setInputFiles(file_path, { timeout: 5000 }),
+        signal
+      );
+    } finally {
+      await this.validate_page_after_action(page, signal);
     }
-    this.cachedBrowserState = null;
   }
 
   async go_back(options: BrowserActionOptions = {}) {
@@ -3733,6 +3752,8 @@ export class BrowserSession {
         throw error;
       }
       this.logger.debug(`Failed to navigate back: ${(error as Error).message}`);
+    } finally {
+      await this.validate_page_after_action(page, signal);
     }
     this._throwIfAborted(signal);
     await this._syncCurrentTabFromPage(page);
@@ -3977,18 +3998,16 @@ export class BrowserSession {
       throw new Error('Element not found');
     }
     const page = await this._withAbort(this.get_current_page(), signal);
-    await this._withAbort(locator.click({ timeout: 5000 }), signal);
-    if (clear) {
-      await this._withAbort(locator.fill(text, { timeout: 5000 }), signal);
-    } else {
-      await this._withAbort(locator.type(text, { timeout: 5000 }), signal);
+    try {
+      await this._withAbort(locator.click({ timeout: 5000 }), signal);
+      if (clear) {
+        await this._withAbort(locator.fill(text, { timeout: 5000 }), signal);
+      } else {
+        await this._withAbort(locator.type(text, { timeout: 5000 }), signal);
+      }
+    } finally {
+      await this.validate_page_after_action(page, signal);
     }
-    await this._waitForLoad(page, 5000, signal);
-    if (page) {
-      await this._assert_page_url_allowed_or_rollback(page);
-      await this._syncCurrentTabFromPage(page);
-    }
-    this.cachedBrowserState = null;
   }
 
   async _click_element_node(
@@ -4006,88 +4025,91 @@ export class BrowserSession {
       await this._withAbort(locator.click({ timeout: 5000 }), signal);
     };
 
-    const downloadsDir = this.browser_profile.downloads_path;
-    if (downloadsDir && page?.waitForEvent) {
-      ensurePrivateDirectoryIfCreated(downloadsDir);
-      const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
-      await performClick();
-      try {
-        const download = await this._withAbort(downloadPromise, signal);
-        const downloadGuid = uuid7str();
-        const suggested =
-          typeof download.suggestedFilename === 'function'
-            ? download.suggestedFilename()
-            : 'download';
-        const downloadUrl =
-          typeof download.url === 'function'
-            ? download.url()
-            : (this.currentUrl ?? '');
-        await this.event_bus.dispatch(
-          new DownloadStartedEvent({
-            guid: downloadGuid,
-            url: downloadUrl,
-            suggested_filename: suggested,
-            auto_download: false,
-          })
-        );
-        const uniqueFilename = await BrowserSession.get_unique_filename(
-          downloadsDir,
-          suggested
-        );
-        const downloadPath = path.join(downloadsDir, uniqueFilename);
-        if (typeof download.saveAs === 'function') {
-          await download.saveAs(downloadPath);
-          chmodPrivateFileBestEffort(downloadPath);
+    let result: string | null = null;
+    try {
+      const downloadsDir = this.browser_profile.downloads_path;
+      if (downloadsDir && page?.waitForEvent) {
+        ensurePrivateDirectoryIfCreated(downloadsDir);
+        const downloadPromise = page.waitForEvent('download', {
+          timeout: 5000,
+        });
+        await performClick();
+        try {
+          const download = await this._withAbort(downloadPromise, signal);
+          const downloadGuid = uuid7str();
+          const suggested =
+            typeof download.suggestedFilename === 'function'
+              ? download.suggestedFilename()
+              : 'download';
+          const downloadUrl =
+            typeof download.url === 'function'
+              ? download.url()
+              : (this.currentUrl ?? '');
+          await this.event_bus.dispatch(
+            new DownloadStartedEvent({
+              guid: downloadGuid,
+              url: downloadUrl,
+              suggested_filename: suggested,
+              auto_download: false,
+            })
+          );
+          const uniqueFilename = await BrowserSession.get_unique_filename(
+            downloadsDir,
+            suggested
+          );
+          const downloadPath = path.join(downloadsDir, uniqueFilename);
+          if (typeof download.saveAs === 'function') {
+            await download.saveAs(downloadPath);
+            chmodPrivateFileBestEffort(downloadPath);
+          }
+          const stats = fs.existsSync(downloadPath)
+            ? fs.statSync(downloadPath)
+            : null;
+          await this.event_bus.dispatch(
+            new DownloadProgressEvent({
+              guid: downloadGuid,
+              received_bytes: stats?.size ?? 0,
+              total_bytes: stats?.size ?? 0,
+              state: 'completed',
+            })
+          );
+          const fileDownloadedResult = await this.event_bus.dispatch(
+            new FileDownloadedEvent({
+              guid: downloadGuid,
+              url: downloadUrl,
+              path: downloadPath,
+              file_name: uniqueFilename,
+              file_size: stats?.size ?? 0,
+              file_type: path.extname(uniqueFilename).replace('.', '') || null,
+              mime_type: null,
+              auto_download: false,
+            })
+          );
+          if (fileDownloadedResult.handler_results.length === 0) {
+            this.add_downloaded_file(downloadPath);
+          }
+          result = downloadPath;
+        } catch (error) {
+          if (this._isAbortError(error)) {
+            throw error;
+          }
+          this.logger.debug(
+            `No download triggered within timeout: ${(error as Error).message}`
+          );
         }
-        const stats = fs.existsSync(downloadPath)
-          ? fs.statSync(downloadPath)
-          : null;
-        await this.event_bus.dispatch(
-          new DownloadProgressEvent({
-            guid: downloadGuid,
-            received_bytes: stats?.size ?? 0,
-            total_bytes: stats?.size ?? 0,
-            state: 'completed',
-          })
-        );
-        const fileDownloadedResult = await this.event_bus.dispatch(
-          new FileDownloadedEvent({
-            guid: downloadGuid,
-            url: downloadUrl,
-            path: downloadPath,
-            file_name: uniqueFilename,
-            file_size: stats?.size ?? 0,
-            file_type: path.extname(uniqueFilename).replace('.', '') || null,
-            mime_type: null,
-            auto_download: false,
-          })
-        );
-        if (fileDownloadedResult.handler_results.length === 0) {
-          this.add_downloaded_file(downloadPath);
-        }
-        return downloadPath;
-      } catch (error) {
-        if (this._isAbortError(error)) {
-          throw error;
-        }
-        this.logger.debug(
-          `No download triggered within timeout: ${(error as Error).message}`
-        );
+      } else {
+        await performClick();
       }
-    } else {
-      await performClick();
-    }
-
-    await this._waitForLoad(page, 5000, signal);
-    if (page) {
-      await this._assert_page_url_allowed_or_rollback(page);
-      await this._syncCurrentTabFromPage(page);
-      if (this.historyStack[this.historyStack.length - 1] !== this.currentUrl) {
+    } finally {
+      await this.validate_page_after_action(page, signal);
+      if (
+        page &&
+        this.historyStack[this.historyStack.length - 1] !== this.currentUrl
+      ) {
         this.historyStack.push(this.currentUrl);
       }
     }
-    this.cachedBrowserState = null;
-    return null;
+    return result;
   }
 
   private async _waitForLoad(
@@ -4613,14 +4635,13 @@ export class BrowserSession {
    * Navigate forward in browser history
    */
   async go_forward(): Promise<void> {
+    const page = await this.get_current_page();
+    if (!page?.goForward) {
+      return;
+    }
     try {
-      const page = await this.get_current_page();
-      if (page?.goForward) {
-        await page.goForward({ timeout: 10000, waitUntil: 'load' });
-        await this._waitForStableNetwork(page);
-        await this._assert_page_url_allowed_or_rollback(page);
-        await this._syncCurrentTabFromPage(page);
-      }
+      await page.goForward({ timeout: 10000, waitUntil: 'load' });
+      await this._waitForStableNetwork(page);
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
         throw error;
@@ -4639,6 +4660,8 @@ export class BrowserSession {
           );
         }
       }
+    } finally {
+      await this.validate_page_after_action(page);
     }
   }
 
@@ -4646,20 +4669,21 @@ export class BrowserSession {
    * Refresh the current page
    */
   async refresh(): Promise<void> {
+    const page = await this.get_current_page();
+    if (!page?.reload) {
+      return;
+    }
     try {
-      const page = await this.get_current_page();
-      if (page?.reload) {
-        this.currentPageLoadingStatus = null;
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await this._waitForStableNetwork(page);
-        await this._assert_page_url_allowed_or_rollback(page);
-        await this._syncCurrentTabFromPage(page);
-      }
+      this.currentPageLoadingStatus = null;
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await this._waitForStableNetwork(page);
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
         throw error;
       }
       this.logger.debug(`🔄 Error during refresh: ${(error as Error).message}`);
+    } finally {
+      await this.validate_page_after_action(page);
     }
   }
 

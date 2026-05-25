@@ -755,6 +755,62 @@ esac
     }
   });
 
+  it('rolls back click downloads that settle on disallowed URLs', async () => {
+    const downloadsDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'bu-click-dl-blocked-')
+    );
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          allowed_domains: ['https://example.com'],
+          downloads_path: downloadsDir,
+        }),
+      });
+      let pageUrl = 'https://example.com/download';
+      const locator = {
+        click: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-download?token=secret';
+        }),
+      };
+      const fakeDownload = {
+        suggestedFilename: () => 'report.csv',
+        url: () => 'https://example.com/report.csv',
+        saveAs: vi.fn(async (targetPath: string) => {
+          fs.writeFileSync(targetPath, 'abc');
+        }),
+      };
+      const fakePage = {
+        goto: vi.fn(async (url: string) => {
+          pageUrl = url;
+        }),
+        title: vi.fn(async () => pageUrl),
+        url: vi.fn(() => pageUrl),
+        waitForEvent: vi.fn(async () => fakeDownload),
+        waitForLoadState: vi.fn(async () => {}),
+      };
+
+      vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+      vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage as any);
+      session.update_current_page(
+        fakePage as any,
+        'Download',
+        'https://example.com/download'
+      );
+
+      await expect(
+        session._click_element_node({ xpath: '/html/body/a[1]' } as any)
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(fakePage.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(session.active_tab?.url).toBe('about:blank');
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
   it('perform_click rethrows element click failures', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
@@ -1262,6 +1318,78 @@ esac
     await expect(session.click_coordinates(10, 20)).rejects.toBeInstanceOf(
       URLNotAllowedError
     );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back failed coordinate clicks that reached disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/map';
+    const fakePage = {
+      mouse: {
+        click: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-failed-coordinate?token=secret';
+          throw new Error('click failed');
+        }),
+      },
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Map', 'https://example.com/map');
+
+    await expect(session.click_coordinates(10, 20)).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back scroll-triggered navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/list';
+    const fakePage = {
+      evaluate: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-scroll?token=secret';
+        return true;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'List', 'https://example.com/list');
+
+    await expect(
+      session.scroll('down', 100, {
+        node: { xpath: '/html/body/div[1]' } as any,
+      })
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
 
     expect(fakePage.goto).toHaveBeenCalledWith(
       'about:blank',
