@@ -1345,7 +1345,7 @@ export const runAuthCommand = async (
 
       await loginDeviceCode({
         ...authOptions,
-        stdout: output as NodeJS.WriteStream,
+        stdout: (jsonOutput ? errorOutput : output) as NodeJS.WriteStream,
       });
       const status = await getCodexAuthStatus(authOptions);
       if (jsonOutput) {

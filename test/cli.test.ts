@@ -736,6 +736,51 @@ describe('CLI Codex auth commands', () => {
     expect(loginStub).not.toHaveBeenCalled();
     expect(output).toContain('Existing browser-use Codex credentials found');
   });
+
+  it('keeps auth codex login --json stdout parseable', async () => {
+    clearManagedEnv();
+    const configDir = await makeTempDir();
+    let output = '';
+    let errorOutput = '';
+    const stdout = {
+      write: (chunk: string) => {
+        output += chunk;
+      },
+    };
+    const stderr = {
+      write: (chunk: string) => {
+        errorOutput += chunk;
+      },
+    };
+    const loginStub = vi.fn(
+      async (options: {
+        configDir?: string | null;
+        stdout?: { write: (chunk: string) => void };
+      }) => {
+        options.stdout?.write('Open device auth URL\n');
+        await saveCodexTokens(
+          { access_token: 'access', refresh_token: 'refresh' },
+          { configDir: options.configDir, source: 'device-code' }
+        );
+      }
+    );
+
+    await expect(
+      runAuthCommand(['codex', 'login', '--force', '--json'], {
+        configDir,
+        stdout,
+        stderr,
+        login_device_code: loginStub as any,
+      })
+    ).resolves.toBe(0);
+
+    expect(JSON.parse(output)).toMatchObject({
+      authenticated: true,
+      provider: 'openai-codex',
+      source: 'device-code',
+    });
+    expect(errorOutput).toContain('Open device auth URL');
+  });
 });
 
 describe('CLI doctor checks', () => {
