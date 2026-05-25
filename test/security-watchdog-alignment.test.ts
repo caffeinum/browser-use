@@ -46,6 +46,16 @@ describe('security watchdog alignment', () => {
     });
     const watchdog = new SecurityWatchdog({ browser_session: session });
     session.attach_watchdog(watchdog);
+    (session as any)._tabs = [
+      {
+        page_id: 0,
+        tab_id: 'tab-active',
+        target_id: 'target-1',
+        url: 'https://example.com/current',
+        title: 'Current',
+      },
+    ];
+    (session as any).currentTabIndex = 0;
 
     const navigateSpy = vi
       .spyOn(session, 'navigate_to')
@@ -72,6 +82,51 @@ describe('security watchdog alignment', () => {
     expect(navigateSpy).toHaveBeenCalledWith('about:blank');
     expect(errors).toHaveLength(1);
     expect(errors[0].error_type).toBe('NavigationBlocked');
+  });
+
+  it('closes non-active tabs that navigate to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      profile: {
+        allowed_domains: ['example.com'],
+      },
+    });
+    const watchdog = new SecurityWatchdog({ browser_session: session });
+    session.attach_watchdog(watchdog);
+    (session as any)._tabs = [
+      {
+        page_id: 0,
+        tab_id: 'tab-active',
+        target_id: 'target-active',
+        url: 'https://example.com/current',
+        title: 'Current',
+      },
+    ];
+    (session as any).currentTabIndex = 0;
+
+    const navigateSpy = vi
+      .spyOn(session, 'navigate_to')
+      .mockResolvedValue(null as any);
+    const closeRequests: Array<{ target_id: string | null }> = [];
+    session.event_bus.on(
+      'CloseTabEvent',
+      (event: any) => {
+        closeRequests.push({ target_id: event.target_id ?? null });
+      },
+      { handler_id: 'test.security.complete.close-background' }
+    );
+
+    await session.event_bus.dispatch_or_throw(
+      new NavigationCompleteEvent({
+        target_id: 'target-background',
+        url: 'https://evil.test/background',
+        status: 200,
+        error_message: null,
+        loading_status: 'complete',
+      })
+    );
+
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(closeRequests).toEqual([{ target_id: 'target-background' }]);
   });
 
   it('reacts to disallowed TabCreatedEvent by requesting tab close', async () => {

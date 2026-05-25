@@ -44,7 +44,7 @@ export class SecurityWatchdog extends BaseWatchdog {
     await this.event_bus.dispatch(
       new BrowserErrorEvent({
         error_type: 'NavigationBlocked',
-        message: `Navigation blocked to non-allowed URL: ${event.url} - redirecting to about:blank`,
+        message: `Navigation blocked to non-allowed URL: ${event.url}`,
         details: {
           url: event.url,
           target_id: event.target_id,
@@ -52,6 +52,15 @@ export class SecurityWatchdog extends BaseWatchdog {
         },
       })
     );
+
+    if (!this._isActiveTarget(event.target_id)) {
+      await this.event_bus.dispatch(
+        new CloseTabEvent({
+          target_id: event.target_id,
+        })
+      );
+      return;
+    }
 
     try {
       await this.browser_session.navigate_to('about:blank');
@@ -106,5 +115,18 @@ export class SecurityWatchdog extends BaseWatchdog {
     }
 
     return null;
+  }
+
+  private _isActiveTarget(targetId: string | null | undefined): boolean {
+    if (!targetId) {
+      return true;
+    }
+
+    const activeTab = this.browser_session.active_tab;
+    if (!activeTab) {
+      return true;
+    }
+
+    return activeTab.target_id === targetId || activeTab.tab_id === targetId;
   }
 }
