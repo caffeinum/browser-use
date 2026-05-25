@@ -3675,8 +3675,13 @@ export class BrowserSession {
     const previousUrl = this.currentUrl;
     try {
       await this._withAbort(page.goBack(), signal);
+      await this._waitForStableNetwork(page, signal);
+      await this._assert_page_url_allowed_or_rollback(page);
     } catch (error) {
       if (this._isAbortError(error)) {
+        throw error;
+      }
+      if (error instanceof URLNotAllowedError) {
         throw error;
       }
       this.logger.debug(`Failed to navigate back: ${(error as Error).message}`);
@@ -4425,8 +4430,14 @@ export class BrowserSession {
       const page = await this.get_current_page();
       if (page?.goForward) {
         await page.goForward({ timeout: 10000, waitUntil: 'load' });
+        await this._waitForStableNetwork(page);
+        await this._assert_page_url_allowed_or_rollback(page);
+        await this._syncCurrentTabFromPage(page);
       }
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.debug(
         `⏭️ Error during go_forward: ${(error as Error).message}`
       );
@@ -4454,8 +4465,13 @@ export class BrowserSession {
         this.currentPageLoadingStatus = null;
         await page.reload({ waitUntil: 'domcontentloaded' });
         await this._waitForStableNetwork(page);
+        await this._assert_page_url_allowed_or_rollback(page);
+        await this._syncCurrentTabFromPage(page);
       }
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.debug(`🔄 Error during refresh: ${(error as Error).message}`);
     }
   }
@@ -5744,6 +5760,19 @@ export class BrowserSession {
       }
       this._syncSessionManagerFromTabs();
       this.cachedBrowserState = null;
+    }
+  }
+
+  private async _assert_page_url_allowed_or_rollback(page: Page) {
+    const currentUrl =
+      typeof page.url === 'function' ? page.url() : 'about:blank';
+    try {
+      this._assert_url_allowed(currentUrl);
+    } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        await this._rollback_disallowed_navigation(page, currentUrl);
+      }
+      throw error;
     }
   }
 

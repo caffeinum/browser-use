@@ -789,6 +789,44 @@ esac
     expect(pageUrl).toBe('about:blank');
   });
 
+  it('rolls back history navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const fakePage = {
+      goBack: vi.fn(async () => {
+        pageUrl = 'https://evil.test/history';
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Current'),
+    } as any;
+
+    vi.spyOn(session as any, '_waitForStableNetwork').mockResolvedValue(
+      undefined
+    );
+    session.update_current_page(
+      fakePage,
+      'Current',
+      'https://example.com/current'
+    );
+    (session as any).initialized = true;
+
+    await expect(session.go_back()).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+    expect(pageUrl).toBe('about:blank');
+  });
+
   it('go_back uses live browser history even with a minimal internal stack', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
@@ -1047,6 +1085,82 @@ esac
     );
     expect(createdEvents).toHaveLength(1);
     expect(createdEvents[0].url).toBe('https://redirected.test/final');
+  });
+
+  it('rolls back forward navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const fakePage = {
+      goForward: vi.fn(async () => {
+        pageUrl = 'https://evil.test/forward';
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Current'),
+    } as any;
+
+    vi.spyOn(session as any, '_waitForStableNetwork').mockResolvedValue(
+      undefined
+    );
+    session.update_current_page(
+      fakePage,
+      'Current',
+      'https://example.com/current'
+    );
+    (session as any).initialized = true;
+
+    await expect(session.go_forward()).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back refresh navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const fakePage = {
+      reload: vi.fn(async () => {
+        pageUrl = 'https://evil.test/refresh';
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Current'),
+    } as any;
+
+    vi.spyOn(session as any, '_waitForStableNetwork').mockResolvedValue(
+      undefined
+    );
+    session.update_current_page(
+      fakePage,
+      'Current',
+      'https://example.com/current'
+    );
+    (session as any).initialized = true;
+
+    await expect(session.refresh()).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
   });
 
   it('closes new tabs that settle on disallowed redirect URLs', async () => {
