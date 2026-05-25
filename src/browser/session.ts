@@ -4521,7 +4521,9 @@ export class BrowserSession {
       const denialReason = this._get_url_access_denial_reason(origin);
       if (denialReason) {
         this.logger.warning(
-          `Skipping storage origin ${origin}: ${denialReason}`
+          `Skipping storage origin ${BrowserSession._redact_url_for_logging(
+            origin
+          )}: ${denialReason}`
         );
         continue;
       }
@@ -4582,7 +4584,9 @@ export class BrowserSession {
         );
       } catch (error) {
         this.logger.debug(
-          `Failed to apply origin storage for ${origin}: ${(error as Error).message}`
+          `Failed to apply origin storage for ${BrowserSession._redact_url_for_logging(
+            origin
+          )}: ${(error as Error).message}`
         );
       } finally {
         try {

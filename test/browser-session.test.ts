@@ -3681,6 +3681,59 @@ describe('Storage State', () => {
     }
   });
 
+  it('redacts blocked storage origin URLs while loading through BrowserSession', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
+    const statePath = path.join(tempDir, 'state.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify(
+        {
+          cookies: [],
+          origins: [
+            {
+              origin: 'https://evil.example.com/path?token=secret#frag',
+              localStorage: [{ name: 'token', value: 'abc' }],
+            },
+          ],
+        },
+        null,
+        2
+      )
+    );
+
+    const session = new BrowserSession({
+      profile: {
+        allowed_domains: ['https://example.com'],
+      },
+    });
+    session.browser_context = {
+      addCookies: vi.fn(async () => {}),
+      newPage: vi.fn(async () => ({
+        goto: vi.fn(async () => {}),
+        evaluate: vi.fn(async () => {}),
+        close: vi.fn(async () => {}),
+      })),
+    } as any;
+    const warningSpy = vi
+      .spyOn(session.logger, 'warning')
+      .mockImplementation(() => {});
+
+    try {
+      await session.load_storage_state(statePath);
+
+      const warningText = warningSpy.mock.calls
+        .map((call) => String(call[0] ?? ''))
+        .join('\n');
+      expect(warningText).not.toContain('secret');
+      expect(warningText).toContain(
+        'https://evil.example.com/path?<redacted>#<redacted>'
+      );
+    } finally {
+      warningSpy.mockRestore();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('skips BrowserSession origin storage after redirect to blocked URL', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
     const statePath = path.join(tempDir, 'state.json');

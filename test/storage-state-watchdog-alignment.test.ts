@@ -430,6 +430,66 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('redacts blocked storage origin URLs while loading storage state', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    let warningSpy: {
+      mock: { calls: unknown[][] };
+      mockRestore: () => void;
+    } | null = null;
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify(
+          {
+            cookies: [],
+            origins: [
+              {
+                origin: 'https://evil.example.com/path?token=secret#frag',
+                localStorage: [{ name: 'token', value: 'abc' }],
+              },
+            ],
+          },
+          null,
+          2
+        )
+      );
+
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+          allowed_domains: ['https://example.com'],
+        },
+      });
+      session.browser_context = {
+        addCookies: vi.fn(async () => {}),
+        newPage: vi.fn(async () => ({
+          goto: vi.fn(async () => {}),
+          evaluate: vi.fn(async () => {}),
+          close: vi.fn(async () => {}),
+        })),
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+      warningSpy = vi
+        .spyOn(session.logger, 'warning')
+        .mockImplementation(() => {});
+
+      await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
+
+      const warningText = warningSpy.mock.calls
+        .map((call) => String(call[0] ?? ''))
+        .join('\n');
+      expect(warningText).not.toContain('secret');
+      expect(warningText).toContain(
+        'https://evil.example.com/path?<redacted>#<redacted>'
+      );
+    } finally {
+      warningSpy?.mockRestore();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('skips replaying origin storage after redirect to blocked URL', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {

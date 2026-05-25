@@ -41,6 +41,39 @@ const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
   }
 };
 
+const redactUrlForLogging = (url: string | null | undefined) => {
+  const raw = String(url ?? '');
+  if (!raw) {
+    return raw;
+  }
+  if (/^data:/i.test(raw)) {
+    return 'data:<redacted>';
+  }
+
+  try {
+    const parsed = new URL(raw);
+    parsed.username = '';
+    parsed.password = '';
+    const [withoutHash] = parsed.href.split('#', 1);
+    const [withoutQuery] = withoutHash.split('?', 1);
+    return `${withoutQuery}${parsed.search ? '?<redacted>' : ''}${
+      parsed.hash ? '#<redacted>' : ''
+    }`;
+  } catch {
+    const queryIndex = raw.indexOf('?');
+    const hashIndex = raw.indexOf('#');
+    const firstSensitiveIndex = [queryIndex, hashIndex]
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b)[0];
+    if (firstSensitiveIndex === undefined) {
+      return raw;
+    }
+    return `${raw.slice(0, firstSensitiveIndex)}${
+      queryIndex >= 0 ? '?<redacted>' : ''
+    }${hashIndex >= 0 ? '#<redacted>' : ''}`;
+  }
+};
+
 const writePrivateFile = (filePath: string, contents: string) => {
   fs.writeFileSync(filePath, contents, { encoding: 'utf-8', mode: 0o600 });
   chmodPrivateFile(filePath);
@@ -391,7 +424,9 @@ export class StorageStateWatchdog extends BaseWatchdog {
       const denialReason = this._getOriginDenialReason(origin);
       if (denialReason) {
         this.browser_session.logger.warning(
-          `[StorageStateWatchdog] Skipping storage origin ${origin}: ${denialReason}`
+          `[StorageStateWatchdog] Skipping storage origin ${redactUrlForLogging(
+            origin
+          )}: ${denialReason}`
         );
         continue;
       }
@@ -438,7 +473,9 @@ export class StorageStateWatchdog extends BaseWatchdog {
         const finalDenialReason = this._getOriginDenialReason(finalUrl);
         if (finalDenialReason) {
           this.browser_session.logger.warning(
-            `[StorageStateWatchdog] Skipping storage origin ${origin} after redirect to blocked URL: ${finalDenialReason}`
+            `[StorageStateWatchdog] Skipping storage origin ${redactUrlForLogging(
+              origin
+            )} after redirect to blocked URL: ${finalDenialReason}`
           );
           try {
             await page.goto?.('about:blank', {
@@ -466,7 +503,9 @@ export class StorageStateWatchdog extends BaseWatchdog {
         );
       } catch (error) {
         this.browser_session.logger.debug(
-          `[StorageStateWatchdog] Failed to apply origin storage for ${origin}: ${(error as Error).message}`
+          `[StorageStateWatchdog] Failed to apply origin storage for ${redactUrlForLogging(
+            origin
+          )}: ${(error as Error).message}`
         );
       } finally {
         try {
@@ -533,7 +572,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
       }
       this.browser_session.logger.warning(
         `[StorageStateWatchdog] Skipping saved storage origin ${
-          origin || '<invalid>'
+          origin ? redactUrlForLogging(origin) : '<invalid>'
         }: ${denialReason}`
       );
       return false;
