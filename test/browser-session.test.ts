@@ -811,6 +811,60 @@ esac
     }
   });
 
+  it('blocks element click downloads from disallowed download URLs before saving', async () => {
+    const downloadsDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'bu-click-dl-url-blocked-')
+    );
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          allowed_domains: ['https://example.com'],
+          downloads_path: downloadsDir,
+        }),
+      });
+      let pageUrl = 'https://example.com/download';
+      const locator = {
+        click: vi.fn(async () => {}),
+      };
+      const fakeDownload = {
+        cancel: vi.fn(async () => {}),
+        suggestedFilename: () => 'report.csv',
+        url: () => 'https://evil.test/report.csv?token=secret',
+        saveAs: vi.fn(async (targetPath: string) => {
+          fs.writeFileSync(targetPath, 'abc');
+        }),
+      };
+      const fakePage = {
+        goto: vi.fn(async (url: string) => {
+          pageUrl = url;
+        }),
+        title: vi.fn(async () => pageUrl),
+        url: vi.fn(() => pageUrl),
+        waitForEvent: vi.fn(async () => fakeDownload),
+        waitForLoadState: vi.fn(async () => {}),
+      };
+
+      vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+      vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage as any);
+      session.update_current_page(
+        fakePage as any,
+        'Download',
+        'https://example.com/download'
+      );
+
+      await expect(
+        session._click_element_node({ xpath: '/html/body/a[1]' } as any)
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(fakeDownload.saveAs).not.toHaveBeenCalled();
+      expect(fakeDownload.cancel).toHaveBeenCalledTimes(1);
+      expect(fs.readdirSync(downloadsDir)).toEqual([]);
+      expect(session.active_tab?.url).toBe('https://example.com/download');
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
   it('perform_click rethrows element click failures', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
@@ -2934,6 +2988,62 @@ esac
     expect(secondLaunchOptions?.args as string[]).toContain('--no-sandbox');
 
     await session.stop();
+  });
+
+  it('perform_click blocks disallowed download URLs before saving', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'perform-click-'));
+    const downloadsPath = path.join(tempRoot, 'downloads');
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        downloads_path: downloadsPath,
+      }),
+    });
+
+    let pageUrl = 'https://example.com/download';
+    const fakeDownload = {
+      cancel: vi.fn(async () => {}),
+      suggestedFilename: () => 'report.csv',
+      url: () => 'https://evil.test/report.csv?token=secret',
+      saveAs: vi.fn(async (targetPath: string) => {
+        fs.writeFileSync(targetPath, 'csv');
+      }),
+    };
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForEvent: vi.fn(async () => fakeDownload),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    const elementHandle = {
+      click: vi.fn(async () => {}),
+    };
+
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(
+      fakePage,
+      'Download',
+      'https://example.com/download'
+    );
+
+    try {
+      await expect(
+        session.perform_click({ xpath: '/html/body/a[1]' } as any)
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(fakeDownload.saveAs).not.toHaveBeenCalled();
+      expect(fakeDownload.cancel).toHaveBeenCalledTimes(1);
+      expect(fs.readdirSync(downloadsPath)).toEqual([]);
+      expect(session.active_tab?.url).toBe('https://example.com/download');
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 });
 

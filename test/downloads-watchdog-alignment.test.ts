@@ -320,6 +320,85 @@ describe('downloads watchdog alignment', () => {
     }
   });
 
+  it('blocks CDP auto-download materialization for disallowed response URLs', async () => {
+    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-cdp-dl-'));
+    try {
+      const session = new BrowserSession({
+        profile: {
+          allowed_domains: ['https://example.com'],
+          downloads_path: downloadsDir,
+        },
+      });
+      const watchdog = new DownloadsWatchdog({ browser_session: session });
+      session.attach_watchdog(watchdog);
+
+      const listeners = new Map<string, (payload: any) => void>();
+      const cdpSend = vi.fn(async (method: string) => {
+        if (method === 'Network.getResponseBody') {
+          return {
+            body: Buffer.from('%PDF-1.4').toString('base64'),
+            base64Encoded: true,
+          };
+        }
+        return {};
+      });
+      vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue({
+        send: cdpSend,
+        on: (event: string, handler: (payload: any) => void) => {
+          listeners.set(event, handler);
+        },
+        off: (event: string) => {
+          listeners.delete(event);
+        },
+        detach: vi.fn(async () => {}),
+      } as any);
+      session.browser_context = {
+        newCDPSession: vi.fn(async () => ({})),
+      } as any;
+
+      const started: DownloadStartedEvent[] = [];
+      const completed: FileDownloadedEvent[] = [];
+      session.event_bus.on(
+        'DownloadStartedEvent',
+        (event) => started.push(event as DownloadStartedEvent),
+        { handler_id: 'test.downloads.cdp.blocked-start' }
+      );
+      session.event_bus.on(
+        'FileDownloadedEvent',
+        (event) => completed.push(event as FileDownloadedEvent),
+        { handler_id: 'test.downloads.cdp.blocked-complete' }
+      );
+
+      await session.event_bus.dispatch_or_throw(
+        new BrowserConnectedEvent({ cdp_url: 'ws://example' })
+      );
+
+      listeners.get('Network.responseReceived')?.({
+        requestId: 'req-pdf-blocked',
+        response: {
+          url: 'https://evil.test/files/report.pdf?token=secret',
+          mimeType: 'application/pdf',
+          headers: {},
+        },
+      });
+      listeners.get('Network.loadingFinished')?.({
+        requestId: 'req-pdf-blocked',
+        encodedDataLength: 8,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(started).toHaveLength(0);
+      expect(completed).toHaveLength(0);
+      expect(cdpSend).not.toHaveBeenCalledWith(
+        'Network.getResponseBody',
+        expect.anything()
+      );
+      expect(fs.readdirSync(downloadsDir)).toEqual([]);
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
   it('reduces page-controlled download names to safe basenames', () => {
     const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-cdp-dl-'));
     try {

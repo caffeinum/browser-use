@@ -435,6 +435,27 @@ export class DownloadsWatchdog extends BaseWatchdog {
     }
   }
 
+  private _getUrlDenialReason(url: string): string | null {
+    const session = this.browser_session as any;
+    if (typeof session._get_url_access_denial_reason === 'function') {
+      try {
+        return session._get_url_access_denial_reason(url);
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    if (typeof session._is_url_allowed === 'function') {
+      try {
+        return session._is_url_allowed(url) ? null : 'blocked';
+      } catch {
+        return 'blocked';
+      }
+    }
+
+    return null;
+  }
+
   private async _handleNetworkResponse(payload: any) {
     const requestId = String(payload?.requestId ?? '');
     if (!requestId) {
@@ -458,6 +479,15 @@ export class DownloadsWatchdog extends BaseWatchdog {
     const isBinary = mimeType.includes('application/octet-stream');
 
     if (!isPdf && !isAttachment && !isBinary) {
+      return;
+    }
+
+    const denialReason = this._getUrlDenialReason(url);
+    if (denialReason) {
+      this._detectedDownloadUrls.add(url);
+      this.browser_session.logger.warning(
+        `[DownloadsWatchdog] Blocked downloadable network response by domain policy: ${denialReason}`
+      );
       return;
     }
 

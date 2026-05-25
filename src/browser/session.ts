@@ -3854,6 +3854,31 @@ export class BrowserSession {
     return candidate;
   }
 
+  private async _cancel_download_best_effort(download: any) {
+    if (typeof download?.cancel !== 'function') {
+      return;
+    }
+    try {
+      await download.cancel();
+    } catch (error) {
+      this.logger.debug(
+        `Failed to cancel blocked download: ${(error as Error).message}`
+      );
+    }
+  }
+
+  private async _assert_download_url_allowed(
+    download: any,
+    downloadUrl: string
+  ) {
+    try {
+      this._assert_url_allowed(downloadUrl);
+    } catch (error) {
+      await this._cancel_download_best_effort(download);
+      throw error;
+    }
+  }
+
   private static _sanitize_download_filename(filename: string) {
     const basename = String(filename || '')
       .replace(/\0/g, '')
@@ -4071,6 +4096,7 @@ export class BrowserSession {
             typeof download.url === 'function'
               ? download.url()
               : (this.currentUrl ?? '');
+          await this._assert_download_url_allowed(download, downloadUrl);
           await this.event_bus.dispatch(
             new DownloadStartedEvent({
               guid: downloadGuid,
@@ -4117,6 +4143,9 @@ export class BrowserSession {
           result = downloadPath;
         } catch (error) {
           if (this._isAbortError(error)) {
+            throw error;
+          }
+          if (error instanceof URLNotAllowedError) {
             throw error;
           }
           this.logger.debug(
@@ -6306,6 +6335,7 @@ export class BrowserSession {
           typeof download.url === 'function'
             ? download.url()
             : (this.currentUrl ?? '');
+        await this._assert_download_url_allowed(download, download_url);
         await this.event_bus.dispatch(
           new DownloadStartedEvent({
             guid: download_guid,
