@@ -1679,6 +1679,12 @@ export class BrowserSession {
       ) {
         continue;
       }
+      if (
+        rawKey === 'http_credentials' &&
+        this._has_url_access_restrictions()
+      ) {
+        this._assertHttpCredentialsScoped(rawVal);
+      }
       const convertedValue = this._toPlaywrightOptions(rawVal);
       if (convertedValue === undefined) {
         continue;
@@ -1691,6 +1697,21 @@ export class BrowserSession {
       result[normalizedKey] = convertedValue;
     }
     return result;
+  }
+
+  private _assertHttpCredentialsScoped(value: unknown): void {
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+
+    const origin = (value as { origin?: unknown }).origin;
+    if (typeof origin !== 'string' || origin.trim().length === 0) {
+      throw new BrowserError(
+        'http_credentials must include an origin when domain restrictions are configured.'
+      );
+    }
+
+    this._assert_url_allowed(origin.trim());
   }
 
   async set_extra_headers(headers: Record<string, string>): Promise<void> {

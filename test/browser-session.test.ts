@@ -389,6 +389,66 @@ esac
     expect(playwrightOptions.extraHttpHeaders).toBeUndefined();
   });
 
+  it('requires scoped http_credentials when domain policy is active', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        http_credentials: {
+          username: 'user',
+          password: 'pass',
+        },
+      }),
+    });
+
+    expect(() =>
+      (session as any)._toPlaywrightOptions(
+        session.browser_profile.kwargs_for_new_context()
+      )
+    ).toThrow('http_credentials must include an origin');
+  });
+
+  it('keeps http_credentials with an allowed origin when domain policy is active', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        http_credentials: {
+          username: 'user',
+          password: 'pass',
+          origin: 'https://example.com',
+        },
+      }),
+    });
+
+    const playwrightOptions = (session as any)._toPlaywrightOptions(
+      session.browser_profile.kwargs_for_new_context()
+    );
+
+    expect(playwrightOptions.httpCredentials).toEqual({
+      username: 'user',
+      password: 'pass',
+      origin: 'https://example.com',
+    });
+  });
+
+  it('rejects http_credentials scoped to a blocked origin', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        http_credentials: {
+          username: 'user',
+          password: 'pass',
+          origin: 'https://evil.test',
+        },
+      }),
+    });
+
+    expect(() =>
+      (session as any)._toPlaywrightOptions(
+        session.browser_profile.kwargs_for_new_context()
+      )
+    ).toThrow(URLNotAllowedError);
+  });
+
   it('applies configured extra_http_headers to existing contexts on start', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
