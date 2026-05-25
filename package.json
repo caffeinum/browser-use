@@ -373,6 +373,7 @@
       "ajv@>=7": "8.20.0",
       "brace-expansion": "5.0.6",
       "express-rate-limit": "8.2.2",
+      "fast-uri": "3.1.2",
       "fast-xml-builder": "1.2.0",
       "fast-xml-parser": "5.7.3",
       "flatted": "3.4.2",
