@@ -576,6 +576,74 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('skips replaying origin storage after redirect to a different allowed origin', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify(
+          {
+            cookies: [],
+            origins: [
+              {
+                origin: 'https://auth.example.com',
+                localStorage: [{ name: 'token', value: 'abc' }],
+              },
+            ],
+          },
+          null,
+          2
+        )
+      );
+
+      let pageUrl = 'about:blank';
+      const goto = vi.fn(async (url: string) => {
+        pageUrl =
+          url === 'https://auth.example.com'
+            ? 'https://app.example.com/after-redirect'
+            : url;
+      });
+      const evaluate = vi.fn(async () => {});
+      const close = vi.fn(async () => {});
+      const newPage = vi.fn(async () => ({
+        goto,
+        url: vi.fn(() => pageUrl),
+        evaluate,
+        close,
+      }));
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+          allowed_domains: ['*.example.com'],
+        },
+      });
+      session.browser_context = {
+        addCookies: vi.fn(async () => {}),
+        newPage,
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+
+      const dispatchSpy = vi.spyOn(session.event_bus, 'dispatch');
+      await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
+
+      expect(goto).toHaveBeenCalledWith('about:blank', {
+        waitUntil: 'load',
+        timeout: 5000,
+      });
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(close).toHaveBeenCalledTimes(1);
+      const loadedCall = dispatchSpy.mock.calls.find(
+        ([event]) => event instanceof StorageStateLoadedEvent
+      );
+      const loadedEvent = loadedCall?.[0] as StorageStateLoadedEvent;
+      expect(loadedEvent.origins_count).toBe(0);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('merges existing storage state entries when saving', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {

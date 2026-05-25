@@ -4085,6 +4085,14 @@ export class BrowserSession {
     }
   }
 
+  private static _same_origin(left: string, right: string) {
+    try {
+      return new URL(left).origin === new URL(right).origin;
+    } catch {
+      return false;
+    }
+  }
+
   async get_selector_map(options: BrowserActionOptions = {}) {
     if (!this.cachedBrowserState) {
       await this.get_browser_state_with_recovery({
@@ -4557,6 +4565,22 @@ export class BrowserSession {
             `Skipping storage origin ${BrowserSession._redact_url_for_logging(
               origin
             )} after redirect to blocked URL: ${finalDenialReason}`
+          );
+          try {
+            await page.goto?.('about:blank', {
+              waitUntil: 'load',
+              timeout: 5_000,
+            });
+          } catch {
+            // The temporary page is closed below; resetting first is best effort.
+          }
+          continue;
+        }
+        if (!BrowserSession._same_origin(origin, finalUrl)) {
+          this.logger.warning(
+            `Skipping storage origin ${BrowserSession._redact_url_for_logging(
+              origin
+            )} after redirect to a different origin`
           );
           try {
             await page.goto?.('about:blank', {

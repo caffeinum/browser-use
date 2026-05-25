@@ -3844,6 +3844,65 @@ describe('Storage State', () => {
     }
   });
 
+  it('skips BrowserSession origin storage after redirect to a different allowed origin', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
+    const statePath = path.join(tempDir, 'state.json');
+    fs.writeFileSync(
+      statePath,
+      JSON.stringify(
+        {
+          cookies: [],
+          origins: [
+            {
+              origin: 'https://auth.example.com',
+              localStorage: [{ name: 'token', value: 'abc' }],
+            },
+          ],
+        },
+        null,
+        2
+      )
+    );
+
+    let pageUrl = 'about:blank';
+    const goto = vi.fn(async (url: string) => {
+      pageUrl =
+        url === 'https://auth.example.com'
+          ? 'https://app.example.com/after-redirect'
+          : url;
+    });
+    const evaluate = vi.fn(async () => {});
+    const close = vi.fn(async () => {});
+    const newPage = vi.fn(async () => ({
+      goto,
+      url: vi.fn(() => pageUrl),
+      evaluate,
+      close,
+    }));
+    const session = new BrowserSession({
+      profile: {
+        allowed_domains: ['*.example.com'],
+      },
+    });
+    session.browser_context = {
+      addCookies: vi.fn(async () => {}),
+      newPage,
+    } as any;
+
+    try {
+      await session.load_storage_state(statePath);
+
+      expect(goto).toHaveBeenCalledWith('about:blank', {
+        waitUntil: 'load',
+        timeout: 5000,
+      });
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('saves and loads storage state', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
     const statePath = path.join(tempDir, 'state.json');

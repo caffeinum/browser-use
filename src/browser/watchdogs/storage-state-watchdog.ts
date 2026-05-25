@@ -74,6 +74,14 @@ const redactUrlForLogging = (url: string | null | undefined) => {
   }
 };
 
+const sameOrigin = (left: string, right: string) => {
+  try {
+    return new URL(left).origin === new URL(right).origin;
+  } catch {
+    return false;
+  }
+};
+
 const writePrivateFile = (filePath: string, contents: string) => {
   fs.writeFileSync(filePath, contents, { encoding: 'utf-8', mode: 0o600 });
   chmodPrivateFile(filePath);
@@ -478,6 +486,22 @@ export class StorageStateWatchdog extends BaseWatchdog {
             `[StorageStateWatchdog] Skipping storage origin ${redactUrlForLogging(
               origin
             )} after redirect to blocked URL: ${finalDenialReason}`
+          );
+          try {
+            await page.goto?.('about:blank', {
+              waitUntil: 'load',
+              timeout: 5_000,
+            });
+          } catch {
+            // The temporary page is closed below; resetting first is best effort.
+          }
+          continue;
+        }
+        if (!sameOrigin(origin, finalUrl)) {
+          this.browser_session.logger.warning(
+            `[StorageStateWatchdog] Skipping storage origin ${redactUrlForLogging(
+              origin
+            )} after redirect to a different origin`
           );
           try {
             await page.goto?.('about:blank', {
