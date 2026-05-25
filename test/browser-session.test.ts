@@ -1621,6 +1621,37 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back disallowed current pages before legacy state summary reads', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/legacy-state?token=secret';
+    const page = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      evaluate: vi.fn(async () => ({ secret: true })),
+      screenshot: vi.fn(async () => Buffer.from('secret screenshot')),
+    } as any;
+    session.update_current_page(page, 'Blocked', pageUrl);
+
+    await expect(session.get_state_summary()).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(page.evaluate).not.toHaveBeenCalled();
+    expect(page.screenshot).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('does not return browser state after page becomes disallowed during state collection', async () => {
     const secretNode = new DOMElementNode(
       true,
@@ -3047,6 +3078,45 @@ describe('BrowserSession PDF Auto Download', () => {
       } finally {
         infoSpy.mockRestore();
       }
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks PDF auto-downloads from disallowed current pages before fetching bytes', async () => {
+    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-pdf-'));
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          allowed_domains: ['https://example.com'],
+          downloads_path: downloadsDir,
+        }),
+      });
+      let pageUrl = 'https://evil.test/private.pdf?token=secret';
+      const fakePage = {
+        url: vi.fn(() => pageUrl),
+        title: vi.fn(async () => pageUrl),
+        goto: vi.fn(async (url: string) => {
+          pageUrl = url;
+        }),
+        evaluate: vi.fn(async () => ({
+          data: [37, 80, 68, 70],
+          fromCache: false,
+          responseSize: 4,
+        })),
+      } as any;
+      session.update_current_page(fakePage, 'Blocked', pageUrl);
+
+      await expect(
+        (session as any)._auto_download_pdf_if_needed(fakePage)
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(fakePage.evaluate).not.toHaveBeenCalled();
+      expect(fakePage.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(session.get_downloaded_files()).toEqual([]);
     } finally {
       fs.rmSync(downloadsDir, { recursive: true, force: true });
     }

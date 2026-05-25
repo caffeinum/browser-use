@@ -5277,6 +5277,7 @@ export class BrowserSession {
       throw new Error('No current page available');
     }
 
+    await this.validate_page_after_action(page);
     const page_url = page.url();
     const logPageUrl = BrowserSession._redact_url_for_logging(page_url);
 
@@ -5341,7 +5342,12 @@ export class BrowserSession {
     try {
       await this.remove_highlights();
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.debug('Timeout removing highlights');
+    } finally {
+      await this.validate_page_after_action(page);
     }
 
     // Check for PDF and auto-download if needed
@@ -5351,9 +5357,14 @@ export class BrowserSession {
         this.logger.info(`📄 PDF auto-downloaded: ${pdf_path}`);
       }
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.debug(
         `PDF auto-download check failed: ${(error as Error).message}`
       );
+    } finally {
+      await this.validate_page_after_action(page);
     }
 
     // DOM processing
@@ -5374,6 +5385,9 @@ export class BrowserSession {
       content = await Promise.race([domPromise, timeoutPromise]);
       this.logger.debug('✅ DOM processing completed');
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.warning(`DOM processing timed out for ${logPageUrl}`);
       this.logger.warning('🔄 Falling back to minimal DOM state...');
 
@@ -5387,6 +5401,8 @@ export class BrowserSession {
         []
       );
       content = new DOMState(minimal_element_tree, {});
+    } finally {
+      await this.validate_page_after_action(page);
     }
 
     // Get tabs info
@@ -5401,9 +5417,14 @@ export class BrowserSession {
         this.logger.debug('📸 Capturing screenshot...');
         screenshot_b64 = await this.take_screenshot();
       } catch (error) {
+        if (error instanceof URLNotAllowedError) {
+          throw error;
+        }
         this.logger.warning(
           `❌ Screenshot failed for ${logPageUrl}: ${(error as Error).message}`
         );
+      } finally {
+        await this.validate_page_after_action(page);
       }
     }
 
@@ -5439,21 +5460,32 @@ export class BrowserSession {
 
       this.logger.debug('✅ Scroll info completed');
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.warning(
         `Failed to get scroll info: ${(error as Error).message}`
       );
+    } finally {
+      await this.validate_page_after_action(page);
     }
 
     // Get title
     let title = 'Title unavailable';
     try {
+      await this.validate_page_after_action(page);
       const titlePromise = page.title();
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('timeout')), 3000)
       );
       title = await Promise.race([titlePromise, timeoutPromise]);
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       // Keep default title
+    } finally {
+      await this.validate_page_after_action(page);
     }
 
     // Check for errors
@@ -5465,9 +5497,12 @@ export class BrowserSession {
     }
 
     // Check if PDF viewer
+    await this.validate_page_after_action(page);
     const is_pdf_viewer = await this._is_pdf_viewer(page);
+    await this.validate_page_after_action(page);
 
     const pendingNetworkRequests = await this._getPendingNetworkRequests(page);
+    await this.validate_page_after_action(page);
     const paginationButtons = DomService.detect_pagination_buttons(
       content.selector_map
     );
@@ -5491,6 +5526,7 @@ export class BrowserSession {
     });
 
     this.logger.debug('✅ get_state_summary completed successfully');
+    await this.validate_page_after_action(page);
     return browser_state;
   }
 
@@ -5550,6 +5586,7 @@ export class BrowserSession {
    * Check if page is displaying a PDF
    */
   private async _is_pdf_viewer(page: Page): Promise<boolean> {
+    await this.validate_page_after_action(page);
     try {
       const url = page.url();
       if (url.endsWith('.pdf') || url.includes('.pdf?')) {
@@ -5566,7 +5603,12 @@ export class BrowserSession {
 
       return is_pdf;
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       return false;
+    } finally {
+      await this.validate_page_after_action(page);
     }
   }
 
@@ -5581,6 +5623,7 @@ export class BrowserSession {
       return null;
     }
 
+    await this.validate_page_after_action(page);
     try {
       const is_pdf = await this._is_pdf_viewer(page);
       if (!is_pdf) {
@@ -5610,38 +5653,49 @@ export class BrowserSession {
       }
 
       this.logger.info(`📄 Auto-downloading PDF from: ${logUrl}`);
-      const downloadResult = await page.evaluate(async (pdfUrl: string) => {
-        try {
-          const response = await fetch(pdfUrl, {
-            cache: 'force-cache',
-          });
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+      await this.validate_page_after_action(page);
+      let downloadResult: {
+        data: number[];
+        fromCache: boolean;
+        responseSize: number;
+        error?: string;
+      } | null = null;
+      try {
+        downloadResult = await page.evaluate(async (pdfUrl: string) => {
+          try {
+            const response = await fetch(pdfUrl, {
+              cache: 'force-cache',
+            });
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            const cacheHeader = response.headers.get('x-cache') || '';
+            const fromCache =
+              response.headers.has('age') ||
+              cacheHeader.toLowerCase().includes('hit');
+
+            return {
+              data: Array.from(uint8Array),
+              fromCache,
+              responseSize: uint8Array.length,
+            };
+          } catch (error) {
+            return {
+              data: [],
+              fromCache: false,
+              responseSize: 0,
+              error:
+                error instanceof Error ? error.message : 'Unknown fetch error',
+            };
           }
-
-          const blob = await response.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          const cacheHeader = response.headers.get('x-cache') || '';
-          const fromCache =
-            response.headers.has('age') ||
-            cacheHeader.toLowerCase().includes('hit');
-
-          return {
-            data: Array.from(uint8Array),
-            fromCache,
-            responseSize: uint8Array.length,
-          };
-        } catch (error) {
-          return {
-            data: [],
-            fromCache: false,
-            responseSize: 0,
-            error:
-              error instanceof Error ? error.message : 'Unknown fetch error',
-          };
-        }
-      }, url);
+        }, url);
+      } finally {
+        await this.validate_page_after_action(page);
+      }
 
       if (downloadResult?.error) {
         this.logger.warning(
@@ -5686,6 +5740,9 @@ export class BrowserSession {
 
       return downloadPath;
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.logger.debug(`PDF detection failed: ${(error as Error).message}`);
       return null;
     }
