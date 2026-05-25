@@ -664,7 +664,7 @@ describe('skill-cli direct alignment', () => {
         button: 'right',
         timeout: 5000,
       });
-      expect(session.validate_page_after_action).toHaveBeenCalledTimes(3);
+      expect(session.validate_page_after_action).toHaveBeenCalledTimes(4);
       expect(stderr.read()).toBe('');
     } finally {
       clear_direct_state(stateFile);

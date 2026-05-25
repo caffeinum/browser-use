@@ -1089,12 +1089,16 @@ export const run_direct_command = async (
         if (!page?.waitForFunction) {
           throw new Error('No active page available for wait text');
         }
-        await page.waitForFunction(
-          (needle: string) =>
-            document.body?.innerText?.includes(needle) ?? false,
-          text,
-          { timeout: 5000 }
-        );
+        try {
+          await page.waitForFunction(
+            (needle: string) =>
+              document.body?.innerText?.includes(needle) ?? false,
+            text,
+            { timeout: 5000 }
+          );
+        } finally {
+          await validateDirectPageAfterAction(session, page);
+        }
         writeLine(environment.stdout, `Waited for text "${text}"`);
       } else {
         throw new Error('Usage: wait selector <css> | wait text <text>');

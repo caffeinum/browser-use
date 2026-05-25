@@ -232,10 +232,16 @@ describe('skill-cli alignment', () => {
     const waitForElementSpy = vi
       .spyOn(session, 'wait_for_element')
       .mockResolvedValue();
-    vi.spyOn(session, 'get_current_page').mockResolvedValue({
+    const waitTextPage = {
       waitForFunction: vi.fn(async () => {}),
       url: () => 'https://example.com',
-    } as any);
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(
+      waitTextPage as any
+    );
+    const validateSpy = vi
+      .spyOn(session, 'validate_page_after_action')
+      .mockResolvedValue();
     vi.spyOn(session, 'get_cookies').mockResolvedValue([
       { name: 'sid', value: '123', domain: '.example.com', path: '/' } as any,
       {
@@ -326,6 +332,7 @@ describe('skill-cli alignment', () => {
       expect(waitSelector.success).toBe(true);
       expect(waitText.success).toBe(true);
       expect(waitForElementSpy).toHaveBeenCalledWith('#app', 2500);
+      expect(validateSpy).toHaveBeenCalledWith(waitTextPage);
       expect(cookiesGet.success).toBe(true);
       expect((cookiesGet.data as any).count).toBe(3);
       expect(cookiesExport.success).toBe(true);

@@ -1779,6 +1779,75 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back disallowed URLs reached while waiting', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/from-wait?token=secret';
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    session.update_current_page(
+      fakePage,
+      'Current',
+      'https://example.com/current'
+    );
+
+    await expect(session.wait(0.001)).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back disallowed URLs reached while waiting for elements', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      waitForSelector: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-wait-selector?token=secret';
+      }),
+    } as any;
+    session.update_current_page(
+      fakePage,
+      'Current',
+      'https://example.com/current'
+    );
+
+    await expect(session.wait_for_element('#app', 1)).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('closes new tabs that settle on disallowed redirect URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

@@ -3126,7 +3126,12 @@ export class BrowserSession {
     if (delayMs <= 0) {
       return;
     }
-    await this._waitWithAbort(delayMs, signal);
+    const page = await this.get_current_page();
+    try {
+      await this._waitWithAbort(delayMs, signal);
+    } finally {
+      await this.validate_page_after_action(page, signal);
+    }
   }
 
   async send_keys(keys: string, options: BrowserActionOptions = {}) {
@@ -4671,7 +4676,11 @@ export class BrowserSession {
     if (!page) {
       throw new Error('No page available');
     }
-    await page.waitForSelector(selector, { state: 'visible', timeout });
+    try {
+      await page.waitForSelector(selector, { state: 'visible', timeout });
+    } finally {
+      await this.validate_page_after_action(page);
+    }
   }
 
   // ==================== Screenshots ====================

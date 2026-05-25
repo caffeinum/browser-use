@@ -434,10 +434,13 @@ export class SkillCliServer {
       if (!page?.waitForFunction) {
         throw new Error('No active page available for wait_text');
       }
-      await page.waitForFunction(
-        (needle: string) => document.body?.innerText?.includes(needle) ?? false,
-        text,
-        { timeout }
+      await this._run_with_page_validation(browser_session, () =>
+        page.waitForFunction(
+          (needle: string) =>
+            document.body?.innerText?.includes(needle) ?? false,
+          text,
+          { timeout }
+        )
       );
       return { waited_for: 'text', text, timeout };
     }
