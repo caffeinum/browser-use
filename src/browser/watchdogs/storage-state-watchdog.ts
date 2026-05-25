@@ -81,10 +81,12 @@ export class StorageStateWatchdog extends BaseWatchdog {
       | null
       | undefined;
     const normalized = storageState ?? {};
-    const merged = this._mergeStorageStates(this._readStoredState(targetPath), {
-      cookies: Array.isArray(normalized.cookies) ? normalized.cookies : [],
-      origins: Array.isArray(normalized.origins) ? normalized.origins : [],
-    });
+    const merged = this._filterStorageStateForSave(
+      this._mergeStorageStates(this._readStoredState(targetPath), {
+        cookies: Array.isArray(normalized.cookies) ? normalized.cookies : [],
+        origins: Array.isArray(normalized.origins) ? normalized.origins : [],
+      })
+    );
     this._lastSavedSnapshot = this._snapshotStorageState(merged);
 
     const dirPath = path.dirname(targetPath);
@@ -227,7 +229,12 @@ export class StorageStateWatchdog extends BaseWatchdog {
         | null
         | undefined;
       const normalized = storageState ?? {};
-      const snapshot = this._snapshotStorageState(normalized);
+      const snapshot = this._snapshotStorageState(
+        this._filterStorageStateForSave({
+          cookies: Array.isArray(normalized.cookies) ? normalized.cookies : [],
+          origins: Array.isArray(normalized.origins) ? normalized.origins : [],
+        })
+      );
       if (snapshot === this._lastSavedSnapshot) {
         return;
       }
@@ -308,6 +315,35 @@ export class StorageStateWatchdog extends BaseWatchdog {
       cookies: [...mergedCookies.values()],
       origins: [...mergedOrigins.values()],
     };
+  }
+
+  private _filterStorageStateForSave(
+    state: StorageStatePayload
+  ): StorageStatePayload {
+    const cookies = Array.isArray(state.cookies) ? state.cookies : [];
+    const origins = Array.isArray(state.origins) ? state.origins : [];
+    if (!this._hasUrlAccessRestrictions()) {
+      return { cookies, origins };
+    }
+
+    return {
+      cookies: this._filterCookies(cookies),
+      origins: this._filterOrigins(origins),
+    };
+  }
+
+  private _hasUrlAccessRestrictions() {
+    const profile = this.browser_session.browser_profile;
+    const hasEntries = (value: unknown) =>
+      Array.isArray(value)
+        ? value.length > 0
+        : value instanceof Set && value.size > 0;
+
+    return (
+      hasEntries(profile.allowed_domains) ||
+      hasEntries(profile.prohibited_domains) ||
+      Boolean(profile.block_ip_addresses)
+    );
   }
 
   private async _applyOriginsStorage(origins: OriginState[]) {
@@ -449,6 +485,30 @@ export class StorageStateWatchdog extends BaseWatchdog {
           : '';
       this.browser_session.logger.warning(
         `[StorageStateWatchdog] Skipping storage cookie ${cookieName || '<unnamed>'}: ${denialReason}`
+      );
+      return false;
+    });
+  }
+
+  private _filterOrigins(origins: unknown[]) {
+    return origins.filter((originState) => {
+      const origin =
+        originState &&
+        typeof originState === 'object' &&
+        'origin' in originState &&
+        typeof (originState as any).origin === 'string'
+          ? (originState as any).origin.trim()
+          : '';
+      const denialReason = origin
+        ? this._getOriginDenialReason(origin)
+        : 'invalid_url';
+      if (!denialReason) {
+        return true;
+      }
+      this.browser_session.logger.warning(
+        `[StorageStateWatchdog] Skipping saved storage origin ${
+          origin || '<invalid>'
+        }: ${denialReason}`
       );
       return false;
     });

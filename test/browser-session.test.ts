@@ -3370,6 +3370,46 @@ describe('Storage State', () => {
     }
   });
 
+  it('filters saved storage state by allowed_domains', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
+    const statePath = path.join(tempDir, 'state.json');
+
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    session.browser_context = {
+      storageState: vi.fn(async () => ({
+        cookies: [
+          { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+          { name: 'blocked', value: '1', domain: 'evil.test', path: '/' },
+        ],
+        origins: [
+          { origin: 'https://example.com', localStorage: [] },
+          {
+            origin: 'https://evil.test',
+            localStorage: [{ name: 'token', value: 'secret' }],
+          },
+        ],
+      })),
+    } as any;
+
+    try {
+      await session.save_storage_state(statePath);
+
+      const parsed = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+      expect(parsed.cookies).toEqual([
+        { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+      ]);
+      expect(parsed.origins).toEqual([
+        { origin: 'https://example.com', localStorage: [] },
+      ]);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('loads origin storage through BrowserSession without violating allowed_domains', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
     const statePath = path.join(tempDir, 'state.json');

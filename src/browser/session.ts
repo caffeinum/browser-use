@@ -4242,7 +4242,9 @@ export class BrowserSession {
       }
 
       // Get storage state from browser context
-      const storageState = await this.browser_context.storageState();
+      const rawStorageState = await this.browser_context.storageState();
+      const storageState =
+        this._sanitize_storage_state_for_save(rawStorageState);
 
       // Write to temporary file first
       const tempPath = `${resolvedPath}.tmp`;
@@ -4435,6 +4437,52 @@ export class BrowserSession {
       normalized.push({ name, value });
     }
     return normalized;
+  }
+
+  private _sanitize_storage_state_for_save(storageState: unknown) {
+    if (!this._has_url_access_restrictions()) {
+      return storageState as any;
+    }
+
+    const normalized =
+      storageState && typeof storageState === 'object'
+        ? { ...(storageState as Record<string, unknown>) }
+        : {};
+
+    const cookies = Array.isArray(normalized.cookies)
+      ? this._filter_storage_state_cookies(normalized.cookies)
+      : [];
+    const origins = Array.isArray(normalized.origins)
+      ? normalized.origins.filter((originState) => {
+          const origin =
+            originState &&
+            typeof originState === 'object' &&
+            'origin' in originState &&
+            typeof (originState as any).origin === 'string'
+              ? (originState as any).origin.trim()
+              : '';
+          const denialReason = origin
+            ? this._get_url_access_denial_reason(origin)
+            : 'invalid_url';
+          if (!denialReason) {
+            return true;
+          }
+          this.logger.warning(
+            `Skipping saved storage origin ${
+              origin
+                ? BrowserSession._redact_url_for_logging(origin)
+                : '<invalid>'
+            }: ${denialReason}`
+          );
+          return false;
+        })
+      : [];
+
+    return {
+      ...normalized,
+      cookies,
+      origins,
+    };
   }
 
   private _filter_storage_state_cookies(cookies: unknown[]): any[] {

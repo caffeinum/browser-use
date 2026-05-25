@@ -63,6 +63,75 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('filters saved storage state by allowed_domains', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify(
+          {
+            cookies: [
+              { name: 'legacy', value: '1', domain: 'evil.test', path: '/' },
+            ],
+            origins: [
+              {
+                origin: 'https://evil.test',
+                localStorage: [{ name: 'token', value: 'secret' }],
+              },
+            ],
+          },
+          null,
+          2
+        )
+      );
+
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+          allowed_domains: ['https://example.com'],
+        },
+      });
+      session.browser_context = {
+        storageState: vi.fn(async () => ({
+          cookies: [
+            { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+            { name: 'blocked', value: '1', domain: 'evil.test', path: '/' },
+          ],
+          origins: [
+            { origin: 'https://example.com', localStorage: [] },
+            {
+              origin: 'https://evil.test',
+              localStorage: [{ name: 'token', value: 'secret' }],
+            },
+          ],
+        })),
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+
+      const dispatchSpy = vi.spyOn(session.event_bus, 'dispatch');
+      await session.event_bus.dispatch_or_throw(new SaveStorageStateEvent());
+
+      const parsed = JSON.parse(fs.readFileSync(storagePath, 'utf-8'));
+      expect(parsed.cookies).toEqual([
+        { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+      ]);
+      expect(parsed.origins).toEqual([
+        { origin: 'https://example.com', localStorage: [] },
+      ]);
+
+      const savedCall = dispatchSpy.mock.calls.find(
+        ([event]) => event instanceof StorageStateSavedEvent
+      );
+      const savedEvent = savedCall?.[0] as StorageStateSavedEvent;
+      expect(savedEvent.cookies_count).toBe(1);
+      expect(savedEvent.origins_count).toBe(1);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('saves storage state files with private permissions', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {
