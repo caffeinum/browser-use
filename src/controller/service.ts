@@ -2650,33 +2650,48 @@ You will be given a query and the markdown of a webpage that has been filtered t
 
       const validatedCode = validateAndFixJavaScript(params.code);
 
-      const payload = (await page.evaluate(
-        async ({ code }: { code: string }) => {
-          try {
-            const raw = await Promise.resolve((0, eval)(code));
-            let serializedResult: unknown;
-            if (raw === undefined) {
-              serializedResult = null;
-            } else {
-              try {
-                serializedResult = JSON.parse(JSON.stringify(raw));
-              } catch {
-                serializedResult = String(raw);
+      let payload: { ok: boolean; result?: unknown; error?: string } | null =
+        null;
+      try {
+        payload = (await page.evaluate(
+          async ({ code }: { code: string }) => {
+            try {
+              const raw = await Promise.resolve((0, eval)(code));
+              let serializedResult: unknown;
+              if (raw === undefined) {
+                serializedResult = null;
+              } else {
+                try {
+                  serializedResult = JSON.parse(JSON.stringify(raw));
+                } catch {
+                  serializedResult = String(raw);
+                }
               }
+              return { ok: true, result: serializedResult };
+            } catch (error: unknown) {
+              return {
+                ok: false,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : String(error ?? 'Unknown evaluate error'),
+              };
             }
-            return { ok: true, result: serializedResult };
-          } catch (error: unknown) {
-            return {
-              ok: false,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : String(error ?? 'Unknown evaluate error'),
-            };
-          }
-        },
-        { code: validatedCode }
-      )) as { ok: boolean; result?: unknown; error?: string } | null;
+          },
+          { code: validatedCode }
+        )) as { ok: boolean; result?: unknown; error?: string } | null;
+      } finally {
+        const assertUrlAllowed = (browser_session as any)
+          ?._assert_page_url_allowed_or_rollback;
+        if (typeof assertUrlAllowed === 'function') {
+          await assertUrlAllowed.call(browser_session, page);
+        }
+        const syncCurrentTab = (browser_session as any)
+          ?._syncCurrentTabFromPage;
+        if (typeof syncCurrentTab === 'function') {
+          await syncCurrentTab.call(browser_session, page);
+        }
+      }
 
       if (!payload) {
         return new ActionResult({ error: 'evaluate returned no result' });

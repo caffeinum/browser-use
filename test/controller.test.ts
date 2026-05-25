@@ -105,6 +105,8 @@ import {
   SelectDropdownOptionEvent,
 } from '../src/browser/events.js';
 import { BrowserError } from '../src/browser/views.js';
+import { BrowserProfile } from '../src/browser/profile.js';
+import { BrowserSession } from '../src/browser/session.js';
 import { FileSystem } from '../src/filesystem/file-system.js';
 import { DOMElementNode, DOMTextNode } from '../src/dom/views.js';
 
@@ -2274,6 +2276,44 @@ describe('Regression Coverage', () => {
     expect(result.error).toBeNull();
     expect(result.extracted_content).toContain('"status":"ok"');
     expect(result.include_extracted_content_only_once).toBe(false);
+  });
+
+  it('evaluate rolls back JavaScript navigations to disallowed URLs', async () => {
+    const controller = new Controller();
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const page = {
+      evaluate: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-evaluate';
+        return { ok: true, result: 'navigated' };
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Current'),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+    session.update_current_page(page, 'Current', 'https://example.com/current');
+
+    await expect(
+      controller.registry.execute_action(
+        'evaluate',
+        { code: 'window.location.href = "https://evil.test"' },
+        { browser_session: session as any }
+      )
+    ).rejects.toThrow(/allowed_domains|not allowed/);
+
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
   });
 
   it('evaluate normalizes over-escaped JavaScript before execution', async () => {
