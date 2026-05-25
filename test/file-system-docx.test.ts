@@ -5,6 +5,38 @@ import { describe, expect, it } from 'vitest';
 import { FileSystem } from '../src/filesystem/file-system.js';
 
 describe('FileSystem docx support', () => {
+  it('stores managed agent files with private permissions', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-fs-'));
+    const fileSystem = new FileSystem(tempDir);
+    try {
+      const dataDir = fileSystem.get_dir();
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(dataDir).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(path.join(dataDir, 'todo.md')).mode & 0o777).toBe(
+          0o600
+        );
+      }
+
+      await fileSystem.write_file('note.txt', 'secret note');
+      await fileSystem.write_file('report.docx', '# Secret Report');
+      await fileSystem.write_file('printout.pdf', 'secret pdf');
+
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(path.join(dataDir, 'note.txt')).mode & 0o777).toBe(
+          0o600
+        );
+        expect(
+          fs.statSync(path.join(dataDir, 'report.docx')).mode & 0o777
+        ).toBe(0o600);
+        expect(
+          fs.statSync(path.join(dataDir, 'printout.pdf')).mode & 0o777
+        ).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('includes docx in allowed extensions', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-fs-'));
     try {

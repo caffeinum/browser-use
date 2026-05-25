@@ -8,6 +8,41 @@ import { spawnSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform !== 'win32') {
+    fsSync.chmodSync(targetPath, mode);
+  }
+};
+
+const writePrivateTextFile = (filePath: string, content: string) => {
+  fsSync.writeFileSync(filePath, content, {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  chmodPrivatePath(filePath, 0o600);
+};
+
+const writePrivateBufferFile = (filePath: string, content: Buffer) => {
+  fsSync.writeFileSync(filePath, content, { mode: 0o600 });
+  chmodPrivatePath(filePath, 0o600);
+};
+
+const writePrivateTextFileAsync = async (filePath: string, content: string) => {
+  await fsp.writeFile(filePath, content, {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  chmodPrivatePath(filePath, 0o600);
+};
+
+const writePrivateBufferFileAsync = async (
+  filePath: string,
+  content: Buffer
+) => {
+  await fsp.writeFile(filePath, content, { mode: 0o600 });
+  chmodPrivatePath(filePath, 0o600);
+};
+
 interface LegacyPdfParseResult {
   text?: string;
   numpages?: number;
@@ -353,11 +388,14 @@ abstract class BaseFile {
   }
 
   async syncToDisk(dir: string) {
-    await fsp.writeFile(path.join(dir, this.fullName), this.content, 'utf-8');
+    await writePrivateTextFileAsync(
+      path.join(dir, this.fullName),
+      this.content
+    );
   }
 
   syncToDiskSync(dir: string) {
-    fsSync.writeFileSync(path.join(dir, this.fullName), this.content, 'utf-8');
+    writePrivateTextFile(path.join(dir, this.fullName), this.content);
   }
 
   async write(content: string, dir: string) {
@@ -424,13 +462,14 @@ class PdfFile extends BaseFile {
     const filePath = path.join(dir, this.fullName);
     await new Promise<void>((resolve, reject) => {
       const doc = new PDFDocument({ autoFirstPage: true });
-      const stream = fsSync.createWriteStream(filePath);
+      const stream = fsSync.createWriteStream(filePath, { mode: 0o600 });
       doc.pipe(stream);
       doc.fontSize(12).text(this.content || '', { width: 500, align: 'left' });
       doc.end();
       stream.on('finish', resolve);
       stream.on('error', reject);
     });
+    chmodPrivatePath(filePath, 0o600);
   }
 
   override syncToDiskSync(dir: string) {
@@ -441,7 +480,7 @@ const PDFDocument = require(${JSON.stringify(require.resolve('pdfkit'))});
 const filePath = ${JSON.stringify(filePath)};
 const content = ${JSON.stringify(this.content ?? '')};
 const doc = new PDFDocument({ autoFirstPage: true });
-const stream = createWriteStream(filePath);
+const stream = createWriteStream(filePath, { mode: 0o600 });
 doc.pipe(stream);
 doc.fontSize(12).text(content || '', { width: 500, align: 'left' });
 doc.end();
@@ -460,6 +499,7 @@ stream.on('error', (err) => {
         `Could not write to file '${this.fullName}'.`;
       throw new FileSystemError(`Error: ${errorMsg.trim()}`);
     }
+    chmodPrivatePath(filePath, 0o600);
   }
 }
 
@@ -471,13 +511,13 @@ class DocxFile extends BaseFile {
   override async syncToDisk(dir: string) {
     const filePath = path.join(dir, this.fullName);
     const docxBuffer = buildDocxBuffer(this.content || '');
-    await fsp.writeFile(filePath, docxBuffer);
+    await writePrivateBufferFileAsync(filePath, docxBuffer);
   }
 
   override syncToDiskSync(dir: string) {
     const filePath = path.join(dir, this.fullName);
     const docxBuffer = buildDocxBuffer(this.content || '');
-    fsSync.writeFileSync(filePath, docxBuffer);
+    writePrivateBufferFile(filePath, docxBuffer);
   }
 }
 
@@ -544,7 +584,8 @@ export class FileSystem {
     if (fsSync.existsSync(this.dataDir)) {
       fsSync.rmSync(this.dataDir, { recursive: true, force: true });
     }
-    fsSync.mkdirSync(this.dataDir, { recursive: true });
+    fsSync.mkdirSync(this.dataDir, { recursive: true, mode: 0o700 });
+    chmodPrivatePath(this.dataDir, 0o700);
 
     if (createDefaultFiles) {
       this.createDefaultFiles();
@@ -555,11 +596,7 @@ export class FileSystem {
     for (const filename of this.defaultFiles) {
       const file = this.instantiateFile(filename);
       this.files.set(filename, file);
-      fsSync.writeFileSync(
-        path.join(this.dataDir, filename),
-        file.read(),
-        'utf-8'
-      );
+      writePrivateTextFile(path.join(this.dataDir, filename), file.read());
     }
   }
 
