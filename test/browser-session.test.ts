@@ -437,6 +437,37 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back disallowed pages restored after reconnect', async () => {
+    let pageUrl = 'https://evil.test/reconnect?token=secret';
+    const page = {
+      isClosed: () => false,
+      on: vi.fn(),
+      url: () => pageUrl,
+      title: vi.fn(async () => pageUrl),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    };
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    (session as any).browser_context = {
+      pages: () => [page],
+    };
+
+    await expect(
+      (session as any)._restorePagesAfterReconnect(null, 0)
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('clones provided browser_profile to avoid shared mutable state', () => {
     const profile = new BrowserProfile({
       keep_alive: null,

@@ -1906,6 +1906,9 @@ export class BrowserSession {
 
     this._setActivePage(nextPage);
     this.human_current_page = nextPage;
+    if (nextPage) {
+      await this._assert_page_url_allowed_or_rollback(nextPage);
+    }
     await this._syncCurrentTabFromPage(nextPage);
   }
 
