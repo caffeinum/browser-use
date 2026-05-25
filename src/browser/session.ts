@@ -2276,7 +2276,9 @@ export class BrowserSession {
     }
 
     this.cdp_url = cdpUrl;
-    this.logger.info(`Discovered CDP URL: ${cdpUrl}`);
+    this.logger.info(
+      `Discovered CDP URL: ${BrowserSession._redact_url_for_logging(cdpUrl)}`
+    );
 
     // Connect to browser via CDP
     try {
@@ -3779,6 +3781,39 @@ export class BrowserSession {
     return sanitized || 'download';
   }
 
+  private static _redact_url_for_logging(url: string | null | undefined) {
+    const raw = String(url ?? '');
+    if (!raw) {
+      return raw;
+    }
+    if (/^data:/i.test(raw)) {
+      return 'data:<redacted>';
+    }
+
+    try {
+      const parsed = new URL(raw);
+      parsed.username = '';
+      parsed.password = '';
+      const [withoutHash] = parsed.href.split('#', 1);
+      const [withoutQuery] = withoutHash.split('?', 1);
+      return `${withoutQuery}${parsed.search ? '?<redacted>' : ''}${
+        parsed.hash ? '#<redacted>' : ''
+      }`;
+    } catch {
+      const queryIndex = raw.indexOf('?');
+      const hashIndex = raw.indexOf('#');
+      const firstSensitiveIndex = [queryIndex, hashIndex]
+        .filter((index) => index >= 0)
+        .sort((a, b) => a - b)[0];
+      if (firstSensitiveIndex === undefined) {
+        return raw;
+      }
+      return `${raw.slice(0, firstSensitiveIndex)}${
+        queryIndex >= 0 ? '?<redacted>' : ''
+      }${hashIndex >= 0 ? '#<redacted>' : ''}`;
+    }
+  }
+
   async get_selector_map(options: BrowserActionOptions = {}) {
     if (!this.cachedBrowserState) {
       await this.get_browser_state_with_recovery({
@@ -4538,12 +4573,13 @@ export class BrowserSession {
 
     // Check if it's a new tab page
     const url = page.url();
+    const logUrl = BrowserSession._redact_url_for_logging(url);
     if (
       url === 'about:blank' ||
       url === 'chrome://newtab/' ||
       url === 'edge://newtab/'
     ) {
-      this.logger.warning(`▫️ Skipping screenshot of empty page: ${url}`);
+      this.logger.warning(`▫️ Skipping screenshot of empty page: ${logUrl}`);
       // Return a 4px placeholder
       return 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAD0lEQVQIHWP8//8/AxYMACgtBP9g8jqYAAAAAElFTkSuQmCC';
     }
@@ -4559,7 +4595,7 @@ export class BrowserSession {
     let cdp_session: any = null;
     try {
       this.logger.debug(
-        `📸 Taking ${full_page ? 'full-page' : 'viewport'} PNG screenshot via CDP: ${url}`
+        `📸 Taking ${full_page ? 'full-page' : 'viewport'} PNG screenshot via CDP: ${logUrl}`
       );
 
       // Create CDP session for the screenshot
@@ -4588,7 +4624,9 @@ export class BrowserSession {
 
       const screenshot_b64 = screenshot_response.data;
       if (!screenshot_b64) {
-        throw new Error(`CDP returned empty screenshot data for page ${url}`);
+        throw new Error(
+          `CDP returned empty screenshot data for page ${logUrl}`
+        );
       }
 
       return screenshot_b64;
@@ -4596,10 +4634,12 @@ export class BrowserSession {
       const error_str = (error as Error).message || String(error);
       if (error_str.toLowerCase().includes('timeout')) {
         this.logger.warning(
-          `⏱️ Screenshot timed out on page ${url}: ${error_str}`
+          `⏱️ Screenshot timed out on page ${logUrl}: ${error_str}`
         );
       } else {
-        this.logger.error(`❌ Screenshot failed on page ${url}: ${error_str}`);
+        this.logger.error(
+          `❌ Screenshot failed on page ${logUrl}: ${error_str}`
+        );
       }
       throw error;
     } finally {
@@ -4738,7 +4778,9 @@ export class BrowserSession {
         tabs_info.push({ page_id, tab_id, url: currentUrl, title });
       } catch (error) {
         this.logger.debug(
-          `⚠️ Failed to get tab info for tab #${page_id}: ${currentUrl} (using fallback title)`
+          `⚠️ Failed to get tab info for tab #${page_id}: ${BrowserSession._redact_url_for_logging(
+            currentUrl
+          )} (using fallback title)`
         );
 
         if (isNewTab) {
@@ -5004,13 +5046,14 @@ export class BrowserSession {
     }
 
     const page_url = page.url();
+    const logPageUrl = BrowserSession._redact_url_for_logging(page_url);
 
     // Check for new tab or chrome:// pages - fast path
     const is_empty_page =
       this._is_new_tab_page(page_url) || page_url.startsWith('chrome://');
 
     if (is_empty_page) {
-      this.logger.debug(`⚡ Fast path for empty page: ${page_url}`);
+      this.logger.debug(`⚡ Fast path for empty page: ${logPageUrl}`);
 
       // Create minimal DOM state
       const minimal_element_tree = new DOMElementNode(
@@ -5099,7 +5142,7 @@ export class BrowserSession {
       content = await Promise.race([domPromise, timeoutPromise]);
       this.logger.debug('✅ DOM processing completed');
     } catch (error) {
-      this.logger.warning(`DOM processing timed out for ${page_url}`);
+      this.logger.warning(`DOM processing timed out for ${logPageUrl}`);
       this.logger.warning('🔄 Falling back to minimal DOM state...');
 
       // Create minimal DOM state for fallback
@@ -5127,7 +5170,7 @@ export class BrowserSession {
         screenshot_b64 = await this.take_screenshot();
       } catch (error) {
         this.logger.warning(
-          `❌ Screenshot failed for ${page_url}: ${(error as Error).message}`
+          `❌ Screenshot failed for ${logPageUrl}: ${(error as Error).message}`
         );
       }
     }
@@ -5185,7 +5228,7 @@ export class BrowserSession {
     const browser_errors: string[] = [];
     if (Object.keys(content.selector_map).length === 0) {
       browser_errors.push(
-        `DOM processing timed out for ${page_url} - using minimal state. Basic navigation still available.`
+        `DOM processing timed out for ${logPageUrl} - using minimal state. Basic navigation still available.`
       );
     }
 
@@ -5313,7 +5356,8 @@ export class BrowserSession {
       }
 
       const url = page.url();
-      this.logger.info(`📄 PDF detected: ${url}`);
+      const logUrl = BrowserSession._redact_url_for_logging(url);
+      this.logger.info(`📄 PDF detected: ${logUrl}`);
 
       let pdfFilename = path.basename(url.split('?')[0]);
       if (!pdfFilename || !pdfFilename.toLowerCase().endsWith('.pdf')) {
@@ -5333,7 +5377,7 @@ export class BrowserSession {
         return null;
       }
 
-      this.logger.info(`📄 Auto-downloading PDF from: ${url}`);
+      this.logger.info(`📄 Auto-downloading PDF from: ${logUrl}`);
       const downloadResult = await page.evaluate(async (pdfUrl: string) => {
         try {
           const response = await fetch(pdfUrl, {
@@ -5369,7 +5413,7 @@ export class BrowserSession {
 
       if (downloadResult?.error) {
         this.logger.warning(
-          `⚠️ Failed to auto-download PDF from ${url}: ${downloadResult.error}`
+          `⚠️ Failed to auto-download PDF from ${logUrl}: ${downloadResult.error}`
         );
         return null;
       }
@@ -5380,7 +5424,7 @@ export class BrowserSession {
         downloadResult.data.length === 0
       ) {
         this.logger.warning(
-          `⚠️ No data received when downloading PDF from ${url}`
+          `⚠️ No data received when downloading PDF from ${logUrl}`
         );
         return null;
       }
@@ -6990,7 +7034,11 @@ export class BrowserSession {
 
     // Listen for page events to track which page the user is viewing
     this.browser_context.on?.('page', (page: Page) => {
-      this.logger.debug(`New page created: ${page.url?.() || 'about:blank'}`);
+      this.logger.debug(
+        `New page created: ${BrowserSession._redact_url_for_logging(
+          page.url?.() || 'about:blank'
+        )}`
+      );
 
       // Note: 'visibilitychange' is not a standard Playwright page event
       // Visibility tracking would need to be implemented differently

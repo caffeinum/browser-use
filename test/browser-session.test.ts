@@ -1902,7 +1902,7 @@ describe('BrowserSession PDF Auto Download', () => {
         }),
       });
 
-      const evaluate = vi.fn(async () => ({
+      const evaluate = vi.fn(async (_fn: unknown, _url: string) => ({
         data: [37, 80, 68, 70],
         fromCache: false,
         responseSize: 4,
@@ -1923,6 +1923,48 @@ describe('BrowserSession PDF Auto Download', () => {
       expect(secondPath).toBeNull();
       expect(evaluate).toHaveBeenCalledTimes(1);
       expect(session.get_downloaded_files()).toHaveLength(1);
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
+  it('redacts sensitive PDF URL parts before logging', async () => {
+    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-pdf-'));
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          downloads_path: downloadsDir,
+        }),
+      });
+      const rawUrl =
+        'https://user:pass@example.com/report.pdf?token=abc#section';
+      const infoSpy = vi
+        .spyOn(session.logger, 'info')
+        .mockImplementation(() => undefined);
+      const evaluate = vi.fn(async (_fn: unknown, _url: string) => ({
+        data: [37, 80, 68, 70],
+        fromCache: false,
+        responseSize: 4,
+      }));
+      const fakePage = {
+        url: () => rawUrl,
+        evaluate,
+      } as any;
+
+      try {
+        await (session as any)._auto_download_pdf_if_needed(fakePage);
+
+        expect(evaluate.mock.calls[0]?.[1]).toBe(rawUrl);
+        const logs = infoSpy.mock.calls.flat().join('\n');
+        expect(logs).toContain(
+          'https://example.com/report.pdf?<redacted>#<redacted>'
+        );
+        expect(logs).not.toContain('user:pass');
+        expect(logs).not.toContain('token=abc');
+        expect(logs).not.toContain('#section');
+      } finally {
+        infoSpy.mockRestore();
+      }
     } finally {
       fs.rmSync(downloadsDir, { recursive: true, force: true });
     }
