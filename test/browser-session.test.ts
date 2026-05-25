@@ -3547,7 +3547,8 @@ describe('Storage State', () => {
 
   it('saves storage state through BrowserSession with private permissions', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
-    const statePath = path.join(tempDir, 'state.json');
+    const stateDir = path.join(tempDir, 'nested');
+    const statePath = path.join(stateDir, 'state.json');
 
     const session = new BrowserSession();
     session.browser_context = {
@@ -3562,6 +3563,7 @@ describe('Storage State', () => {
 
       expect(fs.existsSync(statePath)).toBe(true);
       if (process.platform !== 'win32') {
+        expect(fs.statSync(stateDir).mode & 0o777).toBe(0o700);
         expect(fs.statSync(statePath).mode & 0o777).toBe(0o600);
       }
     } finally {

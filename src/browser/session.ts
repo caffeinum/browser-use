@@ -4398,9 +4398,7 @@ export class BrowserSession {
       const dirPath = path.dirname(resolvedPath);
 
       // Create directory if it doesn't exist
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
-      }
+      ensurePrivateDirectoryIfCreated(dirPath);
 
       // Get storage state from browser context
       const rawStorageState = await this.browser_context.storageState();

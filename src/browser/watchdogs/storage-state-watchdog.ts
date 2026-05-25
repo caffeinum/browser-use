@@ -33,6 +33,14 @@ const chmodPrivateFile = (filePath: string) => {
   fs.chmodSync(filePath, 0o600);
 };
 
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    fs.chmodSync(dirPath, 0o700);
+  }
+};
+
 const writePrivateFile = (filePath: string, contents: string) => {
   fs.writeFileSync(filePath, contents, { encoding: 'utf-8', mode: 0o600 });
   chmodPrivateFile(filePath);
@@ -90,7 +98,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
     this._lastSavedSnapshot = this._snapshotStorageState(merged);
 
     const dirPath = path.dirname(targetPath);
-    fs.mkdirSync(dirPath, { recursive: true });
+    ensurePrivateDirectoryIfCreated(dirPath);
 
     const tempPath = `${targetPath}.tmp`;
     writePrivateFile(tempPath, JSON.stringify(merged, null, 2));
