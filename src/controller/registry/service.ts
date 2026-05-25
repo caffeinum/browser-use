@@ -597,6 +597,40 @@ export class Registry<Context = unknown> {
     return processed;
   }
 
+  private redactUrlForLog(url: string | null) {
+    if (!url || is_new_tab_page(url)) {
+      return '';
+    }
+
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'data:') {
+        return 'data:<redacted>';
+      }
+      if (parsed.protocol === 'blob:') {
+        return parsed.origin && parsed.origin !== 'null'
+          ? `blob:${parsed.origin}/<redacted>`
+          : 'blob:<redacted>';
+      }
+      return `${parsed.origin}${parsed.pathname}${
+        parsed.search ? '?<redacted>' : ''
+      }${parsed.hash ? '#<redacted>' : ''}`;
+    } catch {
+      const queryIndex = url.indexOf('?');
+      const hashIndex = url.indexOf('#');
+      const cutoffCandidates = [queryIndex, hashIndex].filter(
+        (index) => index >= 0
+      );
+      const cutoff =
+        cutoffCandidates.length > 0
+          ? Math.min(...cutoffCandidates)
+          : url.length;
+      return `${url.slice(0, cutoff)}${queryIndex >= 0 ? '?<redacted>' : ''}${
+        hashIndex >= 0 ? '#<redacted>' : ''
+      }`;
+    }
+  }
+
   private log_sensitive_data_usage(
     placeholders: Set<string>,
     currentUrl: string | null
@@ -604,8 +638,8 @@ export class Registry<Context = unknown> {
     if (!placeholders.size) {
       return;
     }
-    const urlInfo =
-      currentUrl && !is_new_tab_page(currentUrl) ? ` on ${currentUrl}` : '';
+    const redactedUrl = this.redactUrlForLog(currentUrl);
+    const urlInfo = redactedUrl ? ` on ${redactedUrl}` : '';
     logger.info(
       `🔒 Using sensitive data placeholders: ${Array.from(placeholders).sort().join(', ')}${urlInfo}`
     );

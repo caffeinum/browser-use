@@ -1144,6 +1144,19 @@ describe('Sensitive Data Handling', () => {
     expect(capturedParams.username).toBe('<secret>user</secret>');
     expect(capturedParams.password).toBe('<secret>pass</secret>');
   });
+
+  it('redacts query and hash when logging sensitive data usage URLs', () => {
+    const registry = new Registry();
+
+    expect(
+      (registry as any).redactUrlForLog(
+        'https://example.com/login?token=secret#fragment'
+      )
+    ).toBe('https://example.com/login?<redacted>#<redacted>');
+    expect((registry as any).redactUrlForLog('data:text/html,<secret>')).toBe(
+      'data:<redacted>'
+    );
+  });
 });
 
 describe('Regression Coverage', () => {
