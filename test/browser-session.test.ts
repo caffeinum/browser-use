@@ -207,6 +207,40 @@ describe('BrowserSession Basic Operations', () => {
     );
   });
 
+  it('creates temporary browser user data directories with private permissions', async () => {
+    const session = new BrowserSession();
+    const tempDir = await (session as any)._createTempUserDataDir();
+
+    try {
+      expect(path.basename(tempDir)).toMatch(/^browser-use-user-data-dir-/);
+      expect(fs.existsSync(tempDir)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(tempDir).mode & 0o777).toBe(0o700);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('creates configured browser user data directories with private permissions', async () => {
+    const tempRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-user-data-root-')
+    );
+    const userDataDir = path.join(tempRoot, 'profile');
+    const session = new BrowserSession();
+
+    try {
+      await session.prepareUserDataDir(userDataDir);
+
+      expect(fs.existsSync(userDataDir)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(userDataDir).mode & 0o777).toBe(0o700);
+      }
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('detects unstable Chrome commands on Linux', async () => {
     const tempDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-linux-chrome-')

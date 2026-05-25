@@ -7619,7 +7619,7 @@ export class BrowserSession {
 
     // Ensure directory exists
     if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
+      ensurePrivateDirectoryIfCreated(userDataDir);
       this.logger.debug(`Created user data directory: ${userDataDir}`);
     }
 
@@ -7691,12 +7691,12 @@ export class BrowserSession {
    * Create a temporary user data directory
    */
   private async _createTempUserDataDir(): Promise<string> {
-    const osTempDir = os.tmpdir();
-    const tempDir = path.join(
-      osTempDir,
-      `browser-use-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-user-data-dir-')
     );
-    fs.mkdirSync(tempDir, { recursive: true });
+    if (process.platform !== 'win32') {
+      fs.chmodSync(tempDir, 0o700);
+    }
     return tempDir;
   }
 
