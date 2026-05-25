@@ -1237,6 +1237,59 @@ esac
     expect(pageB.bringToFront).toHaveBeenCalledTimes(1);
   });
 
+  it('rolls back switching to an existing disallowed tab', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const pageA = {
+      bringToFront: vi.fn(async () => {}),
+      waitForLoadState: vi.fn(async () => {}),
+      url: vi.fn(() => 'https://example.com'),
+      title: vi.fn(async () => 'Allowed'),
+    } as any;
+    let pageBUrl = 'https://evil.test/preexisting?token=secret';
+    const pageB = {
+      bringToFront: vi.fn(async () => {}),
+      waitForLoadState: vi.fn(async () => {}),
+      url: vi.fn(() => pageBUrl),
+      title: vi.fn(async () => pageBUrl),
+      goto: vi.fn(async (url: string) => {
+        pageBUrl = url;
+      }),
+    } as any;
+
+    (session as any)._tabs = [
+      {
+        page_id: 0,
+        tab_id: 'tab-0',
+        url: 'https://example.com',
+        title: 'Allowed',
+      },
+      {
+        page_id: 1,
+        tab_id: 'tab-1',
+        url: 'https://evil.test/preexisting?token=secret',
+        title: 'Blocked',
+      },
+    ];
+    (session as any).tabPages.set(0, pageA);
+    (session as any).tabPages.set(1, pageB);
+    (session as any).currentTabIndex = 0;
+
+    await expect(session.switch_to_tab('tab-1')).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(pageB.bringToFront).toHaveBeenCalledTimes(1);
+    expect(pageB.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('surfaces externally opened tabs in state and allows switching to them', async () => {
     const minimalDom = new DOMState(
       new DOMElementNode(true, null, 'body', '/html/body', {}, []),

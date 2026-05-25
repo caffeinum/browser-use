@@ -3036,15 +3036,19 @@ export class BrowserSession {
       }
     }
     await this._waitForLoad(page, 5000, signal);
+    if (page) {
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
+    }
     this._recordRecentEvent('tab_switched', {
-      url: tab.url,
+      url: this.active_tab?.url ?? tab.url,
       page_id: tab.page_id,
       tab_id: tab.tab_id,
     });
     await this.event_bus.dispatch(
       new AgentFocusChangedEvent({
         target_id: tab.target_id ?? tab.tab_id,
-        url: tab.url,
+        url: this.active_tab?.url ?? tab.url,
       })
     );
     this.cachedBrowserState = null;
