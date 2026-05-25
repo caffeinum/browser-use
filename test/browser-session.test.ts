@@ -835,6 +835,47 @@ esac
     ).rejects.toThrow('element is not clickable');
   });
 
+  it('perform_click rolls back failed clicks that reached disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        downloads_path: null,
+      }),
+    });
+
+    let pageUrl = 'https://example.com/start';
+    const elementHandle = {
+      click: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-failed-perform-click?token=secret';
+        throw new Error('element is not clickable');
+      }),
+    };
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForEvent: vi.fn(() => new Promise(() => {})),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Start', 'https://example.com/start');
+
+    await expect(
+      session.perform_click({ xpath: '/html/body/button[1]' } as any)
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('perform_click treats only download timeouts as non-download clicks', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
