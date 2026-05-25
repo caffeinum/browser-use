@@ -29,13 +29,21 @@ export class Page {
   async get_url() {
     const page = await this._currentPage();
     await this.browser_session.validate_page_after_action(page);
-    return typeof page.url === 'function' ? page.url() : '';
+    try {
+      return typeof page.url === 'function' ? page.url() : '';
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async get_title() {
     const page = await this._currentPage();
     await this.browser_session.validate_page_after_action(page);
-    return typeof page.title === 'function' ? page.title() : '';
+    try {
+      return typeof page.title === 'function' ? page.title() : '';
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async goto(
@@ -72,6 +80,7 @@ export class Page {
     ...args: unknown[]
   ) {
     const page = await this._currentPage();
+    await this.browser_session.validate_page_after_action(page);
     try {
       if (typeof page_function === 'function') {
         return page.evaluate(page_function as any, ...args);
@@ -98,6 +107,7 @@ export class Page {
     if (!page.setViewportSize) {
       return;
     }
+    await this.browser_session.validate_page_after_action(page);
     try {
       await page.setViewportSize({ width, height });
     } finally {

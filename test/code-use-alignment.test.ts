@@ -106,6 +106,36 @@ describe('code-use alignment', () => {
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('blocks namespace evaluate on disallowed current pages before executing script', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/code-evaluate?token=secret';
+    const page = {
+      evaluate: vi.fn(async () => 'secret'),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page as any);
+
+    const namespace = create_namespace(session);
+
+    await expect(
+      (namespace.evaluate as any)('document.body.innerText')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(page.evaluate).not.toHaveBeenCalled();
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
   it('executes cells through CodeAgent and records history/state', async () => {
     const session = new BrowserSession();
     vi.spyOn(session, 'get_current_page').mockResolvedValue({

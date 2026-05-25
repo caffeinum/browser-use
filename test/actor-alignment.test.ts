@@ -55,6 +55,36 @@ describe('actor alignment', () => {
     );
   });
 
+  it('blocks Page.evaluate on disallowed current pages before executing script', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/page-evaluate?token=secret';
+    const rawPage = {
+      evaluate: vi.fn(async () => 'secret'),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+
+    const page = new Page(session);
+
+    await expect(
+      page.evaluate('document.body.innerText')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(rawPage.evaluate).not.toHaveBeenCalled();
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
   it('creates Element wrappers from index lookups and delegates click/fill', async () => {
     const session = new BrowserSession();
     const page = new Page(session);
@@ -92,6 +122,45 @@ describe('actor alignment', () => {
     await mouse.click(100, 200, { button: 'right' });
 
     expect(clickSpy).toHaveBeenCalledWith(100, 200, { button: 'right' });
+  });
+
+  it('blocks Element.hover on disallowed current pages before hovering', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/hover?token=secret';
+    const rawPage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    const locator = {
+      hover: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+
+    const node = new DOMElementNode(
+      true,
+      null,
+      'button',
+      '/html/body/button[1]',
+      {},
+      []
+    );
+    const element = new Element(session, node);
+
+    await expect(element.hover()).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(locator.hover).not.toHaveBeenCalled();
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
   });
 
   it('rolls back disallowed navigations from Element.hover', async () => {
@@ -134,6 +203,47 @@ describe('actor alignment', () => {
     );
     expect(session.active_tab?.url).toBe('about:blank');
   });
+
+  it.each([
+    ['move', async (mouse: Mouse) => mouse.move(100, 200), 'move'],
+    ['down', async (mouse: Mouse) => mouse.down({ button: 'left' }), 'down'],
+    ['up', async (mouse: Mouse) => mouse.up({ button: 'left' }), 'up'],
+  ])(
+    'blocks Mouse.%s on disallowed current pages before dispatch',
+    async (_name, run, method) => {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          allowed_domains: ['https://example.com'],
+        }),
+      });
+      let pageUrl = 'https://evil.test/mouse?token=secret';
+      const rawPage = {
+        goto: vi.fn(async (url: string) => {
+          pageUrl = url;
+        }),
+        mouse: {
+          down: vi.fn(async () => {}),
+          move: vi.fn(async () => {}),
+          up: vi.fn(async () => {}),
+        },
+        title: vi.fn(async () => pageUrl),
+        url: vi.fn(() => pageUrl),
+        waitForLoadState: vi.fn(async () => {}),
+      };
+      vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+
+      const mouse = new Mouse(session);
+
+      await expect(run(mouse)).rejects.toBeInstanceOf(URLNotAllowedError);
+      expect(
+        rawPage.mouse[method as 'move' | 'down' | 'up']
+      ).not.toHaveBeenCalled();
+      expect(rawPage.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+    }
+  );
 
   it.each([
     ['move', async (mouse: Mouse) => mouse.move(100, 200)],
@@ -285,6 +395,47 @@ describe('actor alignment', () => {
       expect.objectContaining({ waitUntil: 'load' })
     );
     expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('blocks Element.evaluate on disallowed current pages before executing script', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/element-evaluate?token=secret';
+    const rawPage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    const locator = {
+      evaluate: vi.fn(async () => 'secret'),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+
+    const node = new DOMElementNode(
+      true,
+      null,
+      'button',
+      '/html/body/button[1]',
+      {},
+      []
+    );
+    const element = new Element(session, node);
+
+    await expect(
+      element.evaluate('document.body.innerText')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(locator.evaluate).not.toHaveBeenCalled();
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
   });
 
   it('maps key metadata with python-aligned get_key_info helper', () => {

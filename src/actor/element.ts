@@ -23,6 +23,7 @@ export class Element {
       return;
     }
     const page = await this.browser_session.get_current_page();
+    await this.browser_session.validate_page_after_action(page);
     try {
       await locator.hover({ timeout: 5000 });
     } finally {
@@ -39,7 +40,13 @@ export class Element {
     if (!locator?.boundingBox) {
       return null;
     }
-    return locator.boundingBox();
+    const page = await this.browser_session.get_current_page();
+    await this.browser_session.validate_page_after_action(page);
+    try {
+      return await locator.boundingBox();
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async select_option(values: string | string[]) {
@@ -55,6 +62,7 @@ export class Element {
       throw new Error('Element evaluate is unavailable for this node');
     }
     const page = await this.browser_session.get_current_page();
+    await this.browser_session.validate_page_after_action(page);
     try {
       return await (locator as any).evaluate(page_function, ...args);
     } finally {

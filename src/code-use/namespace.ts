@@ -92,6 +92,7 @@ export const create_namespace = (
       throw new Error('No active page for evaluate');
     }
 
+    await browser_session.validate_page_after_action(page);
     try {
       if (typeof code === 'function') {
         return page.evaluate(code as any, ...args);

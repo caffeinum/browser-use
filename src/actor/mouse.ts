@@ -31,6 +31,7 @@ export class Mouse {
     if (!page?.mouse?.move) {
       return;
     }
+    await this.browser_session.validate_page_after_action(page);
     try {
       await page.mouse.move(x, y);
     } finally {
@@ -43,6 +44,7 @@ export class Mouse {
     if (!page?.mouse?.down) {
       return;
     }
+    await this.browser_session.validate_page_after_action(page);
     try {
       await page.mouse.down({ button: options.button ?? 'left' });
     } finally {
@@ -55,6 +57,7 @@ export class Mouse {
     if (!page?.mouse?.up) {
       return;
     }
+    await this.browser_session.validate_page_after_action(page);
     try {
       await page.mouse.up({ button: options.button ?? 'left' });
     } finally {
