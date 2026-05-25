@@ -56,6 +56,7 @@ import { zodSchemaToJsonSchema } from '../llm/schema.js';
 import { productTelemetry } from '../telemetry/service.js';
 import { MCPServerTelemetryEvent } from '../telemetry/views.js';
 import { get_browser_use_version } from '../utils.js';
+import { redactMcpLogMessage } from './redaction.js';
 
 const logger = createLogger('browser_use.mcp.server');
 
@@ -317,9 +318,7 @@ export class MCPServer {
       this.llm = this.createLlmFromModelName(model, llmConfig);
     } catch (error) {
       logger.debug(
-        `Skipping MCP direct-tools LLM initialization for model "${model}": ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Skipping MCP direct-tools LLM initialization for model "${model}": ${redactMcpLogMessage(error)}`
       );
     }
   }
@@ -451,9 +450,7 @@ export class MCPServer {
       return {
         session_id: sessionId,
         closed: false,
-        message: `Failed to close session ${sessionId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `Failed to close session ${sessionId}: ${redactMcpLogMessage(error)}`,
       };
     }
   }
@@ -502,9 +499,7 @@ export class MCPServer {
     this.sessionCleanupInterval = setInterval(() => {
       this.cleanupExpiredSessions().catch((error) => {
         logger.warning(
-          `MCP session cleanup failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`
+          `MCP session cleanup failed: ${redactMcpLogMessage(error)}`
         );
       });
     }, 120_000);
@@ -625,7 +620,7 @@ export class MCPServer {
         return this.formatToolResult(request.params.name, result);
       } catch (error) {
         this.errorCount++;
-        errorMsg = error instanceof Error ? error.message : String(error);
+        errorMsg = redactMcpLogMessage(error);
         logger.error(`Tool execution failed: ${errorMsg}`);
         return {
           content: [
@@ -1074,9 +1069,7 @@ export class MCPServer {
         try {
           llm = this.createLlmFromModelName(llmModel, llmConfig);
         } catch (error) {
-          return `Error: Failed to initialize LLM "${llmModel}": ${
-            error instanceof Error ? error.message : String(error)
-          }`;
+          return `Error: Failed to initialize LLM "${llmModel}": ${redactMcpLogMessage(error)}`;
         }
 
         const profileConfig = this.getDefaultProfileConfig();
@@ -1095,9 +1088,7 @@ export class MCPServer {
           const history = await agent.run(maxSteps);
           return this.formatRetryResult(history);
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          return `Agent task failed: ${message}`;
+          return `Agent task failed: ${redactMcpLogMessage(error)}`;
         } finally {
           await agent.close();
         }
@@ -1273,7 +1264,7 @@ export class MCPServer {
       this.isRunning = false;
       this.restoreConsoleRedirect?.();
       this.restoreConsoleRedirect = null;
-      logger.error(`Failed to start MCP server: ${error}`);
+      logger.error(`Failed to start MCP server: ${redactMcpLogMessage(error)}`);
       throw error;
     }
   }
@@ -1322,7 +1313,7 @@ export class MCPServer {
         `🔌 MCP Server stopped (uptime: ${Math.floor(stats.uptime)}s, executions: ${stats.executionCount}, success rate: ${(stats.successRate * 100).toFixed(1)}%)`
       );
     } catch (error) {
-      logger.error(`Error stopping MCP server: ${error}`);
+      logger.error(`Error stopping MCP server: ${redactMcpLogMessage(error)}`);
     } finally {
       this.restoreConsoleRedirect?.();
       this.restoreConsoleRedirect = null;

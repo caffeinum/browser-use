@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const mockAgentInstances: any[] = [];
 const originalConsoleLog = console.log;
@@ -609,6 +610,35 @@ describe('MCPServer retry_with_browser_use_agent', () => {
         process.env.OPENAI_API_KEY = previousOpenAiApiKey;
       }
     }
+  });
+
+  it('redacts sensitive tool errors returned by the MCP call handler', async () => {
+    const server = new MCPServer('test-mcp', '1.0.0');
+    server.registerTool(
+      'leaky_tool',
+      'Throws a sensitive error',
+      z.object({}).strict(),
+      async () => {
+        throw new Error(
+          'failed api_key=sk-test Authorization: Bearer bearer-secret https://example.com/cb?token=query-secret#frag'
+        );
+      }
+    );
+
+    const handler = (server as any).server._requestHandlers.get('tools/call');
+    const result = await handler({
+      method: 'tools/call',
+      params: { name: 'leaky_tool', arguments: {} },
+    });
+    const text = result.content[0].text;
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('api_key=<redacted>');
+    expect(text).toContain('Authorization:<redacted>');
+    expect(text).toContain('https://example.com/cb?<redacted>#<redacted>');
+    expect(text).not.toContain('sk-test');
+    expect(text).not.toContain('bearer-secret');
+    expect(text).not.toContain('query-secret');
   });
 
   it('returns explicit error when configured model credentials are missing', async () => {
