@@ -1392,6 +1392,41 @@ esac
     expect(pageUrl).toBe('about:blank');
   });
 
+  it('rolls back same-tab navigation errors that already reached disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'about:blank';
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        if (url === 'about:blank') {
+          pageUrl = 'about:blank';
+          return;
+        }
+        pageUrl = 'https://evil.test/after-timeout';
+        throw new Error('Navigation timeout');
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Blocked Page'),
+    } as any;
+
+    session.update_current_page(fakePage, 'about:blank', 'about:blank');
+    (session as any).initialized = true;
+
+    await expect(
+      session.navigate_to('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+    expect(pageUrl).toBe('about:blank');
+  });
+
   it('redacts blocked URL query and hash in URLNotAllowedError and recent events', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
@@ -2617,6 +2652,60 @@ esac
       session.create_new_tab('https://example.com/start')
     ).rejects.toBeInstanceOf(URLNotAllowedError);
 
+    expect(newPage.close).toHaveBeenCalledTimes(1);
+    expect(session.tabs).toHaveLength(1);
+    expect(session.active_tab?.url).toBe('https://example.com/current');
+  });
+
+  it('closes new tabs whose failed navigation already reached disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let newPageUrl = 'about:blank';
+    const existingPage = {
+      url: vi.fn(() => 'https://example.com/current'),
+      title: vi.fn(async () => 'Current'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const newPage = {
+      goto: vi.fn(async (url: string) => {
+        if (url === 'about:blank') {
+          newPageUrl = 'about:blank';
+          return;
+        }
+        newPageUrl = 'https://evil.test/after-timeout';
+        throw new Error('Navigation timeout');
+      }),
+      url: vi.fn(() => newPageUrl),
+      title: vi.fn(async () => 'Redirected'),
+      close: vi.fn(async () => {}),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+
+    session.update_current_page(
+      existingPage,
+      'Current',
+      'https://example.com/current'
+    );
+    (session as any).browser_context = {
+      newPage: vi.fn(async () => newPage),
+      pages: vi.fn(() => [existingPage, newPage]),
+    } as any;
+    (session as any).initialized = true;
+
+    await expect(
+      session.create_new_tab('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(newPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
     expect(newPage.close).toHaveBeenCalledTimes(1);
     expect(session.tabs).toHaveLength(1);
     expect(session.active_tab?.url).toBe('https://example.com/current');

@@ -2966,6 +2966,11 @@ export class BrowserSession {
         if (error instanceof URLNotAllowedError) {
           throw error;
         }
+        const disallowedPageError =
+          await this._get_disallowed_page_error_after_navigation_error(page);
+        if (disallowedPageError) {
+          throw disallowedPageError;
+        }
         const message = (error as Error).message ?? 'Navigation failed';
         this._recordRecentEvent('navigation_failed', {
           url: normalized,
@@ -3052,8 +3057,15 @@ export class BrowserSession {
       if (this._isAbortError(error)) {
         throw error;
       }
-      const isUrlNotAllowed = error instanceof URLNotAllowedError;
-      const message = (error as Error).message ?? 'Failed to open new tab';
+      let finalError: unknown = error;
+      if (!(finalError instanceof URLNotAllowedError)) {
+        finalError =
+          (await this._get_disallowed_page_error_after_navigation_error(
+            page
+          )) ?? finalError;
+      }
+      const isUrlNotAllowed = finalError instanceof URLNotAllowedError;
+      const message = (finalError as Error).message ?? 'Failed to open new tab';
       this._recordRecentEvent('tab_navigation_failed', {
         url: normalized,
         page_id: newTab.page_id,
@@ -3098,7 +3110,7 @@ export class BrowserSession {
       this._syncSessionManagerFromTabs();
       this.cachedBrowserState = null;
       if (isUrlNotAllowed) {
-        throw error;
+        throw finalError;
       }
       throw new BrowserError(message);
     }
@@ -6465,6 +6477,26 @@ export class BrowserSession {
         await this._rollback_disallowed_navigation(page, currentUrl);
       }
       throw error;
+    }
+  }
+
+  private async _get_disallowed_page_error_after_navigation_error(
+    page: Page | null
+  ) {
+    if (!page) {
+      return null;
+    }
+    try {
+      await this._assert_page_url_allowed_or_rollback(page);
+      return null;
+    } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        return error;
+      }
+      this.logger.debug(
+        `Failed to inspect page URL after navigation error: ${(error as Error).message}`
+      );
+      return null;
     }
   }
 
