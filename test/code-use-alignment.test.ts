@@ -73,6 +73,38 @@ describe('code-use alignment', () => {
     expect(namespace._task_result).toContain('"done":true');
   });
 
+  it('keeps raw browser session in unrestricted code-use namespaces', () => {
+    const session = new BrowserSession();
+    const namespace = create_namespace(session);
+
+    expect(namespace.browser).toBe(session);
+  });
+
+  it('exposes only a safe browser facade when domain policy is active', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    session.browser_context = {
+      cookies: vi.fn(async () => [
+        { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+        { name: 'blocked', value: '1', domain: 'evil.test', path: '/' },
+      ]),
+    } as any;
+
+    const namespace = create_namespace(session);
+    const browser = namespace.browser as any;
+
+    expect(browser).not.toBe(session);
+    expect(browser.browser_context).toBeUndefined();
+    await expect(
+      browser.get_cookies({ include_blocked: true })
+    ).resolves.toEqual([
+      { name: 'sid', value: '123', domain: 'example.com', path: '/' },
+    ]);
+  });
+
   it('rolls back disallowed navigations from namespace evaluate', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

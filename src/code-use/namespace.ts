@@ -7,13 +7,60 @@ export interface CreateNamespaceOptions {
 const buildExpression = (source: string, args: unknown[]) =>
   `(${source})(${args.map((arg) => JSON.stringify(arg)).join(',')})`;
 
+const hasDomainRestrictions = (browser_session: BrowserSession) => {
+  const checker = (browser_session as any)._has_url_access_restrictions;
+  if (typeof checker === 'function') {
+    try {
+      return Boolean(checker.call(browser_session));
+    } catch {
+      return true;
+    }
+  }
+
+  const profile = browser_session.browser_profile;
+  const hasEntries = (value: unknown) =>
+    Array.isArray(value)
+      ? value.length > 0
+      : value instanceof Set && value.size > 0;
+  return (
+    hasEntries(profile?.allowed_domains) ||
+    hasEntries(profile?.prohibited_domains) ||
+    Boolean(profile?.block_ip_addresses)
+  );
+};
+
+const createSafeBrowserFacade = (browser_session: BrowserSession) =>
+  Object.freeze({
+    navigate_to: browser_session.navigate_to.bind(browser_session),
+    navigate: browser_session.navigate.bind(browser_session),
+    create_new_tab: browser_session.create_new_tab.bind(browser_session),
+    go_back: browser_session.go_back.bind(browser_session),
+    go_forward: browser_session.go_forward.bind(browser_session),
+    refresh: browser_session.refresh.bind(browser_session),
+    wait: browser_session.wait.bind(browser_session),
+    send_keys: browser_session.send_keys.bind(browser_session),
+    click_coordinates: browser_session.click_coordinates.bind(browser_session),
+    scroll: browser_session.scroll.bind(browser_session),
+    scroll_to_text: browser_session.scroll_to_text.bind(browser_session),
+    get_browser_state_with_recovery:
+      browser_session.get_browser_state_with_recovery.bind(browser_session),
+    get_page_info: browser_session.get_page_info.bind(browser_session),
+    get_page_html: browser_session.get_page_html.bind(browser_session),
+    execute_javascript:
+      browser_session.execute_javascript.bind(browser_session),
+    take_screenshot: browser_session.take_screenshot.bind(browser_session),
+    get_cookies: () => browser_session.get_cookies(),
+  });
+
 export const create_namespace = (
   browser_session: BrowserSession,
   options: CreateNamespaceOptions = {}
 ) => {
   const namespace = options.namespace ?? {};
 
-  namespace.browser = browser_session;
+  namespace.browser = hasDomainRestrictions(browser_session)
+    ? createSafeBrowserFacade(browser_session)
+    : browser_session;
 
   namespace.navigate = async (
     url: string,
