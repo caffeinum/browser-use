@@ -426,11 +426,34 @@ describe('MCPServer retry_with_browser_use_agent', () => {
     expect(instance.params.use_vision).toBe(false);
     expect(
       instance.params.browser_session.browser_profile.config.allowed_domains
-    ).toEqual(['retry.example']);
+    ).toEqual(['config.example']);
     expect(
       instance.params.browser_session.browser_profile.config.keep_alive
     ).toBe(false);
     expect(instance.runMaxSteps).toBe(7);
+  });
+
+  it('uses retry allowed_domains when no defaults are configured', async () => {
+    mockAgentInstances.length = 0;
+    const server = new MCPServer('test-mcp', '1.0.0');
+    (server as any).config = {
+      browser_profile: {},
+      llm: {
+        api_key: 'test-openai-key',
+        model: 'gpt-4o-mini',
+      },
+    };
+
+    await (server as any).tools.retry_with_browser_use_agent.handler({
+      task: 'Retry with domain input',
+      allowed_domains: ['retry.example'],
+    });
+
+    expect(mockAgentInstances.length).toBe(1);
+    const instance = mockAgentInstances[0];
+    expect(
+      instance.params.browser_session.browser_profile.config.allowed_domains
+    ).toEqual(['retry.example']);
   });
 
   it('preserves configured allowed_domains when retry argument is omitted', async () => {
@@ -468,6 +491,28 @@ describe('MCPServer retry_with_browser_use_agent', () => {
     await (server as any).tools.retry_with_browser_use_agent.handler({
       task: 'Retry without domain override input',
       allowed_domains: [],
+    });
+
+    expect(mockAgentInstances.length).toBe(1);
+    const instance = mockAgentInstances[0];
+    expect(
+      instance.params.browser_session.browser_profile.config.allowed_domains
+    ).toEqual(['admin.example']);
+  });
+
+  it('does not let retry allowed_domains broaden configured defaults', async () => {
+    mockAgentInstances.length = 0;
+    const server = new MCPServer('test-mcp', '1.0.0');
+    (server as any).config = {
+      browser_profile: {
+        allowed_domains: ['admin.example'],
+      },
+      llm: {},
+    };
+
+    await (server as any).tools.retry_with_browser_use_agent.handler({
+      task: 'Retry with attempted domain override',
+      allowed_domains: ['evil.example'],
     });
 
     expect(mockAgentInstances.length).toBe(1);

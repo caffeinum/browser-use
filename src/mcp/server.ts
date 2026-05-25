@@ -211,6 +211,22 @@ export class MCPServer {
     return sanitized;
   }
 
+  private normalizeDomainList(value: unknown): string[] | null {
+    const entries =
+      value instanceof Set
+        ? Array.from(value)
+        : Array.isArray(value)
+          ? value
+          : null;
+    if (!entries) {
+      return null;
+    }
+    const normalized = entries
+      .map((entry) => String(entry).trim())
+      .filter(Boolean);
+    return normalized.length > 0 ? normalized : null;
+  }
+
   private buildDirectSessionProfile(
     profileConfig: Record<string, unknown>
   ): BrowserProfile {
@@ -254,7 +270,12 @@ export class MCPServer {
       ...this.sanitizeProfileConfig(profileConfig),
     } as Record<string, unknown>;
 
-    if (allowedDomains !== undefined) {
+    const configuredAllowedDomains = this.normalizeDomainList(
+      merged.allowed_domains
+    );
+    if (configuredAllowedDomains) {
+      merged.allowed_domains = configuredAllowedDomains;
+    } else if (allowedDomains !== undefined) {
       merged.allowed_domains = allowedDomains;
     }
 
