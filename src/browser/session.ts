@@ -5054,6 +5054,10 @@ export class BrowserSession {
   ): Promise<BrowserStateSummary> {
     try {
       const page = await this.get_current_page();
+      if (page) {
+        await this._assert_page_url_allowed_or_rollback(page);
+        await this._syncCurrentTabFromPage(page);
+      }
       const url = page ? page.url() : 'unknown';
 
       // Try to get title safely

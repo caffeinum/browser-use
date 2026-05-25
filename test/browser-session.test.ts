@@ -1846,6 +1846,34 @@ esac
     ]);
   });
 
+  it('rolls back disallowed current pages before building minimal state', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/minimal?token=secret';
+    const fakePage = {
+      url: () => pageUrl,
+      title: vi.fn(async () => pageUrl),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    session.update_current_page(fakePage, 'Blocked', pageUrl);
+    (session as any).initialized = true;
+
+    await expect(session.get_minimal_state_summary()).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('includes recent events, pending requests, and pagination buttons in browser state', async () => {
     const paginationNode = new DOMElementNode(
       true,
