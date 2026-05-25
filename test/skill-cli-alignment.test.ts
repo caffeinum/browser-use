@@ -316,6 +316,7 @@ describe('skill-cli alignment', () => {
         { name: 'blocked', value: '1', domain: '.evil.test', path: '/' },
       ])
     );
+    const exportPath = path.join(tempDir, 'exported-cookies.json');
 
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
@@ -325,8 +326,13 @@ describe('skill-cli alignment', () => {
     vi.spyOn(session, 'get_current_page').mockResolvedValue({
       url: () => 'https://example.com',
     } as any);
+    vi.spyOn(session, 'get_cookies').mockResolvedValue([
+      { name: 'sid', value: '123', domain: '.example.com', path: '/' } as any,
+      { name: 'blocked', value: '1', domain: '.evil.test', path: '/' } as any,
+    ]);
     (session as any).browser_context = {
       addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
     };
     const registry = new SessionRegistry({
       session_factory: () => session,
@@ -354,16 +360,68 @@ describe('skill-cli alignment', () => {
           params: { file: cookiesPath },
         })
       );
+      const cookiesGet = await server.handle_request(
+        new Request({
+          id: 'r-cookie-get-filtered',
+          action: 'cookies_get',
+          session: 'default',
+        })
+      );
+      const blockedGet = await server.handle_request(
+        new Request({
+          id: 'r-cookie-get-blocked-url',
+          action: 'cookies_get',
+          session: 'default',
+          params: { url: 'https://evil.test' },
+        })
+      );
+      const cookiesExport = await server.handle_request(
+        new Request({
+          id: 'r-cookie-export-filtered',
+          action: 'cookies_export',
+          session: 'default',
+          params: { file: exportPath },
+        })
+      );
+      const cookiesClear = await server.handle_request(
+        new Request({
+          id: 'r-cookie-clear-filtered',
+          action: 'cookies_clear',
+          session: 'default',
+        })
+      );
 
       expect(blockedSet.success).toBe(false);
       expect(String(blockedSet.error)).toContain('Cookie target blocked');
       expect(imported.success).toBe(true);
       expect((imported.data as any).imported).toBe(1);
-      expect((session as any).browser_context.addCookies).toHaveBeenCalledTimes(
-        1
-      );
-      expect((session as any).browser_context.addCookies).toHaveBeenCalledWith([
+      expect(cookiesGet.success).toBe(true);
+      expect((cookiesGet.data as any).count).toBe(1);
+      expect((cookiesGet.data as any).cookies).toEqual([
         { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
+      expect(blockedGet.success).toBe(false);
+      expect(String(blockedGet.error)).toContain('Cookie URL blocked');
+      expect(cookiesExport.success).toBe(true);
+      expect((cookiesExport.data as any).count).toBe(1);
+      expect(JSON.parse(fs.readFileSync(exportPath, 'utf8'))).toEqual([
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
+      expect(cookiesClear.success).toBe(true);
+      expect((cookiesClear.data as any).count).toBe(1);
+      expect((session as any).browser_context.clearCookies).toHaveBeenCalled();
+      expect((session as any).browser_context.addCookies).toHaveBeenCalledTimes(
+        2
+      );
+      expect(
+        (session as any).browser_context.addCookies
+      ).toHaveBeenNthCalledWith(1, [
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
+      expect(
+        (session as any).browser_context.addCookies
+      ).toHaveBeenNthCalledWith(2, [
+        { name: 'blocked', value: '1', domain: '.evil.test', path: '/' },
       ]);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });

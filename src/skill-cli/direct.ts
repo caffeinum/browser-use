@@ -240,6 +240,32 @@ const filterDirectAllowedCookies = (
   cookies: any[]
 ) => cookies.filter((cookie) => !getDirectCookieDenialReason(session, cookie));
 
+const partitionDirectAllowedCookies = (
+  session: DirectSessionLike,
+  cookies: any[]
+) => {
+  const allowedCookies: any[] = [];
+  const blockedCookies: any[] = [];
+  for (const cookie of cookies) {
+    if (getDirectCookieDenialReason(session, cookie)) {
+      blockedCookies.push(cookie);
+    } else {
+      allowedCookies.push(cookie);
+    }
+  }
+  return { allowedCookies, blockedCookies };
+};
+
+const assertDirectCookieUrlAllowed = (
+  session: DirectSessionLike,
+  url: string
+) => {
+  const denialReason = getDirectCookieDenialReason(session, { url });
+  if (denialReason) {
+    throw new Error(`Cookie URL blocked by domain policy: ${denialReason}`);
+  }
+};
+
 export interface DirectCliEnvironment {
   state_file?: string;
   stdout?: StreamLike;
@@ -1094,10 +1120,14 @@ export const run_direct_command = async (
       if (cookieCommand === 'get') {
         const parsed = parseDirectCookieOptions(args.slice(2));
         const url = parsed.url ?? parsed.positional[0] ?? null;
+        if (url) {
+          assertDirectCookieUrlAllowed(session, url);
+        }
         const allCookies = (await session.get_cookies?.()) ?? [];
+        const allowedCookies = filterDirectAllowedCookies(session, allCookies);
         const cookies = url
-          ? allCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
-          : allCookies;
+          ? allowedCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
+          : allowedCookies;
         writeLine(
           environment.stdout,
           JSON.stringify({ cookies, count: cookies.length }, null, 2)
@@ -1150,17 +1180,48 @@ export const run_direct_command = async (
         const parsed = parseDirectCookieOptions(args.slice(2));
         const url = parsed.url ?? parsed.positional[0] ?? null;
         if (!url) {
-          await session.browser_context.clearCookies();
-          writeLine(environment.stdout, 'Cleared cookies');
+          if (typeof session.get_cookies !== 'function') {
+            await session.browser_context.clearCookies();
+            writeLine(environment.stdout, 'Cleared cookies');
+          } else {
+            const allCookies = (await session.get_cookies?.()) ?? [];
+            const { allowedCookies, blockedCookies } =
+              partitionDirectAllowedCookies(session, allCookies);
+            if (allowedCookies.length === 0 && blockedCookies.length > 0) {
+              writeLine(environment.stdout, 'Cleared 0 cookies');
+            } else {
+              const addCookies = session.browser_context.addCookies;
+              if (blockedCookies.length > 0 && !addCookies) {
+                throw new Error(
+                  'Browser context does not support preserving blocked cookies'
+                );
+              }
+              await session.browser_context.clearCookies();
+              if (blockedCookies.length > 0) {
+                await addCookies!(blockedCookies);
+              }
+              writeLine(
+                environment.stdout,
+                `Cleared ${allowedCookies.length} cookies`
+              );
+            }
+          }
         } else {
+          assertDirectCookieUrlAllowed(session, url);
           const allCookies = (await session.get_cookies?.()) ?? [];
           const remaining = allCookies.filter(
             (cookie) => !cookieMatchesUrl(cookie, url)
           );
           const removedCount = allCookies.length - remaining.length;
+          const addCookies = session.browser_context.addCookies;
+          if (remaining.length > 0 && !addCookies) {
+            throw new Error(
+              'Browser context does not support preserving non-matching cookies'
+            );
+          }
           await session.browser_context.clearCookies();
-          if (remaining.length > 0 && session.browser_context.addCookies) {
-            await session.browser_context.addCookies(remaining);
+          if (remaining.length > 0) {
+            await addCookies!(remaining);
           }
           writeLine(
             environment.stdout,
@@ -1174,10 +1235,14 @@ export const run_direct_command = async (
         }
         const parsed = parseDirectCookieOptions(args.slice(3));
         const url = parsed.url ?? parsed.positional[0] ?? null;
+        if (url) {
+          assertDirectCookieUrlAllowed(session, url);
+        }
         const allCookies = (await session.get_cookies?.()) ?? [];
+        const allowedCookies = filterDirectAllowedCookies(session, allCookies);
         const cookies = url
-          ? allCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
-          : allCookies;
+          ? allowedCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
+          : allowedCookies;
         const outputPath = path.resolve(file);
         writePrivateFile(outputPath, JSON.stringify(cookies, null, 2));
         writeLine(

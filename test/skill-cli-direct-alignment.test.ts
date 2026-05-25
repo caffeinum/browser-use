@@ -984,14 +984,20 @@ describe('skill-cli direct alignment', () => {
     );
     const stateFile = path.join(tempDir, 'state.json');
     const cookieFile = path.join(tempDir, 'cookies.json');
+    const exportFile = path.join(tempDir, 'exported-cookies.json');
     const browserContext = {
       addCookies: vi.fn(async () => {}),
+      clearCookies: vi.fn(async () => {}),
     };
     const session = {
       start: vi.fn(async () => {}),
       tabs: [{ target_id: 'target-1', url: 'https://example.com' }],
       switch_to_tab: vi.fn(async () => {}),
       browser_context: browserContext,
+      get_cookies: vi.fn(async () => [
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        { name: 'blocked', value: '1', domain: '.evil.test', path: '/' },
+      ]),
       get_current_page: vi.fn(async () => ({
         url: () => 'https://example.com',
       })),
@@ -1042,15 +1048,76 @@ describe('skill-cli direct alignment', () => {
           session_factory: () => session as any,
         }
       );
+      const getStdout = createWritable();
+      const getStderr = createWritable();
+      const getExitCode = await run_direct_command(['cookies', 'get'], {
+        state_file: stateFile,
+        stdout: getStdout.stream,
+        stderr: getStderr.stream,
+        session_factory: () => session as any,
+      });
+      const blockedGetStdout = createWritable();
+      const blockedGetStderr = createWritable();
+      const blockedGetExitCode = await run_direct_command(
+        ['cookies', 'get', '--url', 'https://evil.test'],
+        {
+          state_file: stateFile,
+          stdout: blockedGetStdout.stream,
+          stderr: blockedGetStderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+      const exportStdout = createWritable();
+      const exportStderr = createWritable();
+      const exportExitCode = await run_direct_command(
+        ['cookies', 'export', exportFile],
+        {
+          state_file: stateFile,
+          stdout: exportStdout.stream,
+          stderr: exportStderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+      const clearStdout = createWritable();
+      const clearStderr = createWritable();
+      const clearExitCode = await run_direct_command(['cookies', 'clear'], {
+        state_file: stateFile,
+        stdout: clearStdout.stream,
+        stderr: clearStderr.stream,
+        session_factory: () => session as any,
+      });
 
       expect(blockedSetExitCode).toBe(1);
       expect(blockedStderr.read()).toContain('Cookie target blocked');
       expect(importExitCode).toBe(0);
       expect(importStdout.read()).toContain(`Imported 1 cookies`);
       expect(importStderr.read()).toBe('');
-      expect(browserContext.addCookies).toHaveBeenCalledTimes(1);
-      expect(browserContext.addCookies).toHaveBeenCalledWith([
+      expect(getExitCode).toBe(0);
+      expect(getStderr.read()).toBe('');
+      expect(JSON.parse(getStdout.read())).toEqual({
+        cookies: [
+          { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+        ],
+        count: 1,
+      });
+      expect(blockedGetExitCode).toBe(1);
+      expect(blockedGetStderr.read()).toContain('Cookie URL blocked');
+      expect(exportExitCode).toBe(0);
+      expect(exportStderr.read()).toBe('');
+      expect(exportStdout.read()).toContain('Exported 1 cookies');
+      expect(JSON.parse(fs.readFileSync(exportFile, 'utf8'))).toEqual([
         { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
+      expect(clearExitCode).toBe(0);
+      expect(clearStderr.read()).toBe('');
+      expect(clearStdout.read()).toContain('Cleared 1 cookies');
+      expect(browserContext.clearCookies).toHaveBeenCalled();
+      expect(browserContext.addCookies).toHaveBeenCalledTimes(2);
+      expect(browserContext.addCookies).toHaveBeenNthCalledWith(1, [
+        { name: 'sid', value: '123', domain: '.example.com', path: '/' },
+      ]);
+      expect(browserContext.addCookies).toHaveBeenNthCalledWith(2, [
+        { name: 'blocked', value: '1', domain: '.evil.test', path: '/' },
       ]);
     } finally {
       clear_direct_state(stateFile);

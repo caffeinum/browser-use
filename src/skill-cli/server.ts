@@ -153,6 +153,29 @@ const getCookieDenialReason = (session: any, cookie: unknown) => {
 const filterAllowedCookies = (session: any, cookies: BrowserCookieInit[]) =>
   cookies.filter((cookie) => !getCookieDenialReason(session, cookie));
 
+const partitionAllowedCookies = (
+  session: any,
+  cookies: BrowserCookieInit[]
+) => {
+  const allowedCookies: BrowserCookieInit[] = [];
+  const blockedCookies: BrowserCookieInit[] = [];
+  for (const cookie of cookies) {
+    if (getCookieDenialReason(session, cookie)) {
+      blockedCookies.push(cookie);
+    } else {
+      allowedCookies.push(cookie);
+    }
+  }
+  return { allowedCookies, blockedCookies };
+};
+
+const assertCookieUrlAllowed = (session: any, url: string) => {
+  const denialReason = getCookieDenialReason(session, { url });
+  if (denialReason) {
+    throw new Error(`Cookie URL blocked by domain policy: ${denialReason}`);
+  }
+};
+
 export class SkillCliServer {
   readonly registry: SessionRegistry;
 
@@ -578,13 +601,17 @@ export class SkillCliServer {
 
     if (action === 'cookies_get') {
       const url = typeof params.url === 'string' ? params.url.trim() : '';
+      if (url) {
+        assertCookieUrlAllowed(browser_session, url);
+      }
       const allCookies =
         (await browser_session.get_cookies()) as BrowserCookieInit[];
+      const allowedCookies = filterAllowedCookies(browser_session, allCookies);
       const cookies = url
-        ? allCookies.filter((cookie: BrowserCookieInit) =>
+        ? allowedCookies.filter((cookie: BrowserCookieInit) =>
             cookieMatchesUrl(cookie, url)
           )
-        : allCookies;
+        : allowedCookies;
       return { cookies, count: cookies.length };
     }
 
@@ -640,21 +667,51 @@ export class SkillCliServer {
       }
       const url = typeof params.url === 'string' ? params.url.trim() : '';
       if (!url) {
+        if (typeof browser_session.get_cookies !== 'function') {
+          await browser_session.browser_context.clearCookies();
+          return { cleared: true };
+        }
+        const allCookies =
+          (await browser_session.get_cookies()) as BrowserCookieInit[];
+        const { allowedCookies, blockedCookies } = partitionAllowedCookies(
+          browser_session,
+          allCookies
+        );
+        if (allowedCookies.length === 0 && blockedCookies.length > 0) {
+          return { cleared: true, count: 0 };
+        }
+        if (
+          blockedCookies.length > 0 &&
+          !browser_session.browser_context.addCookies
+        ) {
+          throw new Error(
+            'Browser context does not support preserving blocked cookies'
+          );
+        }
         await browser_session.browser_context.clearCookies();
-        return { cleared: true };
+        if (blockedCookies.length > 0) {
+          await browser_session.browser_context.addCookies(blockedCookies);
+        }
+        return { cleared: true, count: allowedCookies.length };
       }
 
+      assertCookieUrlAllowed(browser_session, url);
       const allCookies =
         (await browser_session.get_cookies()) as BrowserCookieInit[];
       const remainingCookies = allCookies.filter(
         (cookie: BrowserCookieInit) => !cookieMatchesUrl(cookie, url)
       );
       const removedCount = allCookies.length - remainingCookies.length;
-      await browser_session.browser_context.clearCookies();
       if (
         remainingCookies.length > 0 &&
-        browser_session.browser_context.addCookies
+        !browser_session.browser_context.addCookies
       ) {
+        throw new Error(
+          'Browser context does not support preserving non-matching cookies'
+        );
+      }
+      await browser_session.browser_context.clearCookies();
+      if (remainingCookies.length > 0) {
         await browser_session.browser_context.addCookies(remainingCookies);
       }
       return { cleared: true, url, count: removedCount };
@@ -666,13 +723,17 @@ export class SkillCliServer {
         throw new Error('Missing file');
       }
       const url = typeof params.url === 'string' ? params.url.trim() : '';
+      if (url) {
+        assertCookieUrlAllowed(browser_session, url);
+      }
       const allCookies =
         (await browser_session.get_cookies()) as BrowserCookieInit[];
+      const allowedCookies = filterAllowedCookies(browser_session, allCookies);
       const cookies = url
-        ? allCookies.filter((cookie: BrowserCookieInit) =>
+        ? allowedCookies.filter((cookie: BrowserCookieInit) =>
             cookieMatchesUrl(cookie, url)
           )
-        : allCookies;
+        : allowedCookies;
       const filePath = path.resolve(file);
       await writePrivateJsonFile(filePath, cookies);
       return { file: filePath, count: cookies.length };
