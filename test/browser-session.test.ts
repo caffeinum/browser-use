@@ -660,6 +660,50 @@ esac
     expect(fakePage.waitForLoadState).toHaveBeenCalledTimes(1);
   });
 
+  it('rolls back perform_click navigations to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        downloads_path: null,
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const elementHandle = {
+      click: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-click';
+      }),
+    };
+    const fakePage = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Current'),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      waitForEvent: vi.fn(async () => {
+        const error = new Error('Timeout 5000ms exceeded');
+        error.name = 'TimeoutError';
+        throw error;
+      }),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+
+    await expect(
+      session.perform_click({ xpath: '/html/body/a[1]' } as any)
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('perform_click creates download directory before saving files', async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'perform-click-'));
     const downloadsPath = path.join(tempRoot, 'downloads');
@@ -937,6 +981,45 @@ esac
     expect((session as any).historyStack.at(-1)).toBe(
       'https://example.com/after-click'
     );
+  });
+
+  it('rolls back click-triggered navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/start';
+    const fakePage = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const locator = {
+      click: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-click';
+      }),
+    };
+
+    session.update_current_page(fakePage, 'Start', 'https://example.com/start');
+    (session as any).initialized = true;
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+
+    await expect(
+      session._click_element_node({ xpath: '/html/body/a[1]' } as any)
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
   });
 
   it('switches tabs by 4-char tab_id aliases', async () => {

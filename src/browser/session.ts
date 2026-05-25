@@ -4037,6 +4037,7 @@ export class BrowserSession {
 
     await this._waitForLoad(page, 5000, signal);
     if (page) {
+      await this._assert_page_url_allowed_or_rollback(page);
       await this._syncCurrentTabFromPage(page);
       if (this.historyStack[this.historyStack.length - 1] !== this.currentUrl) {
         this.historyStack.push(this.currentUrl);
@@ -5943,6 +5944,16 @@ export class BrowserSession {
       throw new Error(`Element not found: ${JSON.stringify(element_node)}`);
     }
 
+    const validateClickNavigation = async () => {
+      await this._waitForLoad(page, 5000);
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
+      if (this.historyStack[this.historyStack.length - 1] !== this.currentUrl) {
+        this.historyStack.push(this.currentUrl);
+      }
+      this.cachedBrowserState = null;
+    };
+
     // Check if downloads are enabled
     const downloads_path = this.browser_profile.downloads_path;
     if (downloads_path) {
@@ -5976,13 +5987,7 @@ export class BrowserSession {
         this.logger.debug(
           'No download triggered within timeout. Checking navigation...'
         );
-        try {
-          await page.waitForLoadState();
-        } catch (e) {
-          this.logger.warning(
-            `Navigation check failed: ${(e as Error).message}`
-          );
-        }
+        await validateClickNavigation();
         return null;
       }
 
@@ -6038,12 +6043,14 @@ export class BrowserSession {
         this.add_downloaded_file(download_path);
       }
 
+      await validateClickNavigation();
       return download_path;
     } else {
       // No downloads path configured, just click
       await element_handle.click();
     }
 
+    await validateClickNavigation();
     return null;
   }
 
