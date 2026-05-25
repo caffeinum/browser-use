@@ -15,6 +15,38 @@ export abstract class BaseTelemetryEvent {
 }
 
 type BaseSequence = Array<string | null | undefined> | undefined;
+const REDACTED_TELEMETRY_VALUE = '<redacted>';
+
+const redactSequence = (value: BaseSequence): BaseSequence => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  return value.map((entry) =>
+    entry == null ? entry : REDACTED_TELEMETRY_VALUE
+  );
+};
+
+const summarizeActionHistory = (
+  value: Array<Array<Record<string, unknown>> | null> | undefined
+) => {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+  return value.map((step) => {
+    if (!Array.isArray(step)) {
+      return step;
+    }
+    return step.map((action) => ({
+      action:
+        action && typeof action === 'object'
+          ? (Object.keys(action)[0] ?? 'unknown')
+          : 'unknown',
+    }));
+  });
+};
+
+const redactNullableString = (value: string | null | undefined) =>
+  value ? REDACTED_TELEMETRY_VALUE : null;
 
 export interface AgentTelemetryPayload {
   task: string;
@@ -81,7 +113,7 @@ export class AgentTelemetryEvent
 
   constructor(payload: AgentTelemetryPayload) {
     super();
-    this.task = payload.task;
+    this.task = payload.task ? REDACTED_TELEMETRY_VALUE : '';
     this.model = payload.model;
     this.model_provider = payload.model_provider;
     this.max_steps = payload.max_steps;
@@ -91,9 +123,9 @@ export class AgentTelemetryEvent
     this.source = payload.source;
     this.cdp_url = payload.cdp_url;
     this.agent_type = payload.agent_type;
-    this.action_errors = payload.action_errors;
-    this.action_history = payload.action_history;
-    this.urls_visited = payload.urls_visited;
+    this.action_errors = redactSequence(payload.action_errors);
+    this.action_history = summarizeActionHistory(payload.action_history);
+    this.urls_visited = redactSequence(payload.urls_visited);
     this.steps = payload.steps;
     this.total_input_tokens = payload.total_input_tokens;
     this.total_output_tokens = payload.total_output_tokens;
@@ -101,11 +133,15 @@ export class AgentTelemetryEvent
     this.total_tokens = payload.total_tokens;
     this.total_duration_seconds = payload.total_duration_seconds;
     this.success = payload.success;
-    this.final_result_response = payload.final_result_response;
-    this.error_message = payload.error_message;
+    this.final_result_response = redactNullableString(
+      payload.final_result_response
+    );
+    this.error_message = redactNullableString(payload.error_message);
     this.judge_verdict = payload.judge_verdict ?? null;
-    this.judge_reasoning = payload.judge_reasoning ?? null;
-    this.judge_failure_reason = payload.judge_failure_reason ?? null;
+    this.judge_reasoning = redactNullableString(payload.judge_reasoning);
+    this.judge_failure_reason = redactNullableString(
+      payload.judge_failure_reason
+    );
     this.judge_reached_captcha = payload.judge_reached_captcha ?? null;
     this.judge_impossible_task = payload.judge_impossible_task ?? null;
   }

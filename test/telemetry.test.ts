@@ -153,6 +153,45 @@ describe('Telemetry Events', () => {
       expect(props.action_errors).toHaveLength(2);
     });
 
+    it('redacts content-bearing agent telemetry fields', () => {
+      const event = new AgentTelemetryEvent({
+        version: '1.0.0',
+        source: 'npm',
+        model: 'gpt-4',
+        model_provider: 'openai',
+        max_steps: 100,
+        max_actions_per_step: 10,
+        use_vision: false,
+        cdp_url: null,
+        agent_type: null,
+        task: 'Login with password secret-123',
+        action_errors: ['failed with secret-123'],
+        action_history: [[{ input_text: { text: 'secret-123' } }]],
+        urls_visited: ['https://example.com/reset?token=secret-123'],
+        steps: 1,
+        total_input_tokens: 100,
+        total_output_tokens: 40,
+        prompt_cached_tokens: 0,
+        total_tokens: 140,
+        total_duration_seconds: 10,
+        success: false,
+        final_result_response: 'secret-123',
+        error_message: 'secret-123',
+        judge_reasoning: 'secret-123',
+        judge_failure_reason: 'secret-123',
+      });
+
+      const serialized = JSON.stringify(event.properties());
+      expect(serialized).not.toContain('secret-123');
+      expect(event.properties().task).toBe('<redacted>');
+      expect(event.properties().final_result_response).toBe('<redacted>');
+      expect(event.properties().error_message).toBe('<redacted>');
+      expect(event.properties().urls_visited).toEqual(['<redacted>']);
+      expect(event.properties().action_history).toEqual([
+        [{ action: 'input_text' }],
+      ]);
+    });
+
     it('tracks judge verdict fields when present', () => {
       const event = new AgentTelemetryEvent({
         version: '1.0.0',
@@ -186,8 +225,8 @@ describe('Telemetry Events', () => {
 
       const props = event.properties();
       expect(props.judge_verdict).toBe(false);
-      expect(props.judge_reasoning).toBe('Did not satisfy all requirements');
-      expect(props.judge_failure_reason).toBe('Missing required output');
+      expect(props.judge_reasoning).toBe('<redacted>');
+      expect(props.judge_failure_reason).toBe('<redacted>');
       expect(props.judge_reached_captcha).toBe(false);
       expect(props.judge_impossible_task).toBe(false);
     });
