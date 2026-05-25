@@ -2857,6 +2857,9 @@ export class BrowserSession {
         this._assert_url_allowed(finalUrl);
         completedUrl = normalize_url(finalUrl);
         await this._waitForStableNetwork(page, signal);
+        const settledUrl = page.url();
+        this._assert_url_allowed(settledUrl);
+        completedUrl = normalize_url(settledUrl);
       }
     } catch (error) {
       if (this._isAbortError(error)) {

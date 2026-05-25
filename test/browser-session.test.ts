@@ -1049,6 +1049,56 @@ esac
     expect(createdEvents[0].url).toBe('https://redirected.test/final');
   });
 
+  it('closes new tabs that settle on disallowed redirect URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let newPageUrl = 'about:blank';
+    const existingPage = {
+      url: vi.fn(() => 'https://example.com/current'),
+      title: vi.fn(async () => 'Current'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const newPage = {
+      goto: vi.fn(async () => {
+        newPageUrl = 'https://example.com/intermediate';
+      }),
+      url: vi.fn(() => newPageUrl),
+      title: vi.fn(async () => 'Redirected'),
+      close: vi.fn(async () => {}),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+
+    session.update_current_page(
+      existingPage,
+      'Current',
+      'https://example.com/current'
+    );
+    (session as any).browser_context = {
+      newPage: vi.fn(async () => newPage),
+      pages: vi.fn(() => [existingPage, newPage]),
+    } as any;
+    (session as any).initialized = true;
+    vi.spyOn(session as any, '_waitForStableNetwork').mockImplementation(
+      async () => {
+        newPageUrl = 'https://evil.test/final';
+      }
+    );
+
+    await expect(
+      session.create_new_tab('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(newPage.close).toHaveBeenCalledTimes(1);
+    expect(session.tabs).toHaveLength(1);
+    expect(session.active_tab?.url).toBe('https://example.com/current');
+  });
+
   it('aborts browser state capture when signal is already aborted', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
