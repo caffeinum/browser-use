@@ -5041,6 +5041,14 @@ export class BrowserSession {
     return protocol.toLowerCase() === 'https:';
   }
 
+  private _domainCollectionHasEntries(
+    value: string[] | Set<string> | null | undefined
+  ): boolean {
+    return Array.isArray(value)
+      ? value.length > 0
+      : value instanceof Set && value.size > 0;
+  }
+
   /**
    * Check if page is displaying a PDF
    */
@@ -5381,8 +5389,22 @@ export class BrowserSession {
       return 'invalid_url';
     }
 
-    if (parsed.protocol === 'data:' || parsed.protocol === 'blob:') {
-      return null;
+    const allowedDomains = this.browser_profile.allowed_domains;
+    const hasAllowedDomains = this._domainCollectionHasEntries(allowedDomains);
+    const prohibitedDomains = this.browser_profile.prohibited_domains;
+    const hasProhibitedDomains =
+      this._domainCollectionHasEntries(prohibitedDomains);
+    const hasDomainRestrictions = hasAllowedDomains || hasProhibitedDomains;
+
+    if (parsed.protocol === 'data:') {
+      return hasDomainRestrictions ? 'opaque_origin_blocked' : null;
+    }
+
+    if (parsed.protocol === 'blob:') {
+      if (parsed.origin && parsed.origin !== 'null') {
+        return this._get_url_access_denial_reason(parsed.origin);
+      }
+      return hasDomainRestrictions ? 'opaque_origin_blocked' : null;
     }
 
     if (!parsed.hostname) {
@@ -5397,12 +5419,7 @@ export class BrowserSession {
       return 'ip_address_blocked';
     }
 
-    const allowedDomains = this.browser_profile.allowed_domains;
-    if (
-      allowedDomains &&
-      ((Array.isArray(allowedDomains) && allowedDomains.length > 0) ||
-        (allowedDomains instanceof Set && allowedDomains.size > 0))
-    ) {
+    if (allowedDomains && hasAllowedDomains) {
       if (allowedDomains instanceof Set) {
         if (
           this._setEntryMatchesUrl(
@@ -5428,12 +5445,7 @@ export class BrowserSession {
       return 'not_in_allowed_domains';
     }
 
-    const prohibitedDomains = this.browser_profile.prohibited_domains;
-    if (
-      prohibitedDomains &&
-      ((Array.isArray(prohibitedDomains) && prohibitedDomains.length > 0) ||
-        (prohibitedDomains instanceof Set && prohibitedDomains.size > 0))
-    ) {
+    if (prohibitedDomains && hasProhibitedDomains) {
       if (prohibitedDomains instanceof Set) {
         if (
           this._setEntryMatchesUrl(
@@ -5503,6 +5515,12 @@ export class BrowserSession {
     if (denialReason === 'ip_address_blocked') {
       throw new URLNotAllowedError(
         `URL ${url} is blocked because block_ip_addresses=true`
+      );
+    }
+
+    if (denialReason === 'opaque_origin_blocked') {
+      throw new URLNotAllowedError(
+        `URL ${url} is blocked because its origin cannot be validated against domain restrictions`
       );
     }
 

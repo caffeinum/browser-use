@@ -86,6 +86,49 @@ describe('Allowed Domains Security', () => {
     expect((session as any)._is_url_allowed('https://example.com')).toBe(true);
   });
 
+  it('blocks opaque data URLs when domain restrictions are active', () => {
+    const restrictedSession = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const unrestrictedSession = new BrowserSession({
+      browser_profile: new BrowserProfile(),
+    });
+
+    expect(
+      (restrictedSession as any)._is_url_allowed('data:text/html,<input>')
+    ).toBe(false);
+    expect(
+      (unrestrictedSession as any)._is_url_allowed('data:text/html,<input>')
+    ).toBe(true);
+  });
+
+  it('validates blob URL origins against domain restrictions', () => {
+    const allowlistedSession = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const prohibitedSession = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        prohibited_domains: ['https://evil.com'],
+      }),
+    });
+
+    expect(
+      (allowlistedSession as any)._is_url_allowed(
+        'blob:https://example.com/abc'
+      )
+    ).toBe(true);
+    expect(
+      (allowlistedSession as any)._is_url_allowed('blob:https://evil.com/abc')
+    ).toBe(false);
+    expect(
+      (prohibitedSession as any)._is_url_allowed('blob:https://evil.com/abc')
+    ).toBe(false);
+  });
+
   it('uses optimized allowlist sets for large domain lists and matches www variants', () => {
     const domains = Array.from({ length: 120 }, (_, idx) => {
       return `site-${idx}.example.com`;
