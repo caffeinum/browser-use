@@ -1464,6 +1464,70 @@ esac
     expect(pageUrl).toBe('about:blank');
   });
 
+  it('replaces current tab when disallowed rollback cannot load about:blank', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let blockedPageUrl = 'about:blank';
+    const blockedPage = {
+      goto: vi.fn(async (url: string) => {
+        if (url === 'about:blank') {
+          throw new Error('rollback failed');
+        }
+        blockedPageUrl = 'https://evil.test/stuck';
+        throw new Error('Navigation timeout');
+      }),
+      url: vi.fn(() => blockedPageUrl),
+      title: vi.fn(async () => 'Blocked Page'),
+      close: vi.fn(async () => {}),
+    } as any;
+    let replacementUrl = 'about:blank';
+    const replacementPage = {
+      goto: vi.fn(async (url: string) => {
+        replacementUrl = url;
+      }),
+      url: vi.fn(() => replacementUrl),
+      title: vi.fn(async () => 'Blank Page'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    let replacementCreated = false;
+    const browserContext = {
+      newPage: vi.fn(async () => {
+        replacementCreated = true;
+        return replacementPage;
+      }),
+      pages: vi.fn(() =>
+        replacementCreated ? [replacementPage] : [blockedPage]
+      ),
+    } as any;
+
+    session.update_current_page(blockedPage, 'about:blank', 'about:blank');
+    (session as any).browser_context = browserContext;
+    (session as any).initialized = true;
+
+    await expect(
+      session.navigate_to('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(blockedPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(browserContext.newPage).toHaveBeenCalledTimes(1);
+    expect(replacementPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(blockedPage.close).toHaveBeenCalledTimes(1);
+    expect((session as any).agent_current_page).toBe(replacementPage);
+    expect((session as any).human_current_page).toBe(replacementPage);
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('redacts blocked URL query and hash in URLNotAllowedError and recent events', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

@@ -3063,9 +3063,9 @@ export class BrowserSession {
       let finalError: unknown = error;
       if (!(finalError instanceof URLNotAllowedError)) {
         finalError =
-          (await this._get_disallowed_page_error_after_navigation_error(
-            page
-          )) ?? finalError;
+          (await this._get_disallowed_page_error_after_navigation_error(page, {
+            replace_on_failure: false,
+          })) ?? finalError;
       }
       const isUrlNotAllowed = finalError instanceof URLNotAllowedError;
       const message = (finalError as Error).message ?? 'Failed to open new tab';
@@ -6443,7 +6443,8 @@ export class BrowserSession {
 
   private async _rollback_disallowed_navigation(
     page: Page,
-    blockedUrl: string
+    blockedUrl: string,
+    options: { replace_on_failure?: boolean } = {}
   ) {
     this.logger.warning(
       `Blocked navigation reached disallowed URL ${BrowserSession._redact_url_for_logging(
@@ -6470,30 +6471,100 @@ export class BrowserSession {
       }
       this._syncSessionManagerFromTabs();
       this.cachedBrowserState = null;
+      return;
+    }
+
+    if (options.replace_on_failure ?? true) {
+      await this._replace_disallowed_current_page(page, blockedUrl);
     }
   }
 
-  private async _assert_page_url_allowed_or_rollback(page: Page) {
+  private async _replace_disallowed_current_page(
+    page: Page,
+    blockedUrl: string
+  ) {
+    const safeUrl = BrowserSession._redact_url_for_logging(blockedUrl);
+    let replacementPage: Page | null = null;
+    const canCreateReplacement =
+      typeof this.browser_context?.newPage === 'function';
+
+    if (canCreateReplacement) {
+      try {
+        replacementPage = await this.browser_context!.newPage();
+        try {
+          await replacementPage.goto('about:blank', {
+            waitUntil: 'load',
+            timeout: 5000,
+          });
+        } catch (error) {
+          this.logger.debug(
+            `Failed to initialize replacement blank tab after blocked navigation to ${safeUrl}: ${(error as Error).message}`
+          );
+        }
+        const replacementUrl =
+          typeof replacementPage.url === 'function'
+            ? replacementPage.url()
+            : 'about:blank';
+        if (!this._is_new_tab_page(replacementUrl)) {
+          await replacementPage.close?.();
+          replacementPage = null;
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Failed to create replacement blank tab after blocked navigation to ${safeUrl}: ${(error as Error).message}`
+        );
+        replacementPage = null;
+      }
+    }
+
+    try {
+      await page.close?.();
+    } catch (error) {
+      this.logger.debug(
+        `Failed to close blocked page after rollback failure: ${(error as Error).message}`
+      );
+    }
+
+    this.currentUrl = 'about:blank';
+    this.currentTitle = 'about:blank';
+    const tab = this._tabs[this.currentTabIndex];
+    if (tab) {
+      tab.url = 'about:blank';
+      tab.title = 'about:blank';
+    }
+    if (this.human_current_page === page) {
+      this.human_current_page = replacementPage;
+    }
+    this._setActivePage(replacementPage);
+    this._syncSessionManagerFromTabs();
+    this.cachedBrowserState = null;
+  }
+
+  private async _assert_page_url_allowed_or_rollback(
+    page: Page,
+    options: { replace_on_failure?: boolean } = {}
+  ) {
     const currentUrl =
       typeof page.url === 'function' ? page.url() : 'about:blank';
     try {
       this._assert_url_allowed(currentUrl);
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
-        await this._rollback_disallowed_navigation(page, currentUrl);
+        await this._rollback_disallowed_navigation(page, currentUrl, options);
       }
       throw error;
     }
   }
 
   private async _get_disallowed_page_error_after_navigation_error(
-    page: Page | null
+    page: Page | null,
+    options: { replace_on_failure?: boolean } = {}
   ) {
     if (!page) {
       return null;
     }
     try {
-      await this._assert_page_url_allowed_or_rollback(page);
+      await this._assert_page_url_allowed_or_rollback(page, options);
       return null;
     } catch (error) {
       if (error instanceof URLNotAllowedError) {
@@ -7310,7 +7381,9 @@ export class BrowserSession {
       }
 
       try {
-        await this._assert_page_url_allowed_or_rollback(newPage);
+        await this._assert_page_url_allowed_or_rollback(newPage, {
+          replace_on_failure: false,
+        });
       } catch (error) {
         if (error instanceof URLNotAllowedError) {
           this.logger.warning(
