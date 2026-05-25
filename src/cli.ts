@@ -1323,6 +1323,10 @@ export const runAuthCommand = async (
           output,
           'browser-use will refresh its own copy and will not write ~/.codex/auth.json.'
         );
+        writeLine(
+          output,
+          'For the cleanest separation from Codex CLI, prefer `browser-use auth codex login --force`.'
+        );
       }
       return 0;
     }

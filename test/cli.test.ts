@@ -681,6 +681,7 @@ describe('CLI Codex auth commands', () => {
       })
     ).resolves.toBe(0);
     expect(output).toContain('Imported Codex CLI credentials');
+    expect(output).toContain('cleanest separation from Codex CLI');
     expect(errorOutput).toBe('');
 
     output = '';

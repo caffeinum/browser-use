@@ -115,7 +115,9 @@ npx browser-use auth codex import
 
 Importing is a one-time copy into the browser-use auth store. Browser-use keeps
 its own refresh lifecycle after import and still does not write the Codex CLI
-auth file.
+auth file. Because OAuth refresh tokens can rotate, import is mainly a
+convenience path; use `browser-use auth codex login` for the cleanest separation
+from Codex CLI.
 
 ### Usage
 
