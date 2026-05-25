@@ -5606,6 +5606,31 @@ export class BrowserSession {
       return 'ip_address_blocked';
     }
 
+    if (prohibitedDomains && hasProhibitedDomains) {
+      if (prohibitedDomains instanceof Set) {
+        if (
+          this._setEntryMatchesUrl(
+            prohibitedDomains,
+            hostVariant,
+            hostAlt,
+            parsed.protocol
+          )
+        ) {
+          return 'in_prohibited_domains';
+        }
+      } else {
+        for (const prohibitedDomain of prohibitedDomains) {
+          try {
+            if (match_url_with_domain_pattern(url, prohibitedDomain, true)) {
+              return 'in_prohibited_domains';
+            }
+          } catch {
+            this.logger.warning(`Invalid domain pattern: ${prohibitedDomain}`);
+          }
+        }
+      }
+    }
+
     if (allowedDomains && hasAllowedDomains) {
       if (allowedDomains instanceof Set) {
         if (
@@ -5630,31 +5655,6 @@ export class BrowserSession {
         }
       }
       return 'not_in_allowed_domains';
-    }
-
-    if (prohibitedDomains && hasProhibitedDomains) {
-      if (prohibitedDomains instanceof Set) {
-        if (
-          this._setEntryMatchesUrl(
-            prohibitedDomains,
-            hostVariant,
-            hostAlt,
-            parsed.protocol
-          )
-        ) {
-          return 'in_prohibited_domains';
-        }
-      } else {
-        for (const prohibitedDomain of prohibitedDomains) {
-          try {
-            if (match_url_with_domain_pattern(url, prohibitedDomain, true)) {
-              return 'in_prohibited_domains';
-            }
-          } catch {
-            this.logger.warning(`Invalid domain pattern: ${prohibitedDomain}`);
-          }
-        }
-      }
     }
 
     return null;

@@ -49,15 +49,20 @@ describe('Allowed Domains Security', () => {
     expect((session as any)._is_url_allowed('https://example.com')).toBe(true);
   });
 
-  it('lets allowed_domains take precedence over prohibited_domains', () => {
+  it('lets prohibited_domains take precedence over allowed_domains', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
-        allowed_domains: ['https://example.com'],
-        prohibited_domains: ['https://example.com'],
+        allowed_domains: ['*.example.com'],
+        prohibited_domains: ['https://admin.example.com'],
       }),
     });
 
-    expect((session as any)._is_url_allowed('https://example.com')).toBe(true);
+    expect((session as any)._is_url_allowed('https://app.example.com')).toBe(
+      true
+    );
+    expect((session as any)._is_url_allowed('https://admin.example.com')).toBe(
+      false
+    );
     expect((session as any)._is_url_allowed('https://other.com')).toBe(false);
   });
 
