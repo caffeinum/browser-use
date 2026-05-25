@@ -2,6 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Message } from '../../llm/messages.js';
 
+const chmodPrivateFile = (filePath: string) => {
+  if (process.platform !== 'win32') {
+    fs.chmodSync(filePath, 0o600);
+  }
+};
+
 const serializeResponse = (response: unknown) => {
   if (!response) {
     return '';
@@ -47,5 +53,6 @@ export const saveConversation = async (
   const targetPath = path.resolve(target);
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
   const payload = formatConversation(inputMessages, response);
-  await fs.promises.writeFile(targetPath, payload, { encoding });
+  await fs.promises.writeFile(targetPath, payload, { encoding, mode: 0o600 });
+  chmodPrivateFile(targetPath);
 };

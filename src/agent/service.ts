@@ -382,6 +382,12 @@ const defaultAgentOptions = () => ({
   _url_shortening_limit: 25,
 });
 
+const chmodPrivateFile = async (filePath: string) => {
+  if (process.platform !== 'win32') {
+    await fs.promises.chmod(filePath, 0o600);
+  }
+};
+
 const AgentLLMOutputSchema = z.object({
   thinking: z.string().optional().nullable(),
   evaluation_previous_goal: z.string().optional().nullable(),
@@ -4714,8 +4720,13 @@ export class Agent<
           null,
           2
         ),
-        this.settings.save_conversation_path_encoding as BufferEncoding
+        {
+          encoding: this.settings
+            .save_conversation_path_encoding as BufferEncoding,
+          mode: 0o600,
+        }
       );
+      await chmodPrivateFile(filepath);
     }
   }
 

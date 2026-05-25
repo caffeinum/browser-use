@@ -33,5 +33,8 @@ describe('message-manager utils alignment', () => {
     expect(content).toContain(' user ');
     expect(content).toContain('"ok": true');
     expect(content).not.toContain(' RESPONSE');
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(targetPath).mode & 0o777).toBe(0o600);
+    }
   });
 });
