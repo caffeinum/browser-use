@@ -232,13 +232,15 @@ export class ChatCodex implements BaseChatModel {
       reasoning: { effort: this.reasoningEffort },
     };
 
-    if (this.maxCompletionTokens !== null && !isCodexBackendURL(baseURL)) {
+    const codexBackend = isCodexBackendURL(baseURL);
+
+    if (this.maxCompletionTokens !== null && !codexBackend) {
       modelParams.max_output_tokens = this.maxCompletionTokens;
     }
-    if (this.topP !== null) {
+    if (this.topP !== null && !codexBackend) {
       modelParams.top_p = this.topP;
     }
-    if (this.seed !== null) {
+    if (this.seed !== null && !codexBackend) {
       modelParams.seed = this.seed;
     }
     if (this.serviceTier !== null) {

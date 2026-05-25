@@ -119,19 +119,25 @@ describe('ChatCodex', () => {
       input: [{ role: 'user', content: 'hello' }],
     });
     expect(request).not.toHaveProperty('max_output_tokens');
+    expect(request).not.toHaveProperty('top_p');
+    expect(request).not.toHaveProperty('seed');
   });
 
-  it('keeps max output tokens for custom Responses-compatible endpoints', async () => {
+  it('keeps optional model parameters for custom Responses-compatible endpoints', async () => {
     const llm = new ChatCodex({
       apiKey: 'opaque-token',
       baseURL: 'https://responses.example.test/v1',
       maxCompletionTokens: 2048,
+      topP: 0.7,
+      seed: 42,
     });
 
     await llm.ainvoke([new UserMessage('hello')]);
 
     const request = responsesCreateMock.mock.calls[0]?.[0] ?? {};
     expect(request.max_output_tokens).toBe(2048);
+    expect(request.top_p).toBe(0.7);
+    expect(request.seed).toBe(42);
   });
 
   it('uses Responses JSON schema format for zod structured output', async () => {
