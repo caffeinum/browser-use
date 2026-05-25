@@ -173,7 +173,7 @@ describe('skill-cli alignment', () => {
       button: 'right',
       timeout: 5000,
     });
-    expect(validateSpy).toHaveBeenCalledTimes(3);
+    expect(validateSpy).toHaveBeenCalledTimes(6);
     expect(validateSpy).toHaveBeenCalledWith(page);
   });
 

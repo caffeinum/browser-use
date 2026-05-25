@@ -4481,65 +4481,73 @@ export class BrowserSession {
       return null;
     }
 
-    const pageData = await targetPage.evaluate(() => {
+    await this.validate_page_after_action(targetPage);
+    try {
+      const pageData = await targetPage.evaluate(() => {
+        return {
+          // Current viewport dimensions
+          viewport_width: window.innerWidth,
+          viewport_height: window.innerHeight,
+
+          // Total page dimensions
+          page_width: Math.max(
+            document.documentElement.scrollWidth,
+            document.body.scrollWidth || 0
+          ),
+          page_height: Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight || 0
+          ),
+
+          // Current scroll position
+          scroll_x:
+            window.scrollX ||
+            window.pageXOffset ||
+            document.documentElement.scrollLeft ||
+            0,
+          scroll_y:
+            window.scrollY ||
+            window.pageYOffset ||
+            document.documentElement.scrollTop ||
+            0,
+        };
+      });
+
+      // Calculate derived values
+      const viewport_width = Math.floor(pageData.viewport_width);
+      const viewport_height = Math.floor(pageData.viewport_height);
+      const page_width = Math.floor(pageData.page_width);
+      const page_height = Math.floor(pageData.page_height);
+      const scroll_x = Math.floor(pageData.scroll_x);
+      const scroll_y = Math.floor(pageData.scroll_y);
+
+      // Calculate scroll information
+      const pixels_above = scroll_y;
+      const pixels_below = Math.max(
+        0,
+        page_height - (scroll_y + viewport_height)
+      );
+      const pixels_left = scroll_x;
+      const pixels_right = Math.max(
+        0,
+        page_width - (scroll_x + viewport_width)
+      );
+
       return {
-        // Current viewport dimensions
-        viewport_width: window.innerWidth,
-        viewport_height: window.innerHeight,
-
-        // Total page dimensions
-        page_width: Math.max(
-          document.documentElement.scrollWidth,
-          document.body.scrollWidth || 0
-        ),
-        page_height: Math.max(
-          document.documentElement.scrollHeight,
-          document.body.scrollHeight || 0
-        ),
-
-        // Current scroll position
-        scroll_x:
-          window.scrollX ||
-          window.pageXOffset ||
-          document.documentElement.scrollLeft ||
-          0,
-        scroll_y:
-          window.scrollY ||
-          window.pageYOffset ||
-          document.documentElement.scrollTop ||
-          0,
+        viewport_width,
+        viewport_height,
+        page_width,
+        page_height,
+        scroll_x,
+        scroll_y,
+        pixels_above,
+        pixels_below,
+        pixels_left,
+        pixels_right,
       };
-    });
-
-    // Calculate derived values
-    const viewport_width = Math.floor(pageData.viewport_width);
-    const viewport_height = Math.floor(pageData.viewport_height);
-    const page_width = Math.floor(pageData.page_width);
-    const page_height = Math.floor(pageData.page_height);
-    const scroll_x = Math.floor(pageData.scroll_x);
-    const scroll_y = Math.floor(pageData.scroll_y);
-
-    // Calculate scroll information
-    const pixels_above = scroll_y;
-    const pixels_below = Math.max(
-      0,
-      page_height - (scroll_y + viewport_height)
-    );
-    const pixels_left = scroll_x;
-    const pixels_right = Math.max(0, page_width - (scroll_x + viewport_width));
-
-    return {
-      viewport_width,
-      viewport_height,
-      page_width,
-      page_height,
-      scroll_x,
-      scroll_y,
-      pixels_above,
-      pixels_below,
-      pixels_left,
-      pixels_right,
-    };
+    } finally {
+      await this.validate_page_after_action(targetPage);
+    }
   }
 
   /**
@@ -4550,7 +4558,12 @@ export class BrowserSession {
     if (!page) {
       return '';
     }
-    return await page.content();
+    await this.validate_page_after_action(page);
+    try {
+      return await page.content();
+    } finally {
+      await this.validate_page_after_action(page);
+    }
   }
 
   /**
@@ -4561,6 +4574,7 @@ export class BrowserSession {
     if (!page) {
       return '';
     }
+    await this.validate_page_after_action(page);
 
     const debug_script = `(() => {
 			function getPageStructure(element = document, depth = 0, maxDepth = 10) {
@@ -4626,7 +4640,11 @@ export class BrowserSession {
 			return getPageStructure();
 		})()`;
 
-    return await page.evaluate(debug_script);
+    try {
+      return await page.evaluate(debug_script);
+    } finally {
+      await this.validate_page_after_action(page);
+    }
   }
 
   // ==================== Navigation & History ====================
@@ -4728,6 +4746,7 @@ export class BrowserSession {
     if (!page) {
       throw new Error('No page available for screenshot');
     }
+    await this.validate_page_after_action(page);
 
     if (!this.browser_context) {
       throw new Error('Browser context is not set');
@@ -4812,6 +4831,7 @@ export class BrowserSession {
           // Ignore detach errors
         }
       }
+      await this.validate_page_after_action(page);
     }
   }
 

@@ -2017,6 +2017,70 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('blocks HTML reads from disallowed current pages', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/html?token=secret';
+    const fakePage = {
+      content: vi.fn(async () => '<html>secret</html>'),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    session.update_current_page(fakePage, 'HTML', 'https://example.com/start');
+
+    await expect(session.get_page_html()).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.content).not.toHaveBeenCalled();
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
+  it('blocks screenshots from disallowed current pages', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://evil.test/screenshot?token=secret';
+    const fakePage = {
+      bringToFront: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    session.update_current_page(
+      fakePage,
+      'Screenshot',
+      'https://example.com/start'
+    );
+
+    await expect(session.take_screenshot()).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+
+    expect(fakePage.bringToFront).not.toHaveBeenCalled();
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
   it('closes new tabs that settle on disallowed redirect URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

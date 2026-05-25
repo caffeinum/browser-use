@@ -204,6 +204,7 @@ export class SkillCliServer {
     action: () => Promise<unknown>
   ) {
     const page = await browser_session.get_current_page?.();
+    await browser_session.validate_page_after_action?.(page);
     try {
       return await action();
     } finally {
@@ -540,10 +541,12 @@ export class SkillCliServer {
       if (!page?.evaluate) {
         throw new Error('No active page available for html');
       }
-      const html = await page.evaluate((targetSelector: string) => {
-        const element = document.querySelector(targetSelector);
-        return element ? element.outerHTML : null;
-      }, selector);
+      const html = await this._run_with_page_validation(browser_session, () =>
+        page.evaluate((targetSelector: string) => {
+          const element = document.querySelector(targetSelector);
+          return element ? element.outerHTML : null;
+        }, selector)
+      );
       if (typeof html !== 'string' || html.length === 0) {
         throw new Error(`No element found for selector: ${selector}`);
       }

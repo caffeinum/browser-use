@@ -1323,10 +1323,17 @@ export const run_direct_command = async (
           if (!page?.evaluate) {
             throw new Error('No active page available for get html');
           }
-          const html = await page.evaluate((targetSelector: string) => {
-            const element = document.querySelector(targetSelector);
-            return element ? element.outerHTML : null;
-          }, selector);
+          await validateDirectPageAfterAction(session, page);
+          const html = await (async () => {
+            try {
+              return await page.evaluate((targetSelector: string) => {
+                const element = document.querySelector(targetSelector);
+                return element ? element.outerHTML : null;
+              }, selector);
+            } finally {
+              await validateDirectPageAfterAction(session, page);
+            }
+          })();
           if (typeof html !== 'string' || html.length === 0) {
             throw new Error(`No element found for selector: ${selector}`);
           }
@@ -1374,10 +1381,17 @@ export const run_direct_command = async (
         if (!page?.evaluate) {
           throw new Error('No active page available for html');
         }
-        const html = await page.evaluate((targetSelector: string) => {
-          const element = document.querySelector(targetSelector);
-          return element ? element.outerHTML : null;
-        }, selector);
+        await validateDirectPageAfterAction(session, page);
+        const html = await (async () => {
+          try {
+            return await page.evaluate((targetSelector: string) => {
+              const element = document.querySelector(targetSelector);
+              return element ? element.outerHTML : null;
+            }, selector);
+          } finally {
+            await validateDirectPageAfterAction(session, page);
+          }
+        })();
         if (typeof html !== 'string' || html.length === 0) {
           throw new Error(`No element found for selector: ${selector}`);
         }
