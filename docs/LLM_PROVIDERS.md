@@ -123,7 +123,7 @@ auth file.
 import { ChatCodex } from 'browser-use/llm/codex';
 
 const llm = new ChatCodex({
-  model: 'gpt-5.1-codex',
+  model: 'gpt-5.5',
   reasoningEffort: 'medium',
 });
 ```
@@ -132,7 +132,7 @@ CLI usage:
 
 ```bash
 npx browser-use --provider codex -p "Open example.com and summarize it"
-npx browser-use --model codex:gpt-5.1-codex -p "Check this workflow"
+npx browser-use --model codex:gpt-5.5 -p "Check this workflow"
 ```
 
 ### Auth Commands
@@ -146,7 +146,7 @@ npx browser-use auth codex logout
 ### Environment Overrides
 
 ```bash
-export BROWSER_USE_CODEX_MODEL=gpt-5.1-codex
+export BROWSER_USE_CODEX_MODEL=gpt-5.5
 export BROWSER_USE_CODEX_BASE_URL=https://chatgpt.com/backend-api/codex
 export BROWSER_USE_CODEX_ACCESS_TOKEN=your-access-token
 ```

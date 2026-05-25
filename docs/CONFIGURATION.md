@@ -29,7 +29,7 @@ Configuration values are resolved in this order (highest priority first):
 | -------------------------------- | -------- | ------------------------------------ | ----------------------------------- |
 | `BROWSER_USE_LLM_MODEL`          | `string` | -                                    | Default LLM model                   |
 | `OPENAI_API_KEY`                 | `string` | -                                    | OpenAI API key                      |
-| `BROWSER_USE_CODEX_MODEL`        | `string` | `gpt-5.1-codex`                      | Default Codex OAuth model           |
+| `BROWSER_USE_CODEX_MODEL`        | `string` | `gpt-5.5`                            | Default Codex OAuth model           |
 | `BROWSER_USE_CODEX_BASE_URL`     | `string` | `https://chatgpt.com/backend-api/codex` | Codex OAuth backend URL             |
 | `BROWSER_USE_CODEX_ACCESS_TOKEN` | `string` | -                                    | Short-lived Codex access token      |
 | `ANTHROPIC_API_KEY`              | `string` | -                                    | Anthropic API key                   |

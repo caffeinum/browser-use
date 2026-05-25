@@ -524,7 +524,7 @@ describe('CLI model routing', () => {
     const args = parseCliArgs(['--provider', 'codex', '-p', 'x']);
     const llm = getLlmFromCliArgs(args);
     expect(llm.provider).toBe('codex');
-    expect(llm.model).toBe('gpt-5.1-codex');
+    expect(llm.model).toBe('gpt-5.5');
   });
 
   it('routes codex-prefixed model names to Codex provider', () => {

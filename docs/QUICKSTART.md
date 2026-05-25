@@ -125,7 +125,7 @@ Supported CLI options:
 
 - `--version`: print package version
 - `--provider <name>`: force provider (`openai|anthropic|google|deepseek|groq|openrouter|azure|codex|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic`)
-- `--model <name>`: choose model/provider (for example `gpt-*`, `codex:gpt-5.1-codex`, `claude-*`, `gemini-*`)
+- `--model <name>`: choose model/provider (for example `gpt-*`, `codex:gpt-5.5`, `claude-*`, `gemini-*`)
 - `-p, --prompt <task>`: one-shot task
 - `--headless`: headless browser mode
 - `--allowed-domains <items>`: comma-separated navigation allowlist

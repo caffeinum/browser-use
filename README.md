@@ -176,7 +176,7 @@ const llm = new ChatOpenAI({ model: 'o3-mini', reasoningEffort: 'medium' });
 // Codex OAuth provider (experimental)
 // First run: npx browser-use auth codex login
 import { ChatCodex } from 'browser-use/llm/codex';
-const codexLlm = new ChatCodex({ model: 'gpt-5.1-codex' });
+const codexLlm = new ChatCodex({ model: 'gpt-5.5' });
 ```
 
 </details>

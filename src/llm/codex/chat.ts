@@ -87,7 +87,7 @@ export class ChatCodex implements BaseChatModel {
 
   constructor(options: ChatCodexOptions = {}) {
     const {
-      model = process.env.BROWSER_USE_CODEX_MODEL ?? 'gpt-5.1-codex',
+      model = process.env.BROWSER_USE_CODEX_MODEL ?? 'gpt-5.5',
       apiKey = process.env.BROWSER_USE_CODEX_ACCESS_TOKEN ?? null,
       baseURL = process.env.BROWSER_USE_CODEX_BASE_URL ??
         DEFAULT_CODEX_BASE_URL,

@@ -86,7 +86,7 @@ describe('ChatCodex', () => {
       },
     });
     const llm = new ChatCodex({
-      model: 'gpt-5.1-codex',
+      model: 'gpt-5.5',
       apiKey: token,
       reasoningEffort: 'medium',
       maxCompletionTokens: 2048,
@@ -113,7 +113,7 @@ describe('ChatCodex', () => {
     });
     const request = responsesCreateMock.mock.calls[0]?.[0] ?? {};
     expect(request).toMatchObject({
-      model: 'gpt-5.1-codex',
+      model: 'gpt-5.5',
       store: false,
       reasoning: { effort: 'medium' },
       input: [{ role: 'user', content: 'hello' }],

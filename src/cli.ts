@@ -650,7 +650,7 @@ const getDefaultModelForProvider = (
     case 'azure':
       return 'gpt-4o';
     case 'codex':
-      return 'gpt-5.1-codex';
+      return 'gpt-5.5';
     case 'mistral':
       return 'mistral-large-latest';
     case 'cerebras':
@@ -1036,7 +1036,7 @@ Options:
   --json                      Output command results as JSON when supported
   -y, --yes                   Skip optional setup prompts where supported
   --provider <name>           Force provider (openai|anthropic|google|deepseek|groq|openrouter|azure|codex|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic)
-  --model <model>             Set model (e.g., gpt-5-mini, codex:gpt-5.1-codex, claude-4-sonnet)
+  --model <model>             Set model (e.g., gpt-5-mini, codex:gpt-5.5, claude-4-sonnet)
   -p, --prompt <task>         Run a single task
   --mode <name>              Setup mode for setup command (local|remote|full)
   --api-key <value>          Browser Use API key for setup or cloud operations
