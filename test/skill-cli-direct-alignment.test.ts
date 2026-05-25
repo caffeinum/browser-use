@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   clear_direct_state,
+  DIRECT_STATE_FILE,
   defaultLocalLauncher,
   load_direct_state,
   run_direct_command,
@@ -26,6 +27,53 @@ const createWritable = () => {
 };
 
 describe('skill-cli direct alignment', () => {
+  it('uses a user-private default state file instead of a shared tmp file', () => {
+    expect(DIRECT_STATE_FILE).not.toBe(
+      path.join(os.tmpdir(), 'browser-use-direct.json')
+    );
+    expect(path.basename(DIRECT_STATE_FILE)).toBe('direct-state.json');
+    expect(path.dirname(DIRECT_STATE_FILE)).toContain('browser-use');
+  });
+
+  it('saves direct-mode state with private file permissions', () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-')
+    );
+    const stateFile = path.join(tempDir, 'state.json');
+
+    try {
+      save_direct_state(
+        {
+          mode: 'local',
+          cdp_url: 'http://127.0.0.1:9222',
+        },
+        stateFile
+      );
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
+        fs.chmodSync(stateFile, 0o644);
+      }
+
+      save_direct_state(
+        {
+          mode: 'local',
+          cdp_url: 'http://127.0.0.1:9333',
+        },
+        stateFile
+      );
+
+      expect(load_direct_state(stateFile)).toMatchObject({
+        cdp_url: 'http://127.0.0.1:9333',
+      });
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(stateFile).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      clear_direct_state(stateFile);
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('launches a local browser on first open and persists direct-mode state', async () => {
     const tempDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-direct-')

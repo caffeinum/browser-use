@@ -18,9 +18,57 @@ export interface DirectModeState {
   active_url?: string | null;
 }
 
+const getSafeUserSegment = () => {
+  if (typeof process.getuid === 'function') {
+    return String(process.getuid());
+  }
+  try {
+    const username = os.userInfo().username;
+    return username.replace(/[^a-zA-Z0-9_.-]/g, '_') || 'user';
+  } catch {
+    return 'user';
+  }
+};
+
+const getDefaultDirectStateDir = () => {
+  const runtimeDir = process.env.XDG_RUNTIME_DIR?.trim();
+  if (runtimeDir && path.isAbsolute(runtimeDir)) {
+    return path.join(runtimeDir, 'browser-use');
+  }
+
+  const homeDir = os.homedir();
+  if (homeDir) {
+    if (process.platform === 'darwin') {
+      return path.join(
+        homeDir,
+        'Library',
+        'Application Support',
+        'browser-use'
+      );
+    }
+    if (process.platform === 'win32') {
+      const localAppData = process.env.LOCALAPPDATA?.trim();
+      const baseDir =
+        localAppData && path.isAbsolute(localAppData)
+          ? localAppData
+          : path.join(homeDir, 'AppData', 'Local');
+      return path.join(baseDir, 'browser-use');
+    }
+
+    const stateHome = process.env.XDG_STATE_HOME?.trim();
+    const baseDir =
+      stateHome && path.isAbsolute(stateHome)
+        ? stateHome
+        : path.join(homeDir, '.local', 'state');
+    return path.join(baseDir, 'browser-use');
+  }
+
+  return path.join(os.tmpdir(), `browser-use-${getSafeUserSegment()}`);
+};
+
 export const DIRECT_STATE_FILE = path.join(
-  os.tmpdir(),
-  'browser-use-direct.json'
+  getDefaultDirectStateDir(),
+  'direct-state.json'
 );
 
 interface StreamLike {
@@ -217,7 +265,20 @@ export const save_direct_state = (
   state: DirectModeState,
   state_file: string = DIRECT_STATE_FILE
 ) => {
-  fs.writeFileSync(state_file, JSON.stringify(state, null, 2));
+  fs.mkdirSync(path.dirname(state_file), { recursive: true, mode: 0o700 });
+  if (
+    process.platform !== 'win32' &&
+    path.resolve(state_file) === path.resolve(DIRECT_STATE_FILE)
+  ) {
+    fs.chmodSync(path.dirname(state_file), 0o700);
+  }
+  fs.writeFileSync(state_file, JSON.stringify(state, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+  if (process.platform !== 'win32') {
+    fs.chmodSync(state_file, 0o600);
+  }
 };
 
 export const clear_direct_state = (state_file: string = DIRECT_STATE_FILE) => {
