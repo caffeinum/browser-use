@@ -3683,10 +3683,17 @@ export class BrowserSession {
       throw new Error('Element does not support file upload');
     }
 
+    const page = await this._withAbort(this.get_current_page(), signal);
     await this._withAbort(
       locatorWithUpload.setInputFiles(file_path, { timeout: 5000 }),
       signal
     );
+    await this._waitForLoad(page, 5000, signal);
+    if (page) {
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
+    }
+    this.cachedBrowserState = null;
   }
 
   async go_back(options: BrowserActionOptions = {}) {
@@ -3953,12 +3960,19 @@ export class BrowserSession {
     if (!locator) {
       throw new Error('Element not found');
     }
+    const page = await this._withAbort(this.get_current_page(), signal);
     await this._withAbort(locator.click({ timeout: 5000 }), signal);
     if (clear) {
       await this._withAbort(locator.fill(text, { timeout: 5000 }), signal);
     } else {
       await this._withAbort(locator.type(text, { timeout: 5000 }), signal);
     }
+    await this._waitForLoad(page, 5000, signal);
+    if (page) {
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
+    }
+    this.cachedBrowserState = null;
   }
 
   async _click_element_node(

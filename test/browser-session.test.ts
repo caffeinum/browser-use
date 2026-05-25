@@ -556,6 +556,92 @@ esac
     expect(locator.fill).not.toHaveBeenCalled();
   });
 
+  it('rolls back input-triggered navigation to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/form';
+    const locator = {
+      click: vi.fn(async () => {}),
+      fill: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-input';
+      }),
+      type: vi.fn(async () => {}),
+    };
+    const fakePage = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Form', 'https://example.com/form');
+
+    await expect(
+      session._input_text_element_node(
+        { xpath: '/html/body/input' } as any,
+        'submit'
+      )
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back upload-triggered navigation to disallowed URLs', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'upload-nav-'));
+    const uploadPath = path.join(tempDir, 'file.txt');
+    fs.writeFileSync(uploadPath, 'upload');
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          allowed_domains: ['https://example.com'],
+        }),
+      });
+      let pageUrl = 'https://example.com/upload';
+      const locator = {
+        setInputFiles: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-upload';
+        }),
+      };
+      const fakePage = {
+        url: vi.fn(() => pageUrl),
+        title: vi.fn(async () => pageUrl),
+        waitForLoadState: vi.fn(async () => {}),
+        goto: vi.fn(async (url: string) => {
+          pageUrl = url;
+        }),
+      } as any;
+      vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+      vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+      session.update_current_page(
+        fakePage,
+        'Upload',
+        'https://example.com/upload'
+      );
+
+      await expect(
+        session.upload_file({ xpath: '/html/body/input' } as any, uploadPath)
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(fakePage.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(session.active_tab?.url).toBe('about:blank');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('dispatches completed DownloadProgressEvent during element click downloads', async () => {
     const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-click-dl-'));
     try {
