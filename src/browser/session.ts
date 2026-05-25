@@ -3751,14 +3751,32 @@ export class BrowserSession {
 
   static async get_unique_filename(directory: string, filename: string) {
     const resolvedDir = path.resolve(directory);
-    const parsed = path.parse(filename);
-    let candidate = filename;
+    const safeFilename = BrowserSession._sanitize_download_filename(filename);
+    const parsed = path.parse(safeFilename);
+    let candidate = safeFilename;
     let counter = 1;
     while (fs.existsSync(path.join(resolvedDir, candidate))) {
       candidate = `${parsed.name} (${counter})${parsed.ext}`;
       counter += 1;
     }
     return candidate;
+  }
+
+  private static _sanitize_download_filename(filename: string) {
+    const basename = String(filename || '')
+      .replace(/\0/g, '')
+      .replace(/\\/g, '/')
+      .split('/')
+      .pop()
+      ?.trim();
+    if (!basename || basename === '.' || basename === '..') {
+      return 'download';
+    }
+    const sanitized = basename
+      .replace(/[:*?"<>|]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return sanitized || 'download';
   }
 
   async get_selector_map(options: BrowserActionOptions = {}) {

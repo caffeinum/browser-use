@@ -708,6 +708,55 @@ esac
     }
   });
 
+  it('keeps suggested download filenames inside downloads_path', async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'perform-click-'));
+    const downloadsPath = path.join(tempRoot, 'downloads');
+    const profile = new BrowserProfile({
+      downloads_path: downloadsPath,
+    });
+    const session = new BrowserSession({
+      browser_profile: profile,
+    });
+
+    const fakeDownload = {
+      suggestedFilename: () => '../../outside.txt',
+      url: () => 'https://example.com/download',
+      saveAs: vi.fn(async (targetPath: string) => {
+        fs.writeFileSync(targetPath, 'safe');
+      }),
+    };
+    const fakePage = {
+      waitForEvent: vi.fn(async () => fakeDownload),
+    } as any;
+    const elementHandle = {
+      click: vi.fn(async () => {}),
+    };
+
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(
+      elementHandle as any
+    );
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+
+    try {
+      const savedPath = (await session.perform_click({
+        xpath: '/html/body/a[1]',
+      } as any)) as string;
+
+      const relativePath = path.relative(
+        path.resolve(downloadsPath),
+        path.resolve(savedPath)
+      );
+      expect(relativePath).toBe('outside.txt');
+      expect(relativePath.startsWith('..')).toBe(false);
+      expect(path.isAbsolute(relativePath)).toBe(false);
+      expect(path.basename(savedPath)).toBe('outside.txt');
+      expect(fs.existsSync(path.join(tempRoot, 'outside.txt'))).toBe(false);
+      expect(fs.existsSync(savedPath)).toBe(true);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('aborts navigation when signal is triggered', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
