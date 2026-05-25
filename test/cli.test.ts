@@ -710,6 +710,35 @@ describe('CLI Codex auth commands', () => {
     expect(output).toContain('not authenticated');
   });
 
+  it('honors auth codex --import as an import command', async () => {
+    clearManagedEnv();
+    const configDir = await makeTempDir();
+    let output = '';
+    const stdout = {
+      write: (chunk: string) => {
+        output += chunk;
+      },
+    };
+    const importStub = vi.fn(async (options: { configDir?: string | null }) => {
+      await saveCodexTokens(
+        { access_token: 'imported-access', refresh_token: 'imported-refresh' },
+        { configDir: options.configDir, source: 'test-import' }
+      );
+      return true;
+    });
+
+    await expect(
+      runAuthCommand(['codex', '--import'], {
+        configDir,
+        stdout,
+        import_codex_cli: importStub as any,
+      })
+    ).resolves.toBe(0);
+
+    expect(importStub).toHaveBeenCalledTimes(1);
+    expect(output).toContain('Imported Codex CLI credentials');
+  });
+
   it('reuses existing Codex auth on login unless force is requested', async () => {
     clearManagedEnv();
     const configDir = await makeTempDir();

@@ -1267,7 +1267,8 @@ export const runAuthCommand = async (
     const flags = parseCodexAuthArgs(argv);
     const jsonOutput = options.json_output ?? flags.json;
     const provider = flags.parts[0] ?? 'codex';
-    const action = flags.parts[1] ?? 'status';
+    const action =
+      flags.parts[1] ?? (flags.importFromCodexCli ? 'import' : 'status');
 
     if (provider !== 'codex' && provider !== 'openai-codex') {
       throw new Error(
