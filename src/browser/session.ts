@@ -1221,6 +1221,7 @@ export class BrowserSession {
       return [];
     }
 
+    await this.validate_page_after_action(page);
     try {
       const pending = await page.evaluate(() => {
         const perf = (window as any).performance;
@@ -1328,6 +1329,8 @@ export class BrowserSession {
         `Failed to gather pending network requests: ${(error as Error).message}`
       );
       return [];
+    } finally {
+      await this.validate_page_after_action(page);
     }
   }
 
@@ -2471,8 +2474,7 @@ export class BrowserSession {
     if (!page) {
       domState = createEmptyDomState();
     } else {
-      await this._assert_page_url_allowed_or_rollback(page);
-      await this._syncCurrentTabFromPage(page);
+      await this.validate_page_after_action(page, signal);
       try {
         const domService = new DomService(page, this.logger);
         domState = await this._withAbort(
@@ -2532,6 +2534,8 @@ export class BrowserSession {
           );
         }
       }
+
+      await this.validate_page_after_action(page, signal);
     }
 
     let screenshot: string | null = null;
@@ -2556,6 +2560,7 @@ export class BrowserSession {
           `Failed to capture screenshot: ${(error as Error).message}`
         );
       }
+      await this.validate_page_after_action(page, signal);
     }
 
     let pageInfo = null;
@@ -2620,11 +2625,12 @@ export class BrowserSession {
           `Failed to compute page metrics: ${(error as Error).message}`
         );
       }
+      await this.validate_page_after_action(page, signal);
     }
 
     const pendingNetworkRequests = await this._getPendingNetworkRequests(page);
     if (page) {
-      await this._syncCurrentTabFromPage(page);
+      await this.validate_page_after_action(page, signal);
     }
     if (
       pageInfo &&
@@ -2662,6 +2668,7 @@ export class BrowserSession {
 
     // Implement clickable element hash caching to detect new elements
     if (options.cache_clickable_elements_hashes && page) {
+      await this.validate_page_after_action(page, signal);
       const currentUrl = page.url();
       const currentHashes = this._computeElementHashes(domState.selector_map);
 
@@ -2684,6 +2691,9 @@ export class BrowserSession {
     }
 
     this._throwIfAborted(signal);
+    if (page) {
+      await this.validate_page_after_action(page, signal);
+    }
     this.cachedBrowserState = summary;
     return summary;
   }
@@ -5044,30 +5054,35 @@ export class BrowserSession {
       };
     }
 
-    return await page.evaluate(() => {
-      return {
-        scroll_x:
-          window.scrollX ||
-          window.pageXOffset ||
-          document.documentElement.scrollLeft ||
-          0,
-        scroll_y:
-          window.scrollY ||
-          window.pageYOffset ||
-          document.documentElement.scrollTop ||
-          0,
-        page_width: Math.max(
-          document.documentElement.scrollWidth,
-          document.body.scrollWidth || 0
-        ),
-        page_height: Math.max(
-          document.documentElement.scrollHeight,
-          document.body.scrollHeight || 0
-        ),
-        viewport_width: window.innerWidth,
-        viewport_height: window.innerHeight,
-      };
-    });
+    await this.validate_page_after_action(page);
+    try {
+      return await page.evaluate(() => {
+        return {
+          scroll_x:
+            window.scrollX ||
+            window.pageXOffset ||
+            document.documentElement.scrollLeft ||
+            0,
+          scroll_y:
+            window.scrollY ||
+            window.pageYOffset ||
+            document.documentElement.scrollTop ||
+            0,
+          page_width: Math.max(
+            document.documentElement.scrollWidth,
+            document.body.scrollWidth || 0
+          ),
+          page_height: Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight || 0
+          ),
+          viewport_width: window.innerWidth,
+          viewport_height: window.innerHeight,
+        };
+      });
+    } finally {
+      await this.validate_page_after_action(page);
+    }
   }
 
   /**

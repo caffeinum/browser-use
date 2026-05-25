@@ -1551,6 +1551,70 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('does not return browser state after page becomes disallowed during state collection', async () => {
+    const secretNode = new DOMElementNode(
+      true,
+      null,
+      'button',
+      '/html/body/button[1]',
+      {},
+      [new DOMTextNode(true, null, 'Secret button')]
+    );
+    secretNode.highlight_index = 1;
+    const secretDom = new DOMState(
+      new DOMElementNode(true, null, 'body', '/html/body', {}, [secretNode]),
+      { 1: secretNode }
+    );
+    let pageUrl = 'https://example.com/start';
+    const clickableSpy = vi
+      .spyOn(DomService.prototype, 'get_clickable_elements')
+      .mockImplementation(async () => {
+        pageUrl = 'https://evil.test/state-after-dom?token=secret';
+        return secretDom;
+      });
+
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const page = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Allowed'),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      waitForLoadState: vi.fn(async () => {}),
+      screenshot: vi.fn(async () => Buffer.from('secret screenshot')),
+      evaluate: vi.fn(async () => ({
+        viewportWidth: 1280,
+        viewportHeight: 720,
+        scrollX: 0,
+        scrollY: 0,
+        pageWidth: 1280,
+        pageHeight: 720,
+      })),
+    } as any;
+    session.update_current_page(page, 'Allowed', pageUrl);
+    (session as any).initialized = true;
+
+    try {
+      await expect(
+        session.get_browser_state_with_recovery({ include_screenshot: true })
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(page.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(page.screenshot).not.toHaveBeenCalled();
+      expect(page.evaluate).not.toHaveBeenCalled();
+      expect(session.active_tab?.url).toBe('about:blank');
+    } finally {
+      clickableSpy.mockRestore();
+    }
+  });
+
   it('redacts disallowed background tabs in exposed tab lists', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
