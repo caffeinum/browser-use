@@ -1354,6 +1354,34 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back disallowed current pages before building browser state', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/state?token=secret';
+    const page = {
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => pageUrl),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+    } as any;
+    session.update_current_page(page, 'Blocked', pageUrl);
+    (session as any).initialized = true;
+
+    await expect(
+      session.get_browser_state_with_recovery({ include_screenshot: true })
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('surfaces externally opened tabs in state and allows switching to them', async () => {
     const minimalDom = new DOMState(
       new DOMElementNode(true, null, 'body', '/html/body', {}, []),

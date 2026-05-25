@@ -2471,6 +2471,8 @@ export class BrowserSession {
     if (!page) {
       domState = createEmptyDomState();
     } else {
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
       try {
         const domService = new DomService(page, this.logger);
         domState = await this._withAbort(
