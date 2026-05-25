@@ -26,6 +26,18 @@ type OriginState = {
   sessionStorage?: OriginStorageEntry[];
 };
 
+const chmodPrivateFile = (filePath: string) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  fs.chmodSync(filePath, 0o600);
+};
+
+const writePrivateFile = (filePath: string, contents: string) => {
+  fs.writeFileSync(filePath, contents, { encoding: 'utf-8', mode: 0o600 });
+  chmodPrivateFile(filePath);
+};
+
 export class StorageStateWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [
     BrowserConnectedEvent,
@@ -79,18 +91,20 @@ export class StorageStateWatchdog extends BaseWatchdog {
     fs.mkdirSync(dirPath, { recursive: true });
 
     const tempPath = `${targetPath}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2));
+    writePrivateFile(tempPath, JSON.stringify(merged, null, 2));
 
     if (fs.existsSync(targetPath)) {
       const backupPath = `${targetPath}.bak`;
       try {
         fs.renameSync(targetPath, backupPath);
+        chmodPrivateFile(backupPath);
       } catch {
         // Ignore backup failures and continue with atomic swap.
       }
     }
 
     fs.renameSync(tempPath, targetPath);
+    chmodPrivateFile(targetPath);
 
     await this.event_bus.dispatch(
       new StorageStateSavedEvent({

@@ -91,6 +91,18 @@ const EMPTY_DOM_RETRY_DELAY_MS = 250;
 const REMOTE_RECONNECT_DELAYS_MS = [1000, 2000, 4000] as const;
 const REMOTE_RECONNECT_ATTEMPT_TIMEOUT_MS = 15_000;
 
+const chmodPrivateStorageFile = (filePath: string) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  fs.chmodSync(filePath, 0o600);
+};
+
+const writePrivateStorageFile = (filePath: string, contents: string) => {
+  fs.writeFileSync(filePath, contents, { encoding: 'utf-8', mode: 0o600 });
+  chmodPrivateStorageFile(filePath);
+};
+
 type SystemChromeVariant =
   | 'chrome'
   | 'chrome-canary'
@@ -4017,13 +4029,14 @@ export class BrowserSession {
 
       // Write to temporary file first
       const tempPath = `${resolvedPath}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify(storageState, null, 2));
+      writePrivateStorageFile(tempPath, JSON.stringify(storageState, null, 2));
 
       // Backup existing file if present
       if (fs.existsSync(resolvedPath)) {
         const backupPath = `${resolvedPath}.bak`;
         try {
           fs.renameSync(resolvedPath, backupPath);
+          chmodPrivateStorageFile(backupPath);
         } catch (error) {
           // Ignore backup errors
         }
@@ -4031,6 +4044,7 @@ export class BrowserSession {
 
       // Move temp file to target
       fs.renameSync(tempPath, resolvedPath);
+      chmodPrivateStorageFile(resolvedPath);
 
       const cookieCount = storageState.cookies?.length || 0;
       this.logger.info(

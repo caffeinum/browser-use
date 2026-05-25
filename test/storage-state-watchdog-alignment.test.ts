@@ -63,6 +63,45 @@ describe('storage state watchdog alignment', () => {
     }
   });
 
+  it('saves storage state files with private permissions', async () => {
+    const { tempDir, storagePath } = createTempStoragePath();
+    try {
+      fs.writeFileSync(
+        storagePath,
+        JSON.stringify({ cookies: [], origins: [] }, null, 2)
+      );
+      if (process.platform !== 'win32') {
+        fs.chmodSync(storagePath, 0o644);
+      }
+
+      const session = new BrowserSession({
+        profile: {
+          storage_state: storagePath,
+        },
+      });
+      session.browser_context = {
+        storageState: vi.fn(async () => ({
+          cookies: [{ name: 'sid', value: '123' }],
+          origins: [],
+        })),
+      } as any;
+      session.attach_watchdog(
+        new StorageStateWatchdog({ browser_session: session })
+      );
+
+      await session.event_bus.dispatch_or_throw(new SaveStorageStateEvent());
+
+      expect(fs.existsSync(storagePath)).toBe(true);
+      expect(fs.existsSync(`${storagePath}.bak`)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(storagePath).mode & 0o777).toBe(0o600);
+        expect(fs.statSync(`${storagePath}.bak`).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('loads storage state cookies and emits StorageStateLoadedEvent', async () => {
     const { tempDir, storagePath } = createTempStoragePath();
     try {

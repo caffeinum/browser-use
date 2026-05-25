@@ -1819,6 +1819,30 @@ describe('Direct Playwright Operations', () => {
 });
 
 describe('Storage State', () => {
+  it('saves storage state through BrowserSession with private permissions', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
+    const statePath = path.join(tempDir, 'state.json');
+
+    const session = new BrowserSession();
+    session.browser_context = {
+      storageState: vi.fn(async () => ({
+        cookies: [{ name: 'sid', value: '123' }],
+        origins: [],
+      })),
+    } as any;
+
+    try {
+      await session.save_storage_state(statePath);
+
+      expect(fs.existsSync(statePath)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(statePath).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('saves and loads storage state', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-test-'));
     const statePath = path.join(tempDir, 'state.json');
