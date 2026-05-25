@@ -193,15 +193,16 @@ export class StorageStateWatchdog extends BaseWatchdog {
       await browserContext.addCookies(allowedCookies as any[]);
     }
 
-    if (origins.length > 0) {
-      await this._applyOriginsStorage(origins as OriginState[]);
-    }
+    const originsLoaded =
+      origins.length > 0
+        ? await this._applyOriginsStorage(origins as OriginState[])
+        : 0;
 
     await this.event_bus.dispatch(
       new StorageStateLoadedEvent({
         path: targetPath,
         cookies_count: allowedCookies.length,
-        origins_count: origins.length,
+        origins_count: originsLoaded,
       })
     );
   }
@@ -410,9 +411,10 @@ export class StorageStateWatchdog extends BaseWatchdog {
     } | null;
 
     if (!browserContext?.newPage) {
-      return;
+      return 0;
     }
 
+    let loadedCount = 0;
     for (const originState of origins) {
       const origin =
         typeof originState?.origin === 'string'
@@ -501,6 +503,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
             sessionStorageEntries,
           }
         );
+        loadedCount += 1;
       } catch (error) {
         this.browser_session.logger.debug(
           `[StorageStateWatchdog] Failed to apply origin storage for ${redactUrlForLogging(
@@ -515,6 +518,7 @@ export class StorageStateWatchdog extends BaseWatchdog {
         }
       }
     }
+    return loadedCount;
   }
 
   private _getOriginDenialReason(origin: string): string | null {

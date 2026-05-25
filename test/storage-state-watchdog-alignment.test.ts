@@ -246,7 +246,7 @@ describe('storage state watchdog alignment', () => {
       const loadedEvent = loadedCall?.[0] as StorageStateLoadedEvent;
       expect(loadedEvent.path).toBe(path.resolve(storagePath));
       expect(loadedEvent.cookies_count).toBe(1);
-      expect(loadedEvent.origins_count).toBe(1);
+      expect(loadedEvent.origins_count).toBe(0);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -356,6 +356,7 @@ describe('storage state watchdog alignment', () => {
         new StorageStateWatchdog({ browser_session: session })
       );
 
+      const dispatchSpy = vi.spyOn(session.event_bus, 'dispatch');
       await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
 
       expect(newPage).toHaveBeenCalledTimes(1);
@@ -378,6 +379,12 @@ describe('storage state watchdog alignment', () => {
         { name: 'sid', value: 'xyz' },
       ]);
       expect(close).toHaveBeenCalledTimes(1);
+
+      const loadedCall = dispatchSpy.mock.calls.find(
+        ([event]) => event instanceof StorageStateLoadedEvent
+      );
+      const loadedEvent = loadedCall?.[0] as StorageStateLoadedEvent;
+      expect(loadedEvent.origins_count).toBe(1);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -422,9 +429,15 @@ describe('storage state watchdog alignment', () => {
         new StorageStateWatchdog({ browser_session: session })
       );
 
+      const dispatchSpy = vi.spyOn(session.event_bus, 'dispatch');
       await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
 
       expect(newPage).not.toHaveBeenCalled();
+      const loadedCall = dispatchSpy.mock.calls.find(
+        ([event]) => event instanceof StorageStateLoadedEvent
+      );
+      const loadedEvent = loadedCall?.[0] as StorageStateLoadedEvent;
+      expect(loadedEvent.origins_count).toBe(0);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -539,6 +552,7 @@ describe('storage state watchdog alignment', () => {
         new StorageStateWatchdog({ browser_session: session })
       );
 
+      const dispatchSpy = vi.spyOn(session.event_bus, 'dispatch');
       await session.event_bus.dispatch_or_throw(new LoadStorageStateEvent());
 
       expect(newPage).toHaveBeenCalledTimes(1);
@@ -552,6 +566,11 @@ describe('storage state watchdog alignment', () => {
       });
       expect(evaluate).not.toHaveBeenCalled();
       expect(close).toHaveBeenCalledTimes(1);
+      const loadedCall = dispatchSpy.mock.calls.find(
+        ([event]) => event instanceof StorageStateLoadedEvent
+      );
+      const loadedEvent = loadedCall?.[0] as StorageStateLoadedEvent;
+      expect(loadedEvent.origins_count).toBe(0);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
