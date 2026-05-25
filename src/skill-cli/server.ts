@@ -1,4 +1,4 @@
-import { promises as fsp } from 'node:fs';
+import fs, { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { Request, Response } from './protocol.js';
 import { SessionRegistry } from './sessions.js';
@@ -25,6 +25,20 @@ const normalizeCookieDomain = (value: string | null | undefined) =>
     .trim()
     .replace(/^\./, '')
     .toLowerCase();
+
+const chmodPrivateFile = (filePath: string) => {
+  if (process.platform !== 'win32') {
+    fs.chmodSync(filePath, 0o600);
+  }
+};
+
+const writePrivateJsonFile = async (filePath: string, data: unknown) => {
+  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+  chmodPrivateFile(filePath);
+};
 
 const parseCookieHostname = (url: string | null | undefined) => {
   const value = String(url ?? '').trim();
@@ -638,7 +652,7 @@ export class SkillCliServer {
           )
         : allCookies;
       const filePath = path.resolve(file);
-      await fsp.writeFile(filePath, JSON.stringify(cookies, null, 2));
+      await writePrivateJsonFile(filePath, cookies);
       return { file: filePath, count: cookies.length };
     }
 

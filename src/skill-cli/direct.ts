@@ -285,6 +285,13 @@ export const clear_direct_state = (state_file: string = DIRECT_STATE_FILE) => {
   fs.rmSync(state_file, { force: true });
 };
 
+const writePrivateFile = (filePath: string, contents: string) => {
+  fs.writeFileSync(filePath, contents, { encoding: 'utf8', mode: 0o600 });
+  if (process.platform !== 'win32') {
+    fs.chmodSync(filePath, 0o600);
+  }
+};
+
 const cleanupOwnedDirectUserDataDir = (state: DirectModeState) => {
   if (!state.owns_user_data_dir || !state.user_data_dir) {
     return;
@@ -1143,7 +1150,7 @@ export const run_direct_command = async (
           ? allCookies.filter((cookie) => cookieMatchesUrl(cookie, url))
           : allCookies;
         const outputPath = path.resolve(file);
-        fs.writeFileSync(outputPath, JSON.stringify(cookies, null, 2), 'utf8');
+        writePrivateFile(outputPath, JSON.stringify(cookies, null, 2));
         writeLine(
           environment.stdout,
           `Exported ${cookies.length} cookies to ${outputPath}`

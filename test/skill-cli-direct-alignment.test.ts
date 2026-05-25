@@ -904,6 +904,9 @@ describe('skill-cli direct alignment', () => {
       ]);
       expect(browserContext.clearCookies).toHaveBeenCalledTimes(1);
       expect(fs.existsSync(cookieFile)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(cookieFile).mode & 0o777).toBe(0o600);
+      }
       expect(stdout.read()).toContain('"count": 1');
       expect(JSON.parse(fs.readFileSync(cookieFile, 'utf8'))).toEqual([
         expect.objectContaining({ name: 'sid' }),

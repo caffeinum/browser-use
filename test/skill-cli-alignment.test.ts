@@ -273,6 +273,9 @@ describe('skill-cli alignment', () => {
       expect((cookiesGet.data as any).count).toBe(3);
       expect(cookiesExport.success).toBe(true);
       expect(fs.existsSync(cookiesPath)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(cookiesPath).mode & 0o777).toBe(0o600);
+      }
       expect(JSON.parse(fs.readFileSync(cookiesPath, 'utf8'))).toEqual([
         expect.objectContaining({ name: 'sid' }),
       ]);
