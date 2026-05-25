@@ -2961,6 +2961,11 @@ export class BrowserSession {
         completedUrl = normalize_url(settledUrl);
       } catch (error) {
         if (this._isAbortError(error)) {
+          const disallowedPageError =
+            await this._get_disallowed_page_error_after_navigation_error(page);
+          if (disallowedPageError) {
+            throw disallowedPageError;
+          }
           throw error;
         }
         if (error instanceof URLNotAllowedError) {
@@ -3054,9 +3059,7 @@ export class BrowserSession {
         completedUrl = normalize_url(settledUrl);
       }
     } catch (error) {
-      if (this._isAbortError(error)) {
-        throw error;
-      }
+      const isAbortError = this._isAbortError(error);
       let finalError: unknown = error;
       if (!(finalError instanceof URLNotAllowedError)) {
         finalError =
@@ -3110,6 +3113,9 @@ export class BrowserSession {
       this._syncSessionManagerFromTabs();
       this.cachedBrowserState = null;
       if (isUrlNotAllowed) {
+        throw finalError;
+      }
+      if (isAbortError) {
         throw finalError;
       }
       throw new BrowserError(message);

@@ -1335,6 +1335,43 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back aborted same-tab navigations that reached disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'about:blank';
+    const abortError = new Error('Operation aborted');
+    abortError.name = 'AbortError';
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        if (url === 'about:blank') {
+          pageUrl = 'about:blank';
+          return;
+        }
+        pageUrl = 'https://evil.test/aborted';
+        throw abortError;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Blocked Page'),
+    } as any;
+
+    session.update_current_page(fakePage, 'about:blank', 'about:blank');
+    (session as any).initialized = true;
+
+    await expect(
+      session.navigate_to('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+    expect(pageUrl).toBe('about:blank');
+  });
+
   it('tracks final URL and title after navigation redirects', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
@@ -2203,6 +2240,47 @@ esac
     expect(failingPage.close).toHaveBeenCalledTimes(1);
   });
 
+  it('create_new_tab restores previous tab on aborted navigation', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    const abortError = new Error('Operation aborted');
+    abortError.name = 'AbortError';
+    const existingPage = {
+      url: vi.fn(() => 'https://current.test'),
+      title: vi.fn(async () => 'Current'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const abortingPage = {
+      goto: vi.fn(async () => {
+        throw abortError;
+      }),
+      close: vi.fn(async () => {}),
+      url: vi.fn(() => 'about:blank'),
+    } as any;
+
+    session.update_current_page(
+      existingPage,
+      'Current',
+      'https://current.test'
+    );
+    (session as any).browser_context = {
+      newPage: vi.fn(async () => abortingPage),
+      pages: vi.fn(() => [existingPage]),
+    } as any;
+    (session as any).initialized = true;
+
+    await expect(
+      session.create_new_tab('https://slow.test')
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(session.tabs).toHaveLength(1);
+    expect(session.active_tab?.url).toBe('https://current.test');
+    expect(abortingPage.close).toHaveBeenCalledTimes(1);
+  });
+
   it('create_new_tab records redirected final URL in tab state and events', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
@@ -2709,6 +2787,63 @@ esac
     expect(newPage.close).toHaveBeenCalledTimes(1);
     expect(session.tabs).toHaveLength(1);
     expect(session.active_tab?.url).toBe('https://example.com/current');
+  });
+
+  it('closes aborted new tabs that already reached disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    const abortError = new Error('Operation aborted');
+    abortError.name = 'AbortError';
+    let newPageUrl = 'about:blank';
+    const existingPage = {
+      url: vi.fn(() => 'https://example.com/current'),
+      title: vi.fn(async () => 'Current'),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+    const newPage = {
+      goto: vi.fn(async (url: string) => {
+        if (url === 'about:blank') {
+          newPageUrl = 'about:blank';
+          return;
+        }
+        newPageUrl = 'https://evil.test/aborted';
+        throw abortError;
+      }),
+      url: vi.fn(() => newPageUrl),
+      title: vi.fn(async () => 'Redirected'),
+      close: vi.fn(async () => {}),
+      on: vi.fn(),
+      off: vi.fn(),
+    } as any;
+
+    session.update_current_page(
+      existingPage,
+      'Current',
+      'https://example.com/current'
+    );
+    (session as any).browser_context = {
+      newPage: vi.fn(async () => newPage),
+      pages: vi.fn(() => [existingPage, newPage]),
+    } as any;
+    (session as any).initialized = true;
+
+    await expect(
+      session.create_new_tab('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(newPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(newPage.close).toHaveBeenCalledTimes(1);
+    expect(session.tabs).toHaveLength(1);
+    expect(session.active_tab?.url).toBe('https://example.com/current');
+    expect(newPageUrl).toBe('about:blank');
   });
 
   it('aborts browser state capture when signal is already aborted', async () => {
