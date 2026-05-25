@@ -96,7 +96,11 @@ export class Page {
     if (!page.setViewportSize) {
       return;
     }
-    await page.setViewportSize({ width, height });
+    try {
+      await page.setViewportSize({ width, height });
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async get_element_by_index(index: number) {

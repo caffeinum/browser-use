@@ -183,6 +183,38 @@ describe('actor alignment', () => {
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('rolls back disallowed navigations from viewport changes', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/start';
+    const rawPage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      setViewportSize: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-viewport?token=secret';
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+
+    const page = new Page(session);
+
+    await expect(page.set_viewport_size(800, 600)).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('rolls back disallowed navigations from Element.evaluate', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
