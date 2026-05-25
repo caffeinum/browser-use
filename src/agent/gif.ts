@@ -15,6 +15,17 @@ type CompatibleCanvasContext =
 
 const logger = createLogger('browser_use.agent.gif');
 
+const chmodPrivateFile = (filePath: string) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    /* best effort */
+  }
+};
+
 export const decode_unicode_escapes_to_utf8 = (text: string) => {
   if (!text.includes('\\u')) {
     return text;
@@ -317,7 +328,10 @@ export const create_history_gif = async (
   await fs.promises.mkdir(path.dirname(path.resolve(output_path)), {
     recursive: true,
   });
-  const writeStream = fs.createWriteStream(path.resolve(output_path));
+  const resolvedOutputPath = path.resolve(output_path);
+  const writeStream = fs.createWriteStream(resolvedOutputPath, {
+    mode: 0o600,
+  });
   encoder.createReadStream().pipe(writeStream);
   encoder.start();
   encoder.setRepeat(0);
@@ -389,5 +403,6 @@ export const create_history_gif = async (
     writeStream.on('finish', resolve);
     writeStream.on('error', reject);
   });
+  chmodPrivateFile(resolvedOutputPath);
   logger.info(`Created GIF at ${output_path}`);
 };

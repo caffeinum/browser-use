@@ -86,6 +86,17 @@ type BaseChatModel = {
 const DEFAULT_WAIT_OFFSET = 1;
 const MAX_WAIT_SECONDS = 30;
 
+const chmodPrivateFile = async (filePath: string) => {
+  if (process.platform !== 'win32') {
+    await fsp.chmod(filePath, 0o600);
+  }
+};
+
+const writePrivateBinaryFile = async (filePath: string, data: Buffer) => {
+  await fsp.writeFile(filePath, data, { mode: 0o600 });
+  await chmodPrivateFile(filePath);
+};
+
 export interface ControllerOptions<Context = unknown> {
   exclude_actions?: string[];
   output_model?: z.ZodTypeAny | null;
@@ -2510,7 +2521,10 @@ You will be given a query and the markdown of a webpage that has been filtered t
         }
         fileName = FileSystem.sanitize_filename(fileName);
         const filePath = path.join(fsInstance.get_dir(), fileName);
-        await fsp.writeFile(filePath, Buffer.from(screenshotB64, 'base64'));
+        await writePrivateBinaryFile(
+          filePath,
+          Buffer.from(screenshotB64, 'base64')
+        );
         const msg = `📸 Saved screenshot to ${filePath}`;
         return new ActionResult({
           extracted_content: msg,
@@ -2607,7 +2621,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         fsInstance.get_dir(),
         fileName
       );
-      await fsp.writeFile(filePath, Buffer.from(pdfData, 'base64'));
+      await writePrivateBinaryFile(filePath, Buffer.from(pdfData, 'base64'));
       const fileSize = (await fsp.stat(filePath)).size;
       const baseName = path.basename(filePath);
       const msg = `Saved page as PDF: ${baseName} (${fileSize.toLocaleString()} bytes)`;

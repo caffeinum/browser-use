@@ -1671,6 +1671,9 @@ describe('BrowserSession PDF Auto Download', () => {
 
       expect(downloadedPath).toBeTruthy();
       expect(fs.existsSync(downloadedPath!)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(downloadedPath!).mode & 0o777).toBe(0o600);
+      }
       expect(session.get_downloaded_files()).toContain(downloadedPath);
     } finally {
       fs.rmSync(downloadsDir, { recursive: true, force: true });

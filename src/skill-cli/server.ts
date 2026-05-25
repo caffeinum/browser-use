@@ -40,6 +40,11 @@ const writePrivateJsonFile = async (filePath: string, data: unknown) => {
   chmodPrivateFile(filePath);
 };
 
+const writePrivateBinaryFile = async (filePath: string, data: Buffer) => {
+  await fsp.writeFile(filePath, data, { mode: 0o600 });
+  chmodPrivateFile(filePath);
+};
+
 const parseCookieHostname = (url: string | null | undefined) => {
   const value = String(url ?? '').trim();
   if (!value) {
@@ -353,7 +358,7 @@ export class SkillCliServer {
       }
 
       const filePath = path.resolve(file);
-      await fsp.writeFile(filePath, Buffer.from(screenshot, 'base64'));
+      await writePrivateBinaryFile(filePath, Buffer.from(screenshot, 'base64'));
       return { file: filePath };
     }
 

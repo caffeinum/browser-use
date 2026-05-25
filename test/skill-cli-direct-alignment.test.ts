@@ -792,6 +792,57 @@ describe('skill-cli direct alignment', () => {
     }
   });
 
+  it('saves direct screenshots as private files', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-direct-shot-')
+    );
+    const stateFile = path.join(tempDir, 'state.json');
+    const screenshotPath = path.join(tempDir, 'capture.png');
+    const stdout = createWritable();
+    const stderr = createWritable();
+    const session = {
+      start: vi.fn(async () => {}),
+      take_screenshot: vi.fn(async () =>
+        Buffer.from('fake-png').toString('base64')
+      ),
+      get_current_page: vi.fn(async () => ({
+        url: () => 'https://example.com',
+      })),
+      event_bus: { stop: vi.fn(async () => {}) },
+      detach_all_watchdogs: vi.fn(),
+    };
+
+    save_direct_state(
+      {
+        mode: 'local',
+        cdp_url: 'http://127.0.0.1:9222',
+        active_url: 'https://example.com',
+      },
+      stateFile
+    );
+
+    try {
+      const exitCode = await run_direct_command(
+        ['screenshot', screenshotPath],
+        {
+          state_file: stateFile,
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          session_factory: () => session as any,
+        }
+      );
+
+      expect(exitCode).toBe(0);
+      expect(fs.existsSync(screenshotPath)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(screenshotPath).mode & 0o777).toBe(0o600);
+      }
+      expect(stderr.read()).toBe('');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('supports direct-mode cookie commands', async () => {
     const tempDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browser-use-direct-')

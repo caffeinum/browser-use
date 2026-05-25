@@ -292,6 +292,13 @@ const writePrivateFile = (filePath: string, contents: string) => {
   }
 };
 
+const writePrivateBufferFile = (filePath: string, contents: Buffer) => {
+  fs.writeFileSync(filePath, contents, { mode: 0o600 });
+  if (process.platform !== 'win32') {
+    fs.chmodSync(filePath, 0o600);
+  }
+};
+
 const cleanupOwnedDirectUserDataDir = (state: DirectModeState) => {
   if (!state.owns_user_data_dir || !state.user_data_dir) {
     return;
@@ -935,7 +942,7 @@ export const run_direct_command = async (
       }
       const bytes = Buffer.from(screenshot, 'base64');
       if (outputPath) {
-        fs.writeFileSync(outputPath, bytes);
+        writePrivateBufferFile(outputPath, bytes);
         writeLine(
           environment.stdout,
           `Screenshot saved to ${outputPath} (${bytes.length} bytes)`

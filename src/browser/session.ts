@@ -5348,7 +5348,7 @@ export class BrowserSession {
         return null;
       }
 
-      await fs.promises.mkdir(downloadsPath, { recursive: true });
+      ensurePrivateDirectoryIfCreated(downloadsPath);
       const uniqueFilename = await BrowserSession.get_unique_filename(
         downloadsPath,
         pdfFilename
@@ -5357,8 +5357,10 @@ export class BrowserSession {
 
       await fs.promises.writeFile(
         downloadPath,
-        Buffer.from(downloadResult.data)
+        Buffer.from(downloadResult.data),
+        { mode: 0o600 }
       );
+      chmodPrivateFileBestEffort(downloadPath);
       this.add_downloaded_file(downloadPath);
 
       const cacheStatus = downloadResult.fromCache

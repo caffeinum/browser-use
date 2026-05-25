@@ -2382,6 +2382,11 @@ describe('Regression Coverage', () => {
       expect(result.attachments).toHaveLength(1);
       expect(result.attachments?.[0]).toContain('capture.png');
       expect(fs.existsSync(result.attachments?.[0] as string)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(
+          fs.statSync(result.attachments?.[0] as string).mode & 0o777
+        ).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -2427,6 +2432,11 @@ describe('Regression Coverage', () => {
       expect(result.error).toBeNull();
       expect(result.attachments?.[0]).toContain('capture-from-event.png');
       expect(fs.existsSync(result.attachments?.[0] as string)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(
+          fs.statSync(result.attachments?.[0] as string).mode & 0o777
+        ).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -2481,6 +2491,11 @@ describe('Regression Coverage', () => {
       expect(result.attachments).toHaveLength(1);
       expect(result.attachments?.[0]).toMatch(/My-Screenshot\.png$/);
       expect(fs.existsSync(result.attachments?.[0] as string)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(
+          fs.statSync(result.attachments?.[0] as string).mode & 0o777
+        ).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -2526,6 +2541,11 @@ describe('Regression Coverage', () => {
       expect(result.attachments).toHaveLength(1);
       expect(result.attachments?.[0]).toMatch(/Quarterly-Report \(1\)\.pdf$/);
       expect(fs.existsSync(result.attachments?.[0] as string)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(
+          fs.statSync(result.attachments?.[0] as string).mode & 0o777
+        ).toBe(0o600);
+      }
       expect(result.extracted_content).toContain(
         'Saved page as PDF: Quarterly-Report (1).pdf'
       );

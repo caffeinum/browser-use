@@ -337,6 +337,9 @@ describe('skill-cli alignment', () => {
       expect(saved.success).toBe(true);
       expect((saved.data as any).file).toBe(screenshotPath);
       expect(fs.existsSync(screenshotPath)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(screenshotPath).mode & 0o777).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
