@@ -5864,6 +5864,7 @@ export class BrowserSession {
       url === 'about:blank' ||
       url === 'about:newtab' ||
       url === 'chrome://newtab/' ||
+      url === 'chrome://newtab' ||
       url === 'chrome://new-tab-page/' ||
       url === 'chrome://new-tab-page'
     );

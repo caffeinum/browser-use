@@ -16,6 +16,17 @@ describe('Allowed Domains Security', () => {
     expect(isAllowed).toBe(false);
   });
 
+  it('allows chrome new-tab URL variants under domain restrictions', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['example.com'],
+      }),
+    });
+
+    expect((session as any)._is_url_allowed('chrome://newtab')).toBe(true);
+    expect((session as any)._is_url_allowed('chrome://newtab/')).toBe(true);
+  });
+
   it('defaults to https-only matching when no scheme is specified', () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
