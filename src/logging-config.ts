@@ -75,7 +75,12 @@ const writePayload = (
 };
 
 const ensureFilePathReady = (filePath: string) => {
-  fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });
+  const dirPath = path.dirname(path.resolve(filePath));
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed && process.platform !== 'win32') {
+    fs.chmodSync(dirPath, 0o700);
+  }
 };
 
 const createPrivateLogStream = (filePath: string) => {

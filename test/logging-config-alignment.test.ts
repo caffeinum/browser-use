@@ -39,7 +39,8 @@ describe('logging config alignment', () => {
 
   it('writes debug logs to file while keeping console filtered at info level', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'browser-use-logs-'));
-    const debugFile = path.join(tempDir, 'debug.log');
+    const logDir = path.join(tempDir, 'nested');
+    const debugFile = path.join(logDir, 'debug.log');
     process.env.BROWSER_USE_DEBUG_LOG_FILE = debugFile;
     process.env.BROWSER_USE_LOGGING_LEVEL = 'info';
 
@@ -64,6 +65,7 @@ describe('logging config alignment', () => {
     expect(debugOutput).toContain('debug-only-message');
     expect(debugOutput).toContain('info-message');
     if (process.platform !== 'win32') {
+      expect(fs.statSync(logDir).mode & 0o777).toBe(0o700);
       expect(fs.statSync(debugFile).mode & 0o777).toBe(0o600);
     }
 
