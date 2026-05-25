@@ -193,10 +193,15 @@ describe('Agent variable alignment', () => {
     expect(serialized.history[0].model_output.action[0].input.text).toBe(
       '<secret>password</secret>'
     );
-    expect(serialized.history[0].result[0].extracted_content).toBe(password);
+    expect(serialized.history[0].result[0].extracted_content).toBe(
+      '<secret>password</secret>'
+    );
     expect(
       serialized.history[1].model_output.action[0].search_google.query
-    ).toBe(password);
+    ).toBe('<secret>password</secret>');
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(historyPath).mode & 0o777).toBe(0o600);
+    }
 
     fs.rmSync(tempDir, { recursive: true, force: true });
   });

@@ -25,6 +25,12 @@ export interface StructuredOutputParser<T = unknown> {
   schema?: unknown;
 }
 
+const chmodPrivateFile = (filePath: string) => {
+  if (process.platform !== 'win32') {
+    fs.chmodSync(filePath, 0o600);
+  }
+};
+
 const parseStructuredOutput = <T>(
   schema: StructuredOutputParser<T> | null | undefined,
   value: string
@@ -811,22 +817,8 @@ export class AgentHistory {
       string | Record<string, string>
     > | null = null
   ) {
-    let modelOutput = this.model_output?.toJSON() ?? null;
-    if (
-      modelOutput &&
-      Array.isArray((modelOutput as any).action) &&
-      sensitive_data
-    ) {
-      (modelOutput as any).action = (modelOutput as any).action.map(
-        (action: Record<string, unknown>) =>
-          Object.prototype.hasOwnProperty.call(action, 'input')
-            ? AgentHistory._filterSensitiveDataFromDict(action, sensitive_data)
-            : action
-      );
-    }
-
-    return {
-      model_output: modelOutput,
+    const payload = {
+      model_output: this.model_output?.toJSON() ?? null,
       result: this.result.map((r) => r.toJSON()),
       state: this.state.to_dict(),
       metadata: this.metadata
@@ -839,6 +831,9 @@ export class AgentHistory {
         : null,
       state_message: this.state_message,
     };
+    return sensitive_data
+      ? AgentHistory._filterSensitiveDataFromDict(payload, sensitive_data)
+      : payload;
   }
 }
 
@@ -1157,8 +1152,9 @@ export class AgentHistoryList<TStructured = unknown> {
     fs.writeFileSync(
       filepath,
       JSON.stringify(this.toJSON(sensitive_data), null, 2),
-      'utf-8'
+      { encoding: 'utf-8', mode: 0o600 }
     );
+    chmodPrivateFile(filepath);
   }
 
   static load_from_file(
