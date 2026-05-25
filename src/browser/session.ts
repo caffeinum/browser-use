@@ -6298,6 +6298,8 @@ export class BrowserSession {
       this.logger.debug(
         `Failed to remove highlights: ${(error as Error).message}`
       );
+    } finally {
+      await this.validate_page_after_action(page);
     }
   }
 

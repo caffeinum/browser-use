@@ -2516,6 +2516,57 @@ esac
     expect(legacyStyled.style.border).toBe('');
   });
 
+  it('rolls back disallowed navigations from highlight cleanup callbacks', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/start';
+    const previousWindow = (globalThis as any).window;
+    const previousDocument = (globalThis as any).document;
+    const fakeWindow = {
+      _highlightCleanupFunctions: [
+        () => {
+          pageUrl = 'https://evil.test/from-highlight-cleanup?token=secret';
+        },
+      ],
+    } as any;
+    const fakeDocument = {
+      querySelectorAll: vi.fn(() => []),
+    } as any;
+    const fakePage = {
+      evaluate: vi.fn(async (callback: () => void) => {
+        (globalThis as any).window = fakeWindow;
+        (globalThis as any).document = fakeDocument;
+        try {
+          callback();
+        } finally {
+          (globalThis as any).window = previousWindow;
+          (globalThis as any).document = previousDocument;
+        }
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+
+    session.update_current_page(fakePage, 'Start', 'https://example.com/start');
+
+    await expect(session.remove_highlights()).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('forwards full_page screenshots to CDP captureBeyondViewport', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
