@@ -391,6 +391,36 @@ describe('Agent constructor browser session alignment', () => {
     await agent.close();
   });
 
+  it('redacts sensitive_data in step error logs', async () => {
+    const agent = new Agent({
+      task: 'step error secret redaction',
+      llm: createLlm(),
+      max_failures: 1,
+      sensitive_data: {
+        password: 'super-secret-value',
+      },
+    });
+    const errorSpy = vi
+      .spyOn((agent as any).logger, 'error')
+      .mockImplementation(() => {});
+    const warningSpy = vi
+      .spyOn((agent as any).logger, 'warning')
+      .mockImplementation(() => {});
+
+    await (agent as any)._handle_step_error(
+      new Error('failed with super-secret-value')
+    );
+
+    const logs = [...errorSpy.mock.calls, ...warningSpy.mock.calls]
+      .map(([message]) => String(message))
+      .join('\n');
+    expect(logs).not.toContain('super-secret-value');
+    expect(logs).toContain('<secret>password</secret>');
+    expect(agent.state.last_result?.[0]?.error).toContain('super-secret-value');
+
+    await agent.close();
+  });
+
   it('uses InterruptedError semantics for stop/pause guards and step-error handling (python c011 parity)', async () => {
     const agent = new Agent({
       task: 'interrupted guard semantics',
@@ -2124,6 +2154,43 @@ describe('Agent constructor browser session alignment', () => {
     ).toBe(true);
     expect(infoSpy).toHaveBeenCalledWith('👉 Attachment 1: /tmp/a.txt');
     expect(infoSpy).toHaveBeenCalledWith('👉 Attachment 2: /tmp/b.txt');
+
+    await agent.close();
+  });
+
+  it('redacts sensitive_data in startup and final-result logs', async () => {
+    const agent = new Agent({
+      task: 'login with super-secret-value',
+      llm: createLlm(),
+      sensitive_data: {
+        password: 'super-secret-value',
+      },
+    });
+
+    agent.browser_session = {} as any;
+    vi.spyOn(agent as any, '_check_and_update_downloads').mockResolvedValue(
+      undefined
+    );
+    vi.spyOn(agent as any, '_update_loop_detector_actions').mockImplementation(
+      () => {}
+    );
+    agent.state.last_result = [
+      new ActionResult({
+        is_done: true,
+        success: true,
+        extracted_content: 'finished with super-secret-value',
+      }),
+    ];
+
+    const infoSpy = vi.spyOn(agent.logger, 'info');
+    await (agent as any)._log_agent_run();
+    await (agent as any)._post_process();
+
+    const logs = infoSpy.mock.calls
+      .map(([message]) => String(message))
+      .join('\n');
+    expect(logs).not.toContain('super-secret-value');
+    expect(logs).toContain('<secret>password</secret>');
 
     await agent.close();
   });

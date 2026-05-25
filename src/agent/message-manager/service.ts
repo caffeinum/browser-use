@@ -11,6 +11,7 @@ import {
   AgentOutput,
   AgentStepInfo,
   MessageCompactionSettings,
+  redactSensitiveDataFromString,
 } from '../views.js';
 import { BrowserStateSummary } from '../../browser/views.js';
 import { FileSystem } from '../../filesystem/file-system.js';
@@ -507,28 +508,8 @@ export class MessageManager {
       return message;
     }
 
-    const replaceSensitive = (value: string) => {
-      const placeholders: Record<string, string> = {};
-      for (const [keyOrDomain, content] of Object.entries(
-        this.sensitiveData!
-      )) {
-        if (content && typeof content === 'object' && !Array.isArray(content)) {
-          for (const [k, v] of Object.entries(content)) {
-            if (v) placeholders[k] = v;
-          }
-        } else if (typeof content === 'string') {
-          placeholders[keyOrDomain] = content;
-        }
-      }
-      if (!Object.keys(placeholders).length) {
-        return value;
-      }
-      let updated = value;
-      for (const [key, val] of Object.entries(placeholders)) {
-        updated = updated.replaceAll(val, `<secret>${key}</secret>`);
-      }
-      return updated;
-    };
+    const replaceSensitive = (value: string) =>
+      redactSensitiveDataFromString(value, this.sensitiveData ?? null);
 
     if (typeof message.content === 'string') {
       message.content = replaceSensitive(message.content);

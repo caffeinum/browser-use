@@ -25,6 +25,43 @@ export interface StructuredOutputParser<T = unknown> {
   schema?: unknown;
 }
 
+type SensitiveDataMap = Record<string, string | Record<string, string>>;
+
+export const redactSensitiveDataFromString = (
+  value: string,
+  sensitive_data: SensitiveDataMap | null
+) => {
+  if (!sensitive_data) {
+    return value;
+  }
+
+  const placeholders: Record<string, string> = {};
+  for (const [keyOrDomain, content] of Object.entries(sensitive_data)) {
+    if (typeof content === 'string' && content) {
+      placeholders[keyOrDomain] = content;
+    } else if (content && typeof content === 'object') {
+      for (const [key, val] of Object.entries(content)) {
+        if (val) {
+          placeholders[key] = val;
+        }
+      }
+    }
+  }
+
+  const entries = Object.entries(placeholders).sort(
+    ([, left], [, right]) => right.length - left.length
+  );
+  if (!entries.length) {
+    return value;
+  }
+
+  let filtered = value;
+  for (const [key, secret] of entries) {
+    filtered = filtered.split(secret).join(`<secret>${key}</secret>`);
+  }
+  return filtered;
+};
+
 const chmodPrivateFile = (filePath: string) => {
   if (process.platform !== 'win32') {
     fs.chmodSync(filePath, 0o600);
@@ -741,40 +778,14 @@ export class AgentHistory {
 
   private static _filterSensitiveDataFromString(
     value: string,
-    sensitive_data: Record<string, string | Record<string, string>> | null
+    sensitive_data: SensitiveDataMap | null
   ) {
-    if (!sensitive_data) {
-      return value;
-    }
-
-    const placeholders: Record<string, string> = {};
-    for (const [keyOrDomain, content] of Object.entries(sensitive_data)) {
-      if (typeof content === 'string' && content) {
-        placeholders[keyOrDomain] = content;
-      } else if (content && typeof content === 'object') {
-        for (const [key, val] of Object.entries(content)) {
-          if (val) {
-            placeholders[key] = val;
-          }
-        }
-      }
-    }
-
-    if (!Object.keys(placeholders).length) {
-      return value;
-    }
-
-    let filtered = value;
-    for (const [key, secret] of Object.entries(placeholders)) {
-      filtered = filtered.split(secret).join(`<secret>${key}</secret>`);
-    }
-    return filtered;
+    return redactSensitiveDataFromString(value, sensitive_data);
   }
 
-  private static _filterSensitiveDataFromDict(
-    data: Record<string, unknown>,
-    sensitive_data: Record<string, string | Record<string, string>> | null
-  ): Record<string, unknown> {
+  private static _filterSensitiveDataFromDict<
+    T extends Record<string, unknown>,
+  >(data: T, sensitive_data: SensitiveDataMap | null): T {
     if (!sensitive_data) {
       return data;
     }
@@ -808,7 +819,7 @@ export class AgentHistory {
         filtered[key] = value;
       }
     }
-    return filtered;
+    return filtered as T;
   }
 
   toJSON(

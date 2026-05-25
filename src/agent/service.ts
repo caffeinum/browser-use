@@ -78,6 +78,7 @@ import {
   MessageCompactionSettings,
   defaultMessageCompactionSettings,
   normalizeMessageCompactionSettings,
+  redactSensitiveDataFromString,
 } from './views.js';
 import type { StructuredOutputParser } from './views.js';
 import {
@@ -117,30 +118,37 @@ const URL_PATTERN =
 export const log_response = (
   response: AgentOutput,
   registry?: Controller<any>,
-  logInstance = logger
+  logInstance = logger,
+  sensitive_data: Record<string, string | Record<string, string>> | null = null
 ) => {
+  const redact = (value: string) =>
+    redactSensitiveDataFromString(value, sensitive_data);
+
   if (response.current_state.thinking) {
-    logInstance.debug(`💡 Thinking:\n${response.current_state.thinking}`);
+    logInstance.debug(
+      `💡 Thinking:\n${redact(response.current_state.thinking)}`
+    );
   }
 
   const evalGoal = response.current_state.evaluation_previous_goal;
   if (evalGoal) {
+    const redactedEvalGoal = redact(evalGoal);
     if (evalGoal.toLowerCase().includes('success')) {
-      logInstance.info(`  \x1b[32m👍 Eval: ${evalGoal}\x1b[0m`);
+      logInstance.info(`  \x1b[32m👍 Eval: ${redactedEvalGoal}\x1b[0m`);
     } else if (evalGoal.toLowerCase().includes('failure')) {
-      logInstance.info(`  \x1b[31m⚠️ Eval: ${evalGoal}\x1b[0m`);
+      logInstance.info(`  \x1b[31m⚠️ Eval: ${redactedEvalGoal}\x1b[0m`);
     } else {
-      logInstance.info(`  ❔ Eval: ${evalGoal}`);
+      logInstance.info(`  ❔ Eval: ${redactedEvalGoal}`);
     }
   }
 
   if (response.current_state.memory) {
-    logInstance.info(`  🧠 Memory: ${response.current_state.memory}`);
+    logInstance.info(`  🧠 Memory: ${redact(response.current_state.memory)}`);
   }
 
   const nextGoal = response.current_state.next_goal;
   if (nextGoal) {
-    logInstance.info(`  \x1b[34m🎯 Next goal: ${nextGoal}\x1b[0m`);
+    logInstance.info(`  \x1b[34m🎯 Next goal: ${redact(nextGoal)}\x1b[0m`);
   }
 };
 
@@ -540,6 +548,10 @@ export class Agent<
   private skill_service: SkillService | null = null;
   private _skills_registered = false;
 
+  private _redactSensitiveText(value: string) {
+    return redactSensitiveDataFromString(value, this.sensitive_data ?? null);
+  }
+
   constructor(params: AgentConstructorParams<Context, AgentStructuredOutput>) {
     const {
       task,
@@ -757,7 +769,7 @@ export class Agent<
       if (extractedUrl) {
         this.initial_url = extractedUrl;
         this.logger.info(
-          `🔗 Found URL in task: ${extractedUrl}, adding as initial action...`
+          `🔗 Found URL in task: ${this._redactSensitiveText(extractedUrl)}, adding as initial action...`
         );
         resolvedInitialActions = [
           { go_to_url: { url: extractedUrl, new_tab: false } },
@@ -1808,7 +1820,7 @@ export class Agent<
         }
         if (shouldExclude) {
           this.logger.debug(
-            `Excluding URL with file extension from auto-navigation: ${url}`
+            `Excluding URL with file extension from auto-navigation: ${this._redactSensitiveText(url)}`
           );
           continue;
         }
@@ -1819,7 +1831,7 @@ export class Agent<
           .toLowerCase();
         if (excludedWords.some((word) => contextText.includes(word))) {
           this.logger.debug(
-            `Excluding URL with word in excluded words from auto-navigation: ${url} (context: "${contextText.trim()}")`
+            `Excluding URL with word in excluded words from auto-navigation: ${this._redactSensitiveText(url)} (context: "${this._redactSensitiveText(contextText.trim())}")`
           );
           continue;
         }
@@ -1927,9 +1939,9 @@ export class Agent<
 
       const paramStr =
         paramSummary.length > 0 ? `(${paramSummary.join(', ')})` : '';
-      actionDetails.push(`${actionName}${paramStr}`);
+      actionDetails.push(this._redactSensitiveText(`${actionName}${paramStr}`));
       lastActionName = actionName;
-      lastParamStr = paramStr;
+      lastParamStr = this._redactSensitiveText(paramStr);
     }
 
     // Create summary based on single vs multi-action
@@ -2226,12 +2238,12 @@ export class Agent<
 
       return lines.join('\n');
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
       this.logger.error(
-        `Error getting unavailable skills info: ${
-          error instanceof Error
-            ? `${error.name}: ${error.message}`
-            : String(error)
-        }`
+        `Error getting unavailable skills info: ${this._redactSensitiveText(message)}`
       );
       return '';
     }
@@ -2444,7 +2456,9 @@ export class Agent<
 
           if (isTimeout) {
             const timeoutMessage = `Step ${currentStep + 1} timed out after ${this.settings.step_timeout} seconds`;
-            this.logger.error(`⏰ ${timeoutMessage}`);
+            this.logger.error(
+              `⏰ ${this._redactSensitiveText(timeoutMessage)}`
+            );
             this.state.consecutive_failures += 1;
             this.state.last_result = [
               new ActionResult({ error: timeoutMessage }),
@@ -2457,7 +2471,7 @@ export class Agent<
           }
 
           this.logger.error(
-            `❌ Unhandled step error at step ${currentStep + 1}: ${message}`
+            `❌ Unhandled step error at step ${currentStep + 1}: ${this._redactSensitiveText(message)}`
           );
           this.state.consecutive_failures += 1;
           this.state.last_result = [
@@ -2514,7 +2528,7 @@ export class Agent<
             null
           )
         );
-        this.logger.info(`❌ ${agent_run_error}`);
+        this.logger.info(`❌ ${this._redactSensitiveText(agent_run_error)}`);
       }
 
       this.logger.debug('📊 Collecting usage summary...');
@@ -2529,7 +2543,9 @@ export class Agent<
       return this.history;
     } catch (error) {
       agent_run_error = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Agent run failed with exception: ${agent_run_error}`);
+      this.logger.error(
+        `Agent run failed with exception: ${this._redactSensitiveText(agent_run_error)}`
+      );
       throw error;
     } finally {
       await this.token_cost_service.log_usage_summary();
@@ -2626,7 +2642,9 @@ export class Agent<
         if (signal?.aborted) {
           const message =
             error instanceof Error ? error.message : String(error);
-          this.logger.debug(`Step aborted before completion: ${message}`);
+          this.logger.debug(
+            `Step aborted before completion: ${this._redactSensitiveText(message)}`
+          );
         } else {
           await this._handle_step_error(error as Error);
         }
@@ -2762,7 +2780,7 @@ export class Agent<
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `📸 Failed to store screenshot for step ${this.state.n_steps}: ${message}`
+        `📸 Failed to store screenshot for step ${this.state.n_steps}: ${this._redactSensitiveText(message)}`
       );
       this._current_screenshot_path = null;
     }
@@ -2874,11 +2892,11 @@ export class Agent<
 
       if (success) {
         this.logger.info(
-          `\n📄 \x1b[32m Final Result:\x1b[0m \n${renderedContent}\n\n`
+          `\n📄 \x1b[32m Final Result:\x1b[0m \n${this._redactSensitiveText(renderedContent)}\n\n`
         );
       } else {
         this.logger.info(
-          `\n📄 \x1b[31m Final Result:\x1b[0m \n${renderedContent}\n\n`
+          `\n📄 \x1b[31m Final Result:\x1b[0m \n${this._redactSensitiveText(renderedContent)}\n\n`
         );
       }
 
@@ -2974,7 +2992,7 @@ export class Agent<
 
         // Log action execution
         this.logger.info(
-          `☑️ Executed action ${i + 1}/${actions.length}: ${actionName}(${JSON.stringify(actionParams)})`
+          `☑️ Executed action ${i + 1}/${actions.length}: ${actionName}(${this._redactSensitiveText(JSON.stringify(actionParams))})`
         );
 
         // Break early if done, error, or last action
@@ -3026,7 +3044,9 @@ export class Agent<
         }
 
         if (isActionTimeoutError(error)) {
-          this.logger.error(`❌ Action ${i + 1} failed: ${error.message}`);
+          this.logger.error(
+            `❌ Action ${i + 1} failed: ${this._redactSensitiveText(error.message)}`
+          );
           results.push(new ActionResult({ error: error.message }));
           return results;
         }
@@ -3035,7 +3055,7 @@ export class Agent<
           const browserErrorResult = this._actionResultFromBrowserError(error);
           if (browserErrorResult) {
             this.logger.error(
-              `❌ Action ${i + 1} failed with BrowserError: ${error.toString()}`
+              `❌ Action ${i + 1} failed with BrowserError: ${this._redactSensitiveText(error.toString())}`
             );
             results.push(browserErrorResult);
             return results;
@@ -3050,14 +3070,16 @@ export class Agent<
         );
         if (registryTimeoutResult) {
           this.logger.error(
-            `❌ Action ${i + 1} failed: ${registryTimeoutResult.error}`
+            `❌ Action ${i + 1} failed: ${this._redactSensitiveText(registryTimeoutResult.error ?? '')}`
           );
           results.push(registryTimeoutResult);
           return results;
         }
 
         const message = this._formatActionExecutionError(error);
-        this.logger.error(`❌ Action ${i + 1} failed: ${message}`);
+        this.logger.error(
+          `❌ Action ${i + 1} failed: ${this._redactSensitiveText(message)}`
+        );
         results.push(new ActionResult({ error: message }));
         return results;
       }
@@ -3147,10 +3169,9 @@ export class Agent<
     try {
       screenshotB64 = await this.browser_session.take_screenshot(false);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warning(
-        `Failed to capture screenshot for rerun summary: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to capture screenshot for rerun summary: ${this._redactSensitiveText(message)}`
       );
     }
 
@@ -3197,7 +3218,9 @@ export class Agent<
           'Structured rerun summary response did not match expected schema'
         );
       }
-      this.logger.info(`Rerun Summary: ${summary.summary}`);
+      this.logger.info(
+        `Rerun Summary: ${this._redactSensitiveText(summary.summary)}`
+      );
       this.logger.info(
         `Rerun Status: ${summary.completion_status} (success=${summary.success})`
       );
@@ -3211,12 +3234,12 @@ export class Agent<
         )}`,
       });
     } catch (structuredError) {
+      const message =
+        structuredError instanceof Error
+          ? structuredError.message
+          : String(structuredError);
       this.logger.debug(
-        `Structured rerun summary failed: ${
-          structuredError instanceof Error
-            ? structuredError.message
-            : String(structuredError)
-        }, falling back to text response`
+        `Structured rerun summary failed: ${this._redactSensitiveText(message)}, falling back to text response`
       );
     }
 
@@ -3240,10 +3263,9 @@ export class Agent<
         )}`,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warning(
-        `Failed to generate rerun summary: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to generate rerun summary: ${this._redactSensitiveText(message)}`
       );
       return new ActionResult({
         is_done: true,
@@ -3313,10 +3335,9 @@ export class Agent<
         screenshotB64 =
           (await this.browser_session.take_screenshot?.(false)) ?? null;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.warning(
-          `Failed to capture screenshot for ai_step: ${
-            error instanceof Error ? error.message : String(error)
-          }`
+          `Failed to capture screenshot for ai_step: ${this._redactSensitiveText(message)}`
         );
       }
     }
@@ -3361,15 +3382,12 @@ export class Agent<
         long_term_memory: `Query: ${query}\nContent in ${fileName} and once in <read_state>.`,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warning(
-        `Failed to execute AI step: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to execute AI step: ${this._redactSensitiveText(message)}`
       );
       return new ActionResult({
-        error: `AI step failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        error: `AI step failed: ${message}`,
       });
     }
   }
@@ -3423,7 +3441,7 @@ export class Agent<
           }
         }
         this.logger.info(
-          `Replaying ${stepName} (${index + 1}/${history.history.length}) [${delaySource}]: ${goal}`
+          `Replaying ${stepName} (${index + 1}/${history.history.length}) [${delaySource}]: ${this._redactSensitiveText(goal)}`
         );
 
         const actions = historyItem.model_output?.action ?? [];
@@ -3447,7 +3465,7 @@ export class Agent<
               ? `${firstError.slice(0, 100)}...`
               : firstError;
           this.logger.warning(
-            `${stepName}: Original step had error(s), skipping (skip_failures=true): ${preview}`
+            `${stepName}: Original step had error(s), skipping (skip_failures=true): ${this._redactSensitiveText(preview)}`
           );
           results.push(
             new ActionResult({
@@ -3545,7 +3563,7 @@ export class Agent<
               const message = `${stepName} failed after ${max_retries} attempts: ${
                 errorMessage
               }`;
-              this.logger.error(message);
+              this.logger.error(this._redactSensitiveText(message));
               const failure = new ActionResult({ error: message });
               results.push(failure);
               if (!skip_failures) {
@@ -3665,7 +3683,7 @@ export class Agent<
         const extractLinks = Boolean(params.extract_links);
 
         this.logger.info(
-          `Using AI step for extract action: ${query.slice(0, 50)}...`
+          `Using AI step for extract action: ${this._redactSensitiveText(query.slice(0, 50))}...`
         );
         const aiResult = await this._execute_ai_step(
           query,
@@ -4062,10 +4080,9 @@ export class Agent<
       await this._sleep(0.3, signal);
       return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warning(
-        `Failed to re-open dropdown: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to re-open dropdown: ${this._redactSensitiveText(message)}`
       );
       return false;
     }
@@ -4144,7 +4161,7 @@ export class Agent<
           currentNode = node;
           matchLevel = 'XPATH';
           this.logger.info(
-            `Element matched at XPATH fallback: ${historicalElement.xpath}`
+            `Element matched at XPATH fallback: ${this._redactSensitiveText(historicalElement.xpath)}`
           );
           break;
         }
@@ -4164,7 +4181,7 @@ export class Agent<
           currentNode = node;
           matchLevel = 'AX_NAME';
           this.logger.info(
-            `Element matched at AX_NAME fallback: ${targetAxName}`
+            `Element matched at AX_NAME fallback: ${this._redactSensitiveText(targetAxName)}`
           );
           break;
         }
@@ -4186,7 +4203,7 @@ export class Agent<
             currentNode = node;
             matchLevel = 'ATTRIBUTE';
             this.logger.info(
-              `Element matched via ${attrKey} attribute fallback: ${attrValue}`
+              `Element matched via ${attrKey} attribute fallback: ${this._redactSensitiveText(attrValue)}`
             );
             break;
           }
@@ -4515,8 +4532,9 @@ export class Agent<
           }
         }
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Error during agent cleanup: ${error instanceof Error ? error.message : String(error)}`
+          `Error during agent cleanup: ${this._redactSensitiveText(message)}`
         );
       }
 
@@ -4527,10 +4545,10 @@ export class Agent<
         try {
           await this.skill_service.close();
         } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
           this.logger.error(
-            `Error during skill service cleanup: ${
-              error instanceof Error ? error.message : String(error)
-            }`
+            `Error during skill service cleanup: ${this._redactSensitiveText(message)}`
           );
         }
       }
@@ -4642,7 +4660,9 @@ export class Agent<
   }
 
   private async _log_agent_run() {
-    this.logger.info(`\x1b[34m🎯 Task: ${this.task}\x1b[0m`);
+    this.logger.info(
+      `\x1b[34m🎯 Task: ${this._redactSensitiveText(this.task)}\x1b[0m`
+    );
     this.logger.debug(
       `🤖 Browser-Use Library Version ${this.version} (${this.source})`
     );
@@ -4705,7 +4725,12 @@ export class Agent<
         this.state.n_steps
       );
     }
-    log_response(this.state.last_model_output!, this.controller, this.logger);
+    log_response(
+      this.state.last_model_output!,
+      this.controller,
+      this.logger,
+      this.sensitive_data
+    );
     if (this.settings.save_conversation_path) {
       const dir = this.settings.save_conversation_path;
       const filepath = path.join(dir, `step_${this.state.n_steps}.json`);
@@ -4736,7 +4761,7 @@ export class Agent<
       const message = error.message
         ? `The agent was interrupted mid-step - ${error.message}`
         : 'The agent was interrupted mid-step';
-      this.logger.warning(message);
+      this.logger.warning(this._redactSensitiveText(message));
       return;
     }
 
@@ -4760,10 +4785,11 @@ export class Agent<
       }
     }
 
+    const redactedErrorMsg = this._redactSensitiveText(error_msg);
     if (isFinalFailure) {
-      this.logger.error(`${prefix}${error_msg}`);
+      this.logger.error(`${prefix}${redactedErrorMsg}`);
     } else {
-      this.logger.warning(`${prefix}${error_msg}`);
+      this.logger.warning(`${prefix}${redactedErrorMsg}`);
     }
 
     this.state.last_result = [new ActionResult({ error: error_msg })];
@@ -5112,7 +5138,7 @@ export class Agent<
 
       if (!isCorrect) {
         this.logger.info(
-          `⚠️  Simple judge overriding success to failure: ${reason}`
+          `⚠️  Simple judge overriding success to failure: ${this._redactSensitiveText(reason)}`
         );
         lastResult.success = false;
         const note = `[Simple judge: ${reason}]`;
@@ -5123,10 +5149,9 @@ export class Agent<
         }
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warning(
-        `Simple judge failed with error: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Simple judge failed with error: ${this._redactSensitiveText(message)}`
       );
     }
   }
@@ -5164,10 +5189,9 @@ export class Agent<
       }
       return validation.data;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warning(
-        `Judge trace failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Judge trace failed: ${this._redactSensitiveText(message)}`
       );
       return null;
     }
@@ -5211,7 +5235,7 @@ export class Agent<
     if (judgement.reasoning) {
       judgeLog += `   ${judgement.reasoning}\n`;
     }
-    this.logger.info(judgeLog);
+    this.logger.info(this._redactSensitiveText(judgeLog));
   }
 
   private _replace_urls_in_text(
@@ -5617,7 +5641,7 @@ export class Agent<
   ): boolean {
     if (this._using_fallback_llm) {
       this.logger.warning(
-        `⚠️ Fallback LLM also failed (${error.name}: ${error.message}), no more fallbacks available`
+        `⚠️ Fallback LLM also failed (${error.name}: ${this._redactSensitiveText(error.message)}), no more fallbacks available`
       );
       return false;
     }
@@ -5634,7 +5658,7 @@ export class Agent<
 
     if (!this._fallback_llm) {
       this.logger.warning(
-        `⚠️ LLM error (${error.name}: ${error.message}) but no fallback_llm configured`
+        `⚠️ LLM error (${error.name}: ${this._redactSensitiveText(error.message)}) but no fallback_llm configured`
       );
       return false;
     }
