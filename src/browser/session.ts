@@ -454,6 +454,10 @@ export class BrowserSession {
   private _watchdogs: Set<BaseWatchdog> = new Set();
   private _defaultWatchdogsAttached = false;
   private _captchaWatchdog: CaptchaWatchdog | null = null;
+  private _scopedExtraHeadersRouteContext: BrowserContext | null = null;
+  private _scopedExtraHeadersRouteHandler:
+    | ((route: any) => Promise<void>)
+    | null = null;
   readonly RECONNECT_WAIT_TIMEOUT = 54;
   private _reconnecting = false;
   private _reconnectTask: Promise<void> | null = null;
@@ -1669,6 +1673,12 @@ export class BrowserSession {
     for (const [rawKey, rawVal] of Object.entries(
       value as Record<string, unknown>
     )) {
+      if (
+        rawKey === 'extra_http_headers' &&
+        this._has_url_access_restrictions()
+      ) {
+        continue;
+      }
       const convertedValue = this._toPlaywrightOptions(rawVal);
       if (convertedValue === undefined) {
         continue;
@@ -1698,7 +1708,117 @@ export class BrowserSession {
       return;
     }
 
+    if (this._has_url_access_restrictions()) {
+      await this._installScopedExtraHeaders(normalizedHeaders);
+      return;
+    }
+
+    await this._removeScopedExtraHeadersRoute();
     await (this.browser_context as any).setExtraHTTPHeaders(normalizedHeaders);
+  }
+
+  private async _removeScopedExtraHeadersRoute(): Promise<void> {
+    const context = this._scopedExtraHeadersRouteContext as
+      | (BrowserContext & {
+          unroute?: (
+            url: string,
+            handler: (route: any) => unknown
+          ) => Promise<void>;
+        })
+      | null;
+    const handler = this._scopedExtraHeadersRouteHandler;
+    this._scopedExtraHeadersRouteContext = null;
+    this._scopedExtraHeadersRouteHandler = null;
+    if (!context || !handler || typeof context.unroute !== 'function') {
+      return;
+    }
+
+    try {
+      await context.unroute('**/*', handler);
+    } catch (error) {
+      this.logger.debug(
+        `Failed to remove scoped extra_http_headers route: ${(error as Error).message}`
+      );
+    }
+  }
+
+  private async _installScopedExtraHeaders(
+    headers: Record<string, string>
+  ): Promise<void> {
+    const context = this.browser_context as
+      | (BrowserContext & {
+          route?: (
+            url: string,
+            handler: (route: any) => unknown
+          ) => Promise<void>;
+          setExtraHTTPHeaders?: (
+            headers: Record<string, string>
+          ) => Promise<void>;
+        })
+      | null;
+    if (!context || typeof context.route !== 'function') {
+      throw new BrowserError(
+        'Cannot safely apply extra_http_headers with domain restrictions because BrowserContext.route is unavailable.'
+      );
+    }
+
+    await this._removeScopedExtraHeadersRoute();
+
+    if (typeof context.setExtraHTTPHeaders === 'function') {
+      await context.setExtraHTTPHeaders({});
+    }
+
+    const routeHandler = async (route: any) => {
+      const continueRoute = async (overrides?: {
+        headers?: Record<string, string>;
+      }) => {
+        if (typeof route?.fallback === 'function') {
+          return await route.fallback(overrides);
+        }
+        if (typeof route?.continue === 'function') {
+          return await route.continue(overrides);
+        }
+        throw new BrowserError(
+          'Cannot continue routed request while applying scoped extra_http_headers.'
+        );
+      };
+
+      const request =
+        typeof route?.request === 'function' ? route.request() : null;
+      const url =
+        typeof request?.url === 'function'
+          ? String(request.url())
+          : typeof request?.url === 'string'
+            ? request.url
+            : '';
+
+      let denialReason: string | null = 'invalid_url';
+      if (url) {
+        try {
+          denialReason = this._get_url_access_denial_reason(url);
+        } catch {
+          denialReason = 'blocked';
+        }
+      }
+
+      if (denialReason) {
+        await continueRoute();
+        return;
+      }
+
+      const requestHeaders =
+        typeof request?.headers === 'function' ? request.headers() : {};
+      await continueRoute({
+        headers: {
+          ...(requestHeaders ?? {}),
+          ...headers,
+        },
+      });
+    };
+
+    await context.route('**/*', routeHandler);
+    this._scopedExtraHeadersRouteContext = context;
+    this._scopedExtraHeadersRouteHandler = routeHandler;
   }
 
   private async _applyConfiguredExtraHttpHeaders(): Promise<void> {

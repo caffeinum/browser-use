@@ -371,6 +371,24 @@ esac
     expect(playwrightOptions.extraHttpHeaders).toBeUndefined();
   });
 
+  it('does not configure global extraHTTPHeaders when domain policy is active', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        extra_http_headers: {
+          Authorization: 'Bearer secret',
+        },
+      }),
+    });
+
+    const playwrightOptions = (session as any)._toPlaywrightOptions(
+      session.browser_profile.kwargs_for_new_context()
+    );
+
+    expect(playwrightOptions.extraHTTPHeaders).toBeUndefined();
+    expect(playwrightOptions.extraHttpHeaders).toBeUndefined();
+  });
+
   it('applies configured extra_http_headers to existing contexts on start', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
@@ -402,6 +420,71 @@ esac
     ).toHaveBeenCalledWith({
       'X-Test-Header': 'value',
     });
+  });
+
+  it('scopes extra_http_headers to allowed request URLs when domain policy is active', async () => {
+    let routeHandler: ((route: any) => Promise<void>) | null = null;
+    const context = {
+      pages: () => [
+        {
+          isClosed: () => false,
+          on: vi.fn(),
+          url: () => 'https://example.com',
+          title: vi.fn(async () => 'Example'),
+        },
+      ],
+      setExtraHTTPHeaders: vi.fn(async () => {}),
+      route: vi.fn(
+        async (_pattern: string, handler: (route: any) => Promise<void>) => {
+          routeHandler = handler;
+        }
+      ),
+      unroute: vi.fn(async () => {}),
+    };
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+        extra_http_headers: {
+          Authorization: 'Bearer secret',
+        },
+      }),
+      browser: {
+        contexts: () => [context],
+      } as any,
+    });
+
+    await session.start();
+
+    expect(context.setExtraHTTPHeaders).toHaveBeenCalledWith({});
+    expect(context.route).toHaveBeenCalledWith('**/*', expect.any(Function));
+    expect(routeHandler).toBeTypeOf('function');
+
+    const allowedFallback = vi.fn(async () => {});
+    await routeHandler!({
+      request: () => ({
+        url: () => 'https://example.com/api',
+        headers: () => ({ Accept: 'application/json' }),
+      }),
+      fallback: allowedFallback,
+    });
+
+    expect(allowedFallback).toHaveBeenCalledWith({
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer secret',
+      },
+    });
+
+    const blockedFallback = vi.fn(async () => {});
+    await routeHandler!({
+      request: () => ({
+        url: () => 'https://evil.test/api',
+        headers: () => ({ Accept: 'application/json' }),
+      }),
+      fallback: blockedFallback,
+    });
+
+    expect(blockedFallback).toHaveBeenCalledWith(undefined);
   });
 
   it('rolls back disallowed existing pages during start', async () => {
