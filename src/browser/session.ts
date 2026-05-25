@@ -2740,7 +2740,7 @@ export class BrowserSession {
       tab.title = this.currentTitle || this.currentUrl;
     }
     this._syncSessionManagerFromTabs();
-    return this._tabs.slice();
+    return this._tabs.map((tab) => this._sanitize_tab_for_exposure(tab));
   }
 
   async navigate_to(url: string, options: BrowserNavigationOptions = {}) {
@@ -4858,6 +4858,17 @@ export class BrowserSession {
         }
       }
 
+      const exposedTab = this._sanitize_tab_for_exposure({
+        page_id,
+        tab_id,
+        url: currentUrl,
+        title: tab.title || currentUrl,
+      });
+      if (exposedTab.url !== currentUrl) {
+        tabs_info.push(exposedTab);
+        continue;
+      }
+
       // Skip chrome:// pages and new tab pages
       const isNewTab =
         currentUrl === 'about:blank' ||
@@ -5873,6 +5884,31 @@ export class BrowserSession {
       return JSON.stringify(Array.from(value));
     }
     return JSON.stringify(value ?? null);
+  }
+
+  private _has_url_access_restrictions() {
+    return (
+      this._domainCollectionHasEntries(this.browser_profile.allowed_domains) ||
+      this._domainCollectionHasEntries(
+        this.browser_profile.prohibited_domains
+      ) ||
+      Boolean(this.browser_profile.block_ip_addresses)
+    );
+  }
+
+  private _sanitize_tab_for_exposure<T extends TabInfo>(tab: T): T {
+    if (!this._has_url_access_restrictions()) {
+      return { ...tab };
+    }
+    const denialReason = this._get_url_access_denial_reason(tab.url);
+    if (!denialReason) {
+      return { ...tab };
+    }
+    return {
+      ...tab,
+      url: 'about:blank',
+      title: 'blocked by domain policy',
+    };
   }
 
   private _assert_url_allowed(url: string) {

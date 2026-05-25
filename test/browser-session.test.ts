@@ -1382,6 +1382,66 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('redacts disallowed background tabs in exposed tab lists', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const pageA = {
+      url: vi.fn(() => 'https://example.com'),
+      title: vi.fn(async () => 'Allowed'),
+      on: vi.fn(),
+    } as any;
+    const pageB = {
+      url: vi.fn(() => 'https://evil.test/private?token=secret'),
+      title: vi.fn(async () => 'Secret title'),
+      on: vi.fn(),
+    } as any;
+    session.update_current_page(pageA, 'Allowed', 'https://example.com');
+    (session as any)._tabs = [
+      {
+        page_id: 0,
+        tab_id: 'tab-0',
+        url: 'https://example.com',
+        title: 'Allowed',
+      },
+      {
+        page_id: 1,
+        tab_id: 'tab-1',
+        url: 'https://evil.test/private?token=secret',
+        title: 'Secret title',
+      },
+    ];
+    (session as any).tabPages.set(0, pageA);
+    (session as any).tabPages.set(1, pageB);
+    (session as any).currentTabIndex = 0;
+    (session as any).browser_context = {
+      pages: () => [pageA, pageB],
+    };
+
+    const builtTabs = (session as any)._buildTabs();
+    const tabsInfo = await session.get_tabs_info();
+
+    expect(JSON.stringify(builtTabs)).not.toContain('evil.test');
+    expect(JSON.stringify(builtTabs)).not.toContain('secret');
+    expect(builtTabs[1]).toMatchObject({
+      page_id: 1,
+      tab_id: 'tab-1',
+      url: 'about:blank',
+      title: 'blocked by domain policy',
+    });
+    expect(JSON.stringify(tabsInfo)).not.toContain('evil.test');
+    expect(JSON.stringify(tabsInfo)).not.toContain('secret');
+    expect(tabsInfo[1]).toMatchObject({
+      page_id: 1,
+      tab_id: 'tab-1',
+      url: 'about:blank',
+      title: 'blocked by domain policy',
+    });
+    expect(pageB.title).not.toHaveBeenCalled();
+  });
+
   it('surfaces externally opened tabs in state and allows switching to them', async () => {
     const minimalDom = new DOMState(
       new DOMElementNode(true, null, 'body', '/html/body', {}, []),
