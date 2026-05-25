@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserSession } from '../src/browser/session.js';
 import { DOMElementNode } from '../src/dom/views.js';
@@ -7,6 +10,7 @@ import {
   detect_token_limit_issue,
   extract_code_blocks,
   extract_url_from_task,
+  export_to_ipynb,
   truncate_message_content,
 } from '../src/code-use/index.js';
 
@@ -94,5 +98,31 @@ describe('code-use alignment', () => {
     expect(agent.history.is_done()).toBe(true);
     expect(agent.history.is_successful()).toBe(true);
     expect(agent.history.number_of_steps()).toBe(1);
+  });
+
+  it('exports notebooks with private file permissions', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'code-use-export-'));
+    const outputPath = path.join(tempDir, 'session.ipynb');
+    const session = new BrowserSession();
+    const agent = new CodeAgent({
+      task: 'Export data',
+      browser_session: session,
+    });
+    const cell = agent.add_cell('return "secret-output"');
+    cell.output = 'secret-output';
+    cell.execution_count = 1;
+
+    try {
+      const exportedPath = export_to_ipynb(agent, outputPath);
+
+      expect(exportedPath).toBe(outputPath);
+      expect(fs.existsSync(outputPath)).toBe(true);
+      expect(fs.readFileSync(outputPath, 'utf-8')).toContain('secret-output');
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(outputPath).mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
