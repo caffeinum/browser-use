@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MCPClient } from '../src/mcp/client.js';
+import { formatMcpToolArgsForLog, MCPClient } from '../src/mcp/client.js';
 import { Tools } from '../src/tools/service.js';
 import { Controller } from '../src/controller/service.js';
 
@@ -58,5 +58,39 @@ describe('MCPClient tools alignment', () => {
     expect((targetTools as any).registry).toBe(controller.registry);
     expect(filter).toEqual(['tool_a']);
     expect(prefix).toBe('pref_');
+  });
+
+  it('redacts sensitive MCP tool arguments for debug logs', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+
+    const formatted = formatMcpToolArgsForLog({
+      username: 'alice',
+      password: 'super-secret-password',
+      apiKey: 'sk-test',
+      headers: {
+        authorization: 'Bearer secret-token',
+        accept: 'application/json',
+      },
+      urls: [
+        'https://example.com/path?token=secret#frag',
+        'data:text/html,<input value=secret>',
+        'blob:https://evil.test/uuid',
+      ],
+      nested: circular,
+    });
+
+    expect(formatted).toContain('"username":"alice"');
+    expect(formatted).toContain('"accept":"application/json"');
+    expect(formatted).toContain(
+      '"https://example.com/path?<redacted>#<redacted>"'
+    );
+    expect(formatted).toContain('"data:<redacted>"');
+    expect(formatted).toContain('"blob:https://evil.test/<redacted>"');
+    expect(formatted).toContain('"self":"[Circular]"');
+    expect(formatted).not.toContain('super-secret-password');
+    expect(formatted).not.toContain('sk-test');
+    expect(formatted).not.toContain('secret-token');
+    expect(formatted).not.toContain('<input value=secret>');
   });
 });

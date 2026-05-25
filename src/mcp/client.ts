@@ -44,6 +44,100 @@ import { MCPClientTelemetryEvent } from '../telemetry/views.js';
 import { get_browser_use_version, retryAsync } from '../utils.js';
 
 const logger = createLogger('browser_use.mcp.client');
+const REDACTED_VALUE = '<redacted>';
+
+const isSensitiveMcpArgumentKey = (key: string) => {
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return [
+    'password',
+    'passwd',
+    'pwd',
+    'secret',
+    'token',
+    'apikey',
+    'accesskey',
+    'secretkey',
+    'credential',
+    'credentials',
+    'authorization',
+    'cookie',
+    'session',
+  ].some((candidate) => normalized.includes(candidate));
+};
+
+const redactStringForMcpLog = (value: string) => {
+  const trimmed = value.trim();
+  if (/^(bearer|basic)\s+\S+/i.test(trimmed)) {
+    return REDACTED_VALUE;
+  }
+
+  if (trimmed.startsWith('data:')) {
+    return 'data:<redacted>';
+  }
+
+  if (trimmed.startsWith('blob:')) {
+    try {
+      const parsed = new URL(trimmed.slice('blob:'.length));
+      return parsed.origin && parsed.origin !== 'null'
+        ? `blob:${parsed.origin}/<redacted>`
+        : 'blob:<redacted>';
+    } catch {
+      return 'blob:<redacted>';
+    }
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.search || parsed.hash) {
+      return `${parsed.origin}${parsed.pathname}${
+        parsed.search ? '?<redacted>' : ''
+      }${parsed.hash ? '#<redacted>' : ''}`;
+    }
+  } catch {
+    // Not a URL; keep regular non-sensitive strings unchanged.
+  }
+
+  return value;
+};
+
+const redactMcpToolArgs = (
+  value: unknown,
+  seen = new WeakSet<object>()
+): unknown => {
+  if (value == null) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    return redactStringForMcpLog(value);
+  }
+  if (typeof value !== 'object') {
+    return value;
+  }
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactMcpToolArgs(item, seen));
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    result[key] = isSensitiveMcpArgumentKey(key)
+      ? REDACTED_VALUE
+      : redactMcpToolArgs(item, seen);
+  }
+  return result;
+};
+
+export const formatMcpToolArgsForLog = (args: unknown) => {
+  try {
+    return JSON.stringify(redactMcpToolArgs(args));
+  } catch {
+    return '[unserializable]';
+  }
+};
 
 export interface MCPClientOptions {
   /** Maximum number of connection retry attempts (default: 3) */
@@ -306,7 +400,7 @@ export class MCPClient {
 
     try {
       logger.debug(
-        `🔧 Calling MCP tool '${name}' with params: ${JSON.stringify(args)}`
+        `🔧 Calling MCP tool '${name}' with params: ${formatMcpToolArgsForLog(args)}`
       );
 
       this._toolCallCount++;
