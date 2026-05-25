@@ -1234,6 +1234,43 @@ esac
     expect(newPage).not.toHaveBeenCalled();
   });
 
+  it('redacts crash recovery URLs before logging', async () => {
+    const session = new BrowserSession();
+    const rawUrl = 'https://example.com/crashed?token=abc#section';
+    const newPage = {
+      goto: vi.fn(async () => {}),
+      url: vi.fn(() => rawUrl),
+      setViewportSize: vi.fn(async () => {}),
+    };
+    session.browser_context = {
+      newPage: vi.fn(async () => newPage),
+    } as any;
+    vi.spyOn(session as any, '_isPageResponsive').mockResolvedValue(true);
+    const debugSpy = vi
+      .spyOn(session.logger, 'debug')
+      .mockImplementation(() => undefined);
+    const infoSpy = vi
+      .spyOn(session.logger, 'info')
+      .mockImplementation(() => undefined);
+
+    try {
+      const reopened = await (session as any)._tryReopenUrl(rawUrl, 1000);
+
+      expect(reopened).toBe(true);
+      const logs = [...debugSpy.mock.calls, ...infoSpy.mock.calls]
+        .flat()
+        .join('\n');
+      expect(logs).toContain(
+        'https://example.com/crashed?<redacted>#<redacted>'
+      );
+      expect(logs).not.toContain('token=abc');
+      expect(logs).not.toContain('#section');
+    } finally {
+      debugSpy.mockRestore();
+      infoSpy.mockRestore();
+    }
+  });
+
   it('closes new tabs that settle on disallowed redirect URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

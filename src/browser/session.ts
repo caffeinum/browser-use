@@ -888,8 +888,14 @@ export class BrowserSession {
         const contentLength =
           headers['content-length'] || headers['Content-Length'];
         if (contentLength && parseInt(contentLength, 10) > maxResponseSize) {
+          const requestUrl =
+            typeof request?.url === 'function'
+              ? request.url()
+              : String(request?.url ?? '');
           this.logger.debug(
-            `Skipping large response (${contentLength} bytes): ${request.url?.().substring?.(0, 50) ?? ''}`
+            `Skipping large response (${contentLength} bytes): ${BrowserSession._redact_url_for_logging(
+              requestUrl
+            )}`
           );
           pendingRequests.delete(request);
           return;
@@ -2490,7 +2496,11 @@ export class BrowserSession {
         !liveUrl.toLowerCase().endsWith('.pdf');
 
       if (shouldRetryEmptyDom) {
-        this.logger.debug(`Empty DOM detected for ${liveUrl}; retrying once`);
+        this.logger.debug(
+          `Empty DOM detected for ${BrowserSession._redact_url_for_logging(
+            liveUrl
+          )}; retrying once`
+        );
         await this._waitWithAbort(EMPTY_DOM_RETRY_DELAY_MS, signal);
 
         try {
@@ -5800,7 +5810,9 @@ export class BrowserSession {
     blockedUrl: string
   ) {
     this.logger.warning(
-      `Blocked navigation reached disallowed URL ${blockedUrl}; resetting current tab to about:blank`
+      `Blocked navigation reached disallowed URL ${BrowserSession._redact_url_for_logging(
+        blockedUrl
+      )}; resetting current tab to about:blank`
     );
     try {
       await page.goto('about:blank', { waitUntil: 'load', timeout: 5000 });
@@ -6441,6 +6453,7 @@ export class BrowserSession {
    * @returns true if successful, false otherwise
    */
   private async _forceClosePageViaCdp(pageUrl: string): Promise<boolean> {
+    const logPageUrl = BrowserSession._redact_url_for_logging(pageUrl);
     try {
       if (!this.browser_context) {
         throw new Error('Browser context is not set up yet');
@@ -6504,7 +6517,7 @@ export class BrowserSession {
           if (blockedTargetId) {
             // Force close the target
             this.logger.warning(
-              `🪓 Force-closing crashed page target_id=${blockedTargetId} via CDP: ${pageUrl.substring(0, 50)}...`
+              `🪓 Force-closing crashed page target_id=${blockedTargetId} via CDP: ${logPageUrl}`
             );
             await Promise.race([
               cdpSession.send('Target.closeTarget', {
@@ -6520,7 +6533,7 @@ export class BrowserSession {
             return true;
           } else {
             this.logger.debug(
-              `❌ Could not find CDP page target_id to force-close: ${pageUrl.substring(0, 50)} (concurrency issues?)`
+              `❌ Could not find CDP page target_id to force-close: ${logPageUrl} (concurrency issues?)`
             );
             return false;
           }
@@ -6566,6 +6579,7 @@ export class BrowserSession {
 
     const timeout =
       timeoutMs || this.browser_profile.default_navigation_timeout || 6000;
+    const logUrl = BrowserSession._redact_url_for_logging(url);
 
     const denialReason = this._get_url_access_denial_reason(url);
     if (denialReason) {
@@ -6576,9 +6590,7 @@ export class BrowserSession {
     }
 
     try {
-      this.logger.debug(
-        `🔄 Attempting to reload URL that crashed: ${url.substring(0, 50)}`
-      );
+      this.logger.debug(`🔄 Attempting to reload URL that crashed: ${logUrl}`);
 
       if (!this.browser_context) {
         throw new Error('Browser context is not set');
@@ -6611,7 +6623,7 @@ export class BrowserSession {
         ]);
       } catch (error) {
         this.logger.debug(
-          `⚠️ Attempting to reload previously crashed URL ${url.substring(0, 50)} failed again: ${(error as Error).name}`
+          `⚠️ Attempting to reload previously crashed URL ${logUrl} failed again: ${(error as Error).name}`
         );
       }
 
@@ -6623,19 +6635,17 @@ export class BrowserSession {
 
       if (isResponsive) {
         this.logger.info(
-          `✅ Page recovered and is now responsive after reopening on: ${url.substring(0, 50)}`
+          `✅ Page recovered and is now responsive after reopening on: ${logUrl}`
         );
         return true;
       } else {
-        this.logger.warning(
-          `⚠️ Reopened page ${url.substring(0, 50)} is still unresponsive`
-        );
+        this.logger.warning(`⚠️ Reopened page ${logUrl} is still unresponsive`);
         // Close the unresponsive page before returning
         try {
           await this._forceClosePageViaCdp(newPage.url());
         } catch (error) {
           this.logger.error(
-            `❌ Failed to close crashed page ${url.substring(0, 50)} via CDP: ${(error as Error).message} (something is very wrong or system is extremely overloaded)`
+            `❌ Failed to close crashed page ${logUrl} via CDP: ${(error as Error).message} (something is very wrong or system is extremely overloaded)`
           );
         }
         this.agent_current_page = null; // Clear reference to closed page
@@ -6643,7 +6653,7 @@ export class BrowserSession {
       }
     } catch (error) {
       this.logger.error(
-        `❌ Retrying crashed page ${url.substring(0, 50)} failed: ${(error as Error).message}`
+        `❌ Retrying crashed page ${logUrl} failed: ${(error as Error).message}`
       );
       return false;
     }
@@ -6655,7 +6665,9 @@ export class BrowserSession {
    */
   private async _createBlankFallbackPage(url: string): Promise<void> {
     this.logger.warning(
-      `⚠️ Resetting to about:blank as fallback because browser is unable to load the original URL without crashing: ${url.substring(0, 50)}`
+      `⚠️ Resetting to about:blank as fallback because browser is unable to load the original URL without crashing: ${BrowserSession._redact_url_for_logging(
+        url
+      )}`
     );
 
     // Close any existing broken page
@@ -6773,7 +6785,9 @@ export class BrowserSession {
             try {
               await page.close();
               this.logger.debug(
-                `🪓 Closed page because it has a known crash-causing URL: ${pageUrl.substring(0, 50)}`
+                `🪓 Closed page because it has a known crash-causing URL: ${BrowserSession._redact_url_for_logging(
+                  pageUrl
+                )}`
               );
             } catch {
               // Page might already be closed via CDP
