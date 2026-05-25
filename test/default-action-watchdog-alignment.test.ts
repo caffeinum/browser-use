@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { BrowserSession } from '../src/browser/session.js';
+import { BrowserProfile } from '../src/browser/profile.js';
 import {
   BrowserStateRequestEvent,
   ClickElementEvent,
@@ -33,6 +34,7 @@ import { RecordingWatchdog } from '../src/browser/watchdogs/recording-watchdog.j
 import { ScreenshotWatchdog } from '../src/browser/watchdogs/screenshot-watchdog.js';
 import { SecurityWatchdog } from '../src/browser/watchdogs/security-watchdog.js';
 import { StorageStateWatchdog } from '../src/browser/watchdogs/storage-state-watchdog.js';
+import { URLNotAllowedError } from '../src/browser/views.js';
 
 describe('default action watchdog alignment', () => {
   it('attaches default watchdog stack only once', () => {
@@ -444,6 +446,51 @@ describe('default action watchdog alignment', () => {
       expect(fileEvents).toHaveLength(1);
       expect(fileEvents[0].path).toBe(outputPath);
       expect(fileEvents[0].mime_type).toBe('application/pdf');
+    } finally {
+      fs.rmSync(downloadsDir, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks print-to-pdf materialization from disallowed current pages', async () => {
+    const downloadsDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-default-action-print-blocked-')
+    );
+    try {
+      const session = new BrowserSession({
+        browser_profile: new BrowserProfile({
+          allowed_domains: ['https://example.com'],
+          downloads_path: downloadsDir,
+        }),
+      });
+      const watchdog = new DefaultActionWatchdog({ browser_session: session });
+      let pageUrl = 'https://evil.test/print?token=secret';
+      const page = {
+        title: vi.fn(async () => 'Secret Report'),
+        url: vi.fn(() => pageUrl),
+        goto: vi.fn(async (url: string) => {
+          pageUrl = url;
+        }),
+        waitForLoadState: vi.fn(async () => {}),
+      } as any;
+      const cdpSend = vi.fn(async () => ({
+        data: Buffer.from('%PDF-1.4 secret').toString('base64'),
+      }));
+      vi.spyOn(session, 'get_current_page').mockResolvedValue(page);
+      vi.spyOn(session, 'get_or_create_cdp_session').mockResolvedValue({
+        send: cdpSend,
+      } as any);
+
+      await expect(
+        (watchdog as any)._handlePrintButtonClick()
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(cdpSend).not.toHaveBeenCalled();
+      expect(page.title).not.toHaveBeenCalled();
+      expect(page.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(fs.readdirSync(downloadsDir)).toHaveLength(0);
     } finally {
       fs.rmSync(downloadsDir, { recursive: true, force: true });
     }

@@ -2601,6 +2601,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         throw new BrowserError('No active page available for save_as_pdf.');
       }
 
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       const paperKey = String(params.paper_format ?? 'Letter').toLowerCase();
       const paperSize = paperSizes[paperKey] ?? paperSizes.letter;
       const cdpSession =
@@ -2608,15 +2609,21 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!cdpSession?.send) {
         throw new BrowserError('CDP session unavailable for save_as_pdf.');
       }
+      await validateBrowserPageAfterAction(browser_session, page, signal);
 
-      const result = await cdpSession.send('Page.printToPDF', {
-        printBackground: params.print_background,
-        landscape: params.landscape,
-        scale: params.scale,
-        paperWidth: paperSize.width,
-        paperHeight: paperSize.height,
-        preferCSSPageSize: true,
-      });
+      let result: { data?: unknown } | null = null;
+      try {
+        result = await cdpSession.send('Page.printToPDF', {
+          printBackground: params.print_background,
+          landscape: params.landscape,
+          scale: params.scale,
+          paperWidth: paperSize.width,
+          paperHeight: paperSize.height,
+          preferCSSPageSize: true,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
 
       const pdfData =
         result && typeof result.data === 'string' ? result.data : null;
@@ -2628,6 +2635,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
 
       let fileName = params.file_name?.trim();
       if (!fileName) {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
         try {
           const titlePromise =
             typeof page.title === 'function'
@@ -2646,6 +2654,8 @@ You will be given a query and the markdown of a webpage that has been filtered t
           fileName = safeTitle || 'page';
         } catch {
           fileName = 'page';
+        } finally {
+          await validateBrowserPageAfterAction(browser_session, page, signal);
         }
       }
 
@@ -2658,6 +2668,7 @@ You will be given a query and the markdown of a webpage that has been filtered t
         fsInstance.get_dir(),
         fileName
       );
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       await writePrivateBinaryFile(filePath, Buffer.from(pdfData, 'base64'));
       const fileSize = (await fsp.stat(filePath)).size;
       const baseName = path.basename(filePath);

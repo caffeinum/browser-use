@@ -104,7 +104,7 @@ import {
   ScrollToTextEvent,
   SelectDropdownOptionEvent,
 } from '../src/browser/events.js';
-import { BrowserError } from '../src/browser/views.js';
+import { BrowserError, URLNotAllowedError } from '../src/browser/views.js';
 import { BrowserProfile } from '../src/browser/profile.js';
 import { BrowserSession } from '../src/browser/session.js';
 import { FileSystem } from '../src/filesystem/file-system.js';
@@ -2625,6 +2625,60 @@ describe('Regression Coverage', () => {
       expect(result.extracted_content).toContain(
         'Saved page as PDF: Quarterly-Report (1).pdf'
       );
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('save_as_pdf blocks disallowed current pages before PDF generation', async () => {
+    const controller = new Controller();
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browser-use-pdf-blocked-')
+    );
+    let pageUrl = 'https://evil.test/report?token=secret';
+    const page = {
+      title: vi.fn(async () => 'Secret Report'),
+      url: vi.fn(() => pageUrl),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    const browserSession = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const cdpSend = vi.fn(async () => ({
+      data: Buffer.from('%PDF-1.4 generated').toString('base64'),
+    }));
+    vi.spyOn(browserSession, 'get_current_page').mockResolvedValue(page);
+    vi.spyOn(browserSession, 'get_or_create_cdp_session').mockResolvedValue({
+      send: cdpSend,
+    } as any);
+    const fileSystem = {
+      get_dir: vi.fn(() => tempDir),
+    };
+
+    try {
+      await expect(
+        controller.registry.execute_action(
+          'save_as_pdf',
+          {},
+          {
+            browser_session: browserSession as any,
+            file_system: fileSystem as any,
+          }
+        )
+      ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+      expect(cdpSend).not.toHaveBeenCalled();
+      expect(page.title).not.toHaveBeenCalled();
+      expect(page.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(fs.readdirSync(tempDir)).toHaveLength(0);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

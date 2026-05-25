@@ -20,6 +20,7 @@ import {
   UploadFileEvent,
   WaitEvent,
 } from '../events.js';
+import { URLNotAllowedError } from '../views.js';
 import { BaseWatchdog } from './base.js';
 
 const chmodPrivatePath = (targetPath: string, mode: number) => {
@@ -235,12 +236,15 @@ export class DefaultActionWatchdog extends BaseWatchdog {
     }
 
     try {
+      await this.browser_session.validate_page_after_action(page);
       const cdpSession =
         await this.browser_session.get_or_create_cdp_session(page);
+      await this.browser_session.validate_page_after_action(page);
       const result = await cdpSession.send?.('Page.printToPDF', {
         printBackground: true,
         preferCSSPageSize: true,
       });
+      await this.browser_session.validate_page_after_action(page);
       const pdfBase64 =
         result && typeof result.data === 'string' ? result.data : null;
       if (!pdfBase64) {
@@ -251,8 +255,10 @@ export class DefaultActionWatchdog extends BaseWatchdog {
         this.browser_session.browser_profile.downloads_path || os.tmpdir();
       ensurePrivateDirectoryIfCreated(downloadsPath);
 
+      await this.browser_session.validate_page_after_action(page);
       const title =
         typeof page.title === 'function' ? await page.title() : 'document';
+      await this.browser_session.validate_page_after_action(page);
       const suggestedName = this._sanitizeFilename(
         `${title || 'document'}.pdf`
       );
@@ -265,10 +271,11 @@ export class DefaultActionWatchdog extends BaseWatchdog {
       fs.writeFileSync(finalPath, content, { mode: 0o600 });
       chmodPrivatePath(finalPath, 0o600);
 
+      const pageUrl = typeof page.url === 'function' ? page.url() : '';
       await this.event_bus.dispatch(
         new FileDownloadedEvent({
           guid: null,
-          url: typeof page.url === 'function' ? page.url() : '',
+          url: pageUrl,
           path: finalPath,
           file_name: uniqueFilename,
           file_size: content.length,
@@ -280,6 +287,9 @@ export class DefaultActionWatchdog extends BaseWatchdog {
 
       return finalPath;
     } catch (error) {
+      if (error instanceof URLNotAllowedError) {
+        throw error;
+      }
       this.browser_session.logger.debug(
         `[DefaultActionWatchdog] Print-to-PDF failed: ${(error as Error).message}`
       );
