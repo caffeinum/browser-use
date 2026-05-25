@@ -2717,11 +2717,31 @@ export class BrowserSession {
           signal
         );
         const finalUrl = page.url();
-        this._assert_url_allowed(finalUrl);
+        try {
+          this._assert_url_allowed(finalUrl);
+        } catch (error) {
+          if (error instanceof URLNotAllowedError) {
+            await this._rollback_disallowed_navigation(page, finalUrl);
+          }
+          throw error;
+        }
         completedUrl = normalize_url(finalUrl);
         await this._waitForStableNetwork(page, signal);
+        const settledUrl = page.url();
+        try {
+          this._assert_url_allowed(settledUrl);
+        } catch (error) {
+          if (error instanceof URLNotAllowedError) {
+            await this._rollback_disallowed_navigation(page, settledUrl);
+          }
+          throw error;
+        }
+        completedUrl = normalize_url(settledUrl);
       } catch (error) {
         if (this._isAbortError(error)) {
+          throw error;
+        }
+        if (error instanceof URLNotAllowedError) {
           throw error;
         }
         const message = (error as Error).message ?? 'Navigation failed';
@@ -2807,6 +2827,7 @@ export class BrowserSession {
       if (this._isAbortError(error)) {
         throw error;
       }
+      const isUrlNotAllowed = error instanceof URLNotAllowedError;
       const message = (error as Error).message ?? 'Failed to open new tab';
       this._recordRecentEvent('tab_navigation_failed', {
         url: normalized,
@@ -2851,6 +2872,9 @@ export class BrowserSession {
       }
       this._syncSessionManagerFromTabs();
       this.cachedBrowserState = null;
+      if (isUrlNotAllowed) {
+        throw error;
+      }
       throw new BrowserError(message);
     }
     this.tabPages.set(newTab.page_id, page);
@@ -5525,6 +5549,36 @@ export class BrowserSession {
     }
 
     throw new URLNotAllowedError(`URL ${url} is not allowed (${denialReason})`);
+  }
+
+  private async _rollback_disallowed_navigation(
+    page: Page,
+    blockedUrl: string
+  ) {
+    this.logger.warning(
+      `Blocked navigation reached disallowed URL ${blockedUrl}; resetting current tab to about:blank`
+    );
+    try {
+      await page.goto('about:blank', { waitUntil: 'load', timeout: 5000 });
+    } catch (rollbackError) {
+      this.logger.debug(
+        `Failed to reset disallowed navigation to about:blank: ${(rollbackError as Error).message}`
+      );
+    }
+
+    const currentUrl =
+      typeof page.url === 'function' ? page.url() : 'about:blank';
+    if (this._is_new_tab_page(currentUrl)) {
+      this.currentUrl = 'about:blank';
+      this.currentTitle = 'about:blank';
+      const tab = this._tabs[this.currentTabIndex];
+      if (tab) {
+        tab.url = 'about:blank';
+        tab.title = 'about:blank';
+      }
+      this._syncSessionManagerFromTabs();
+      this.cachedBrowserState = null;
+    }
   }
 
   /**

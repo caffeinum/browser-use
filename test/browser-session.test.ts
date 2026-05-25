@@ -63,6 +63,7 @@ import {
   DownloadProgressEvent,
   TabCreatedEvent,
 } from '../src/browser/events.js';
+import { URLNotAllowedError } from '../src/browser/views.js';
 import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
@@ -748,6 +749,37 @@ esac
     expect((session as any).historyStack.at(-1)).toBe(
       'https://example.com/final'
     );
+  });
+
+  it('rolls back same-tab redirects to disallowed final URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'about:blank';
+    const fakePage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl =
+          url === 'about:blank' ? 'about:blank' : 'https://evil.test/final';
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Blocked Page'),
+    } as any;
+
+    session.update_current_page(fakePage, 'about:blank', 'about:blank');
+    (session as any).initialized = true;
+
+    await expect(
+      session.navigate_to('https://example.com/start')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+    expect(pageUrl).toBe('about:blank');
   });
 
   it('go_back uses live browser history even with a minimal internal stack', async () => {
