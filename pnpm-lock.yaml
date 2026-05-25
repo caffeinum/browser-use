@@ -26,6 +26,7 @@ overrides:
   qs: 6.15.2
   rollup: 4.59.0
   tmp: 0.2.5
+  uuid: 11.1.1
   ws: 8.21.0
 
 importers:
@@ -81,11 +82,11 @@ importers:
         specifier: 10.2.4
         version: 10.2.4
       oci-common:
-        specifier: ^2.126.2
-        version: 2.126.2
+        specifier: ^2.132.0
+        version: 2.132.0
       oci-generativeaiinference:
-        specifier: ^2.126.2
-        version: 2.126.2
+        specifier: ^2.132.0
+        version: 2.132.0
       ollama:
         specifier: ^0.6.3
         version: 0.6.3
@@ -1088,9 +1089,6 @@ packages:
   '@types/jsonwebtoken@9.0.3':
     resolution: {integrity: sha512-b0jGiOgHtZ2jqdPgPnP6WLCXZk1T8p06A/vPGzUvxpFGgKMbjXJDjC5m52ErqBnIuWZFgGoIJyRdeG5AyreJjA==}
 
-  '@types/jssha@2.0.0':
-    resolution: {integrity: sha512-oBnY3csYnXfqZXDRBJwP1nDDJCW/+VMJ88UHT4DCy0deSXpJIQvMCwYlnmdW4M+u7PiSfQc44LmiFcUbJ8hLEw==}
-
   '@types/node-fetch@2.6.13':
     resolution: {integrity: sha512-QGpRVpzSaUs30JBSGPjOg4Uveu384erbHBoT1zeONvyCfwQxIkUshLAOqN/k9EjGviPRmWTTe6aH2qySWKTVSw==}
 
@@ -1114,6 +1112,9 @@ packages:
 
   '@types/turndown@5.0.6':
     resolution: {integrity: sha512-ru00MoyeeouE5BX4gRL+6m/BsDfbRayOskWqUvh7CLGW+UXxHQItqALa38kKnOiZPqJrtzJUgAC2+F0rL1S4Pg==}
+
+  '@types/uuid@8.3.4':
+    resolution: {integrity: sha512-c/I8ZRb51j+pYGAu5CrFMRxqZ2ke4y2grEBO5AUjgSkSk+qT2Ea+OdWElz/OiMf5MNpn2b17kuVBwZLQJXzihw==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -2484,9 +2485,8 @@ packages:
     resolution: {integrity: sha512-P2bSOMAc/ciLz6DzgjVlGJP9+BrJWu5UDGK70C2iweC5QBIeFf0ZXRvGjEj2uYgrY2MkAAhsSWHDWlFtEroZWw==}
     engines: {node: '>=0.6.0'}
 
-  jssha@2.4.1:
-    resolution: {integrity: sha512-77DN1YurYgh+7FPCTJ2CQ6hVDHgIWiHxm4Y5/mAdnpETKYagX22pVWMz4xfKF5fcpNfMaztgVj+/B1bt2k23Eg==}
-    deprecated: jsSHA versions < 3.0.0 will no longer receive feature updates
+  jssha@3.3.1:
+    resolution: {integrity: sha512-VCMZj12FCFMQYcFLPRm/0lOBbLi8uM2BhXPTqw3U4YAfs4AZfiApOoBLoN8cQE60Z50m1MYMTQVCfgF/KaCVhQ==}
 
   jsx-ast-utils@3.3.5:
     resolution: {integrity: sha512-ZZow9HBI5O6EPgSJLUb8n2NKgmVWTwCvHGwFuJlMjvLFqlGG6pjirPhtdsseaLZjSibD8eegzmYpUZwoIlj2cQ==}
@@ -2717,14 +2717,14 @@ packages:
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
 
-  oci-common@2.126.2:
-    resolution: {integrity: sha512-z45o9TKJRT2ZLUayt5rT9qkKHyDlfI/bQZf5txUj8XIMF8+fiTYGTfUl+r+gDY2jq6OPo3cbhsYyuv5HcEwrgA==}
+  oci-common@2.132.0:
+    resolution: {integrity: sha512-lxonRydupR1R8gUH7YB6nahZaGdCcN0y7Yxo+0Q0jmnhiO7kXnN+pugpAw94QP+ByrDRGr1MyZuG8nzKg7/1fA==}
 
-  oci-generativeaiinference@2.126.2:
-    resolution: {integrity: sha512-BRjRbNOQfxDRFN/AxafGvr+0WutzM7JGjKuZjOaejeyhkbtjPyyE481P67xImQke++flh7cBYjLKWu5amEkx8w==}
+  oci-generativeaiinference@2.132.0:
+    resolution: {integrity: sha512-EnmTmV3n+6SlsoZBrh25HLD/Co8OepCU0WAoh3DXvt3Cv6sp3o7T+7tvYclyHZhny9zlNyWjSO1JDZFcbG+7fQ==}
 
-  oci-workrequests@2.126.2:
-    resolution: {integrity: sha512-j6YDfVpMU3bnjYAyRiseyQi3qbg8Iv9AS6UrL9fXY4E4eNfxBh48wXwBssS1NNgWU0oZj1nEQ22GRX6/CI/B7A==}
+  oci-workrequests@2.132.0:
+    resolution: {integrity: sha512-NGuqPTfNAVxetP6SlEE5b22IvszTEw+V/RSbAt7n2GEuGqz/vBvuEYvtBvAJPMMzxR7FSKMJIIw9z9miaB3enA==}
 
   ollama@0.6.3:
     resolution: {integrity: sha512-KEWEhIqE5wtfzEIZbDCLH51VFZ6Z3ZSa6sIOg/E/tBV8S51flyqBOXi+bRxlOYKDf8i327zG9eSTb8IJxvm3Zg==}
@@ -3026,6 +3026,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.8.1:
+    resolution: {integrity: sha512-rkVq3IXh+4FDGch+KwzX3aV9W3kO54GyEgpvBzSyctDA6Xtd7RJQV1xmXbeQp5v7+VzLOfVqiutSE6GICgPFvg==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   send@1.2.1:
     resolution: {integrity: sha512-1gnZf7DFcoIcajTjTwjwuDjzuz4PPcY2StKPlsGAQ1+YH20IRVrBaXSWmdjowTJ6u8Rc01PoYOGHXfP1mYcZNQ==}
     engines: {node: '>= 18'}
@@ -3093,8 +3098,8 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
-  sshpk@1.16.1:
-    resolution: {integrity: sha512-HXXqVUq7+pcKeLqqZj6mHFUMvXtOJt1uoUx09pFW6011inTMxqI8BA8PM95myrIyyKwdnzjdFjLiE6KBPVtJIg==}
+  sshpk@1.18.0:
+    resolution: {integrity: sha512-2p2KJZTSqQ/I3+HX42EpYOa2l3f8Erv8MWKsy2I9uf4wA7yFIkXRffYdsx86y6z4vHtV8u7g+pPlr8/4ouAxsQ==}
     engines: {node: '>=0.10.0'}
     hasBin: true
 
@@ -3320,9 +3325,8 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
-  uuid@3.3.3:
-    resolution: {integrity: sha512-pW0No1RGHgzlpHJO1nsVrHKpOEIxkGg1xB+v0ZmdNH5OAeAwzAVrCnI2/6Mtx+Uys6iaylxa+D3g4j63IKKjSQ==}
-    deprecated: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+  uuid@11.1.1:
+    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
     hasBin: true
 
   vary@1.1.2:
@@ -4639,8 +4643,6 @@ snapshots:
     dependencies:
       '@types/node': 25.2.3
 
-  '@types/jssha@2.0.0': {}
-
   '@types/node-fetch@2.6.13':
     dependencies:
       '@types/node': 25.2.3
@@ -4671,6 +4673,8 @@ snapshots:
       '@types/node': 25.2.3
 
   '@types/turndown@5.0.6': {}
+
+  '@types/uuid@8.3.4': {}
 
   '@types/yauzl@2.10.3':
     dependencies:
@@ -6018,7 +6022,7 @@ snapshots:
     dependencies:
       assert-plus: 1.0.0
       jsprim: 1.4.2
-      sshpk: 1.16.1
+      sshpk: 1.18.0
 
   https-proxy-agent@7.0.6:
     dependencies:
@@ -6314,7 +6318,7 @@ snapshots:
       lodash.isstring: 4.0.1
       lodash.once: 4.1.1
       ms: 2.1.3
-      semver: 7.7.4
+      semver: 7.8.1
 
   jsprim@1.4.2:
     dependencies:
@@ -6323,7 +6327,7 @@ snapshots:
       json-schema: 0.4.0
       verror: 1.10.0
 
-  jssha@2.4.1: {}
+  jssha@3.3.1: {}
 
   jsx-ast-utils@3.3.5:
     dependencies:
@@ -6413,7 +6417,7 @@ snapshots:
 
   make-dir@4.0.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.1
 
   math-intrinsics@1.1.0: {}
 
@@ -6473,7 +6477,7 @@ snapshots:
 
   node-abi@3.87.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.1
 
   node-addon-api@7.1.1: {}
 
@@ -6526,34 +6530,34 @@ snapshots:
 
   obug@2.1.1: {}
 
-  oci-common@2.126.2:
+  oci-common@2.132.0:
     dependencies:
       '@types/isomorphic-fetch': 0.0.35
       '@types/jsonwebtoken': 9.0.3
-      '@types/jssha': 2.0.0
       '@types/opossum': 4.1.1
       '@types/sshpk': 1.10.3
+      '@types/uuid': 8.3.4
       es6-promise: 4.2.6
       http-signature: 1.3.1
       isomorphic-fetch: 3.0.0
       jsonwebtoken: 9.0.3
-      jssha: 2.4.1
+      jssha: 3.3.1
       opossum: 5.0.1
-      sshpk: 1.16.1
-      uuid: 3.3.3
+      sshpk: 1.18.0
+      uuid: 11.1.1
     transitivePeerDependencies:
       - encoding
 
-  oci-generativeaiinference@2.126.2:
+  oci-generativeaiinference@2.132.0:
     dependencies:
-      oci-common: 2.126.2
-      oci-workrequests: 2.126.2
+      oci-common: 2.132.0
+      oci-workrequests: 2.132.0
     transitivePeerDependencies:
       - encoding
 
-  oci-workrequests@2.126.2:
+  oci-workrequests@2.132.0:
     dependencies:
-      oci-common: 2.126.2
+      oci-common: 2.132.0
     transitivePeerDependencies:
       - encoding
 
@@ -6906,6 +6910,8 @@ snapshots:
 
   semver@7.7.4: {}
 
+  semver@7.8.1: {}
+
   send@1.2.1:
     dependencies:
       debug: 4.4.3
@@ -7005,7 +7011,7 @@ snapshots:
 
   source-map-js@1.2.1: {}
 
-  sshpk@1.16.1:
+  sshpk@1.18.0:
     dependencies:
       asn1: 0.2.6
       assert-plus: 1.0.0
@@ -7257,7 +7263,7 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  uuid@3.3.3: {}
+  uuid@11.1.1: {}
 
   vary@1.1.2: {}
 
