@@ -1129,13 +1129,15 @@ export class BrowserSession {
       timestamp: new Date().toISOString(),
     };
     if (typeof details.url === 'string' && details.url.trim()) {
-      event.url = details.url.trim();
+      event.url = BrowserSession._redact_url_for_logging(details.url.trim());
     }
     if (
       typeof details.error_message === 'string' &&
       details.error_message.trim()
     ) {
-      event.error_message = details.error_message.trim();
+      event.error_message = BrowserSession._redact_urls_in_text(
+        details.error_message.trim()
+      );
     }
     if (
       typeof details.page_id === 'number' &&
@@ -4083,6 +4085,12 @@ export class BrowserSession {
         queryIndex >= 0 ? '?<redacted>' : ''
       }${hashIndex >= 0 ? '#<redacted>' : ''}`;
     }
+  }
+
+  private static _redact_urls_in_text(value: string) {
+    return value.replace(/\b(?:https?|blob):[^\s"'<>]+/gi, (match) =>
+      BrowserSession._redact_url_for_logging(match)
+    );
   }
 
   private static _same_origin(left: string, right: string) {

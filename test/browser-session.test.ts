@@ -1420,6 +1420,23 @@ esac
     expect(recentEvents).not.toContain('secret');
   });
 
+  it('redacts allowed URL query and hash in recent browser events', () => {
+    const session = new BrowserSession();
+
+    (session as any)._recordRecentEvent('navigation_completed', {
+      url: 'https://example.com/path?token=secret#fragment',
+      error_message:
+        'Failed while fetching https://example.com/path?token=secret#fragment',
+    });
+
+    const recentEvents = (session as any)._getRecentEventsSummary(10);
+    expect(recentEvents).toContain(
+      'https://example.com/path?<redacted>#<redacted>'
+    );
+    expect(recentEvents).not.toContain('secret');
+    expect(recentEvents).not.toContain('#fragment');
+  });
+
   it('rolls back history navigation to disallowed URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
