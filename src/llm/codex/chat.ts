@@ -412,11 +412,7 @@ export class ChatCodex implements BaseChatModel {
         stopReason
       );
     } catch (error: any) {
-      if (
-        !this.apiKey &&
-        !forceRefresh &&
-        (error?.status === 401 || error?.status === 403)
-      ) {
+      if (!this.apiKey && !forceRefresh && error?.status === 401) {
         return this.invokeResponses(messages, output_format, options, true);
       }
       if (error?.status === 429) {

@@ -23,7 +23,10 @@ vi.mock('openai', () => {
 import { ChatCodex } from '../src/llm/codex/chat.js';
 import { saveCodexTokens } from '../src/llm/codex/auth.js';
 import { SystemMessage, UserMessage } from '../src/llm/messages.js';
-import { ModelRateLimitError } from '../src/llm/exceptions.js';
+import {
+  ModelProviderError,
+  ModelRateLimitError,
+} from '../src/llm/exceptions.js';
 
 const tempDirs: string[] = [];
 
@@ -192,6 +195,31 @@ describe('ChatCodex', () => {
     await expect(
       llm.ainvoke([new UserMessage('hello')])
     ).rejects.toBeInstanceOf(ModelRateLimitError);
+  });
+
+  it('does not refresh Codex auth after 403 responses', async () => {
+    const configDir = await makeTempDir();
+    const token = makeJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+    await saveCodexTokens(
+      { access_token: token, refresh_token: 'refresh' },
+      { configDir }
+    );
+    responsesCreateMock.mockRejectedValueOnce({
+      status: 403,
+      message: 'cloudflare challenge',
+    });
+    const fetchMock = vi.fn();
+    const llm = new ChatCodex({
+      configDir,
+      fetchImplementation: fetchMock as typeof fetch,
+    });
+
+    await expect(
+      llm.ainvoke([new UserMessage('hello')])
+    ).rejects.toBeInstanceOf(ModelProviderError);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(responsesCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it('extracts output text from response output content fallback', async () => {
