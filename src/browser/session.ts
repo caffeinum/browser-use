@@ -6567,6 +6567,14 @@ export class BrowserSession {
     const timeout =
       timeoutMs || this.browser_profile.default_navigation_timeout || 6000;
 
+    const denialReason = this._get_url_access_denial_reason(url);
+    if (denialReason) {
+      this.logger.warning(
+        `Skipping recovery reopen for disallowed URL: ${denialReason}`
+      );
+      return false;
+    }
+
     try {
       this.logger.debug(
         `🔄 Attempting to reload URL that crashed: ${url.substring(0, 50)}`

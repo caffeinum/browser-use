@@ -1212,6 +1212,28 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('does not reopen disallowed URLs during crash recovery', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    const newPage = vi.fn(async () => ({
+      goto: vi.fn(async () => {}),
+    }));
+    session.browser_context = {
+      newPage,
+    } as any;
+
+    const reopened = await (session as any)._tryReopenUrl(
+      'https://evil.test/crashed',
+      1000
+    );
+
+    expect(reopened).toBe(false);
+    expect(newPage).not.toHaveBeenCalled();
+  });
+
   it('closes new tabs that settle on disallowed redirect URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
