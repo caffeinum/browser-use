@@ -104,6 +104,7 @@ export class CodeAgent {
     }
 
     const page = await this.browser_session.get_current_page();
+    await this.browser_session.validate_page_after_action(page ?? null);
     const state = new CodeAgentState({
       url: typeof page?.url === 'function' ? page.url() : null,
       title: typeof page?.title === 'function' ? await page.title() : null,

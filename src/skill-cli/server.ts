@@ -226,51 +226,53 @@ export class SkillCliServer {
       throw new Error('No active page available');
     }
 
-    return await page.evaluate(
-      ({ xpath, dataKind }: { xpath: string; dataKind: string }) => {
-        const element = document.evaluate(
-          xpath,
-          document,
-          null,
-          XPathResult.FIRST_ORDERED_NODE_TYPE,
-          null
-        ).singleNodeValue as HTMLElement | null;
-        if (!element) {
-          return null;
-        }
+    return await this._run_with_page_validation(browser_session, () =>
+      page.evaluate(
+        ({ xpath, dataKind }: { xpath: string; dataKind: string }) => {
+          const element = document.evaluate(
+            xpath,
+            document,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+            null
+          ).singleNodeValue as HTMLElement | null;
+          if (!element) {
+            return null;
+          }
 
-        if (dataKind === 'text') {
-          return element.textContent?.trim() ?? '';
-        }
-        if (dataKind === 'value') {
-          return 'value' in element
-            ? String((element as HTMLInputElement).value ?? '')
-            : null;
-        }
-        if (dataKind === 'attributes') {
-          return Object.fromEntries(
-            Array.from(element.attributes).map((attribute) => [
-              attribute.name,
-              attribute.value,
-            ])
-          );
-        }
-        if (dataKind === 'bbox') {
-          const rect = element.getBoundingClientRect();
-          return {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-            left: rect.left,
-          };
-        }
-        return null;
-      },
-      { xpath: node.xpath, dataKind: kind }
+          if (dataKind === 'text') {
+            return element.textContent?.trim() ?? '';
+          }
+          if (dataKind === 'value') {
+            return 'value' in element
+              ? String((element as HTMLInputElement).value ?? '')
+              : null;
+          }
+          if (dataKind === 'attributes') {
+            return Object.fromEntries(
+              Array.from(element.attributes).map((attribute) => [
+                attribute.name,
+                attribute.value,
+              ])
+            );
+          }
+          if (dataKind === 'bbox') {
+            const rect = element.getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom,
+              left: rect.left,
+            };
+          }
+          return null;
+        },
+        { xpath: node.xpath, dataKind: kind }
+      )
     );
   }
 
@@ -581,7 +583,9 @@ export class SkillCliServer {
         throw new Error('No active page available for get_title');
       }
       return {
-        title: await page.title(),
+        title: await this._run_with_page_validation(browser_session, () =>
+          page.title()
+        ),
       };
     }
 

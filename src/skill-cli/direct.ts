@@ -580,52 +580,57 @@ const readDirectNodeData = async (
     throw new Error('No active page available');
   }
 
-  return await page.evaluate(
-    ({ xpath, dataKind }: { xpath: string; dataKind: string }) => {
-      const element = document.evaluate(
-        xpath,
-        document,
-        null,
-        XPathResult.FIRST_ORDERED_NODE_TYPE,
-        null
-      ).singleNodeValue as HTMLElement | null;
-      if (!element) {
-        return null;
-      }
+  await validateDirectPageAfterAction(session, page);
+  try {
+    return await page.evaluate(
+      ({ xpath, dataKind }: { xpath: string; dataKind: string }) => {
+        const element = document.evaluate(
+          xpath,
+          document,
+          null,
+          XPathResult.FIRST_ORDERED_NODE_TYPE,
+          null
+        ).singleNodeValue as HTMLElement | null;
+        if (!element) {
+          return null;
+        }
 
-      if (dataKind === 'text') {
-        return element.textContent?.trim() ?? '';
-      }
-      if (dataKind === 'value') {
-        return 'value' in element
-          ? String((element as HTMLInputElement).value ?? '')
-          : null;
-      }
-      if (dataKind === 'attributes') {
-        return Object.fromEntries(
-          Array.from(element.attributes).map((attribute) => [
-            attribute.name,
-            attribute.value,
-          ])
-        );
-      }
-      if (dataKind === 'bbox') {
-        const rect = element.getBoundingClientRect();
-        return {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          top: rect.top,
-          right: rect.right,
-          bottom: rect.bottom,
-          left: rect.left,
-        };
-      }
-      return null;
-    },
-    { xpath: node.xpath, dataKind: kind }
-  );
+        if (dataKind === 'text') {
+          return element.textContent?.trim() ?? '';
+        }
+        if (dataKind === 'value') {
+          return 'value' in element
+            ? String((element as HTMLInputElement).value ?? '')
+            : null;
+        }
+        if (dataKind === 'attributes') {
+          return Object.fromEntries(
+            Array.from(element.attributes).map((attribute) => [
+              attribute.name,
+              attribute.value,
+            ])
+          );
+        }
+        if (dataKind === 'bbox') {
+          const rect = element.getBoundingClientRect();
+          return {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            left: rect.left,
+          };
+        }
+        return null;
+      },
+      { xpath: node.xpath, dataKind: kind }
+    );
+  } finally {
+    await validateDirectPageAfterAction(session, page);
+  }
 };
 
 const takeDirectOptionValue = (
@@ -1310,7 +1315,12 @@ export const run_direct_command = async (
         if (!page?.title) {
           throw new Error('No active page available for get title');
         }
-        writeLine(environment.stdout, await page.title());
+        await validateDirectPageAfterAction(session, page);
+        try {
+          writeLine(environment.stdout, await page.title());
+        } finally {
+          await validateDirectPageAfterAction(session, page);
+        }
       } else if (subcommand === 'html') {
         const selector = args.slice(2).join(' ').trim();
         if (!selector) {

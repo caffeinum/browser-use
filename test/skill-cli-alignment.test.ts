@@ -674,6 +674,9 @@ describe('skill-cli alignment', () => {
     const session = new BrowserSession();
     const node = { xpath: '//*[@data-id="target"]' } as any;
     vi.spyOn(session, 'get_dom_element_by_index').mockResolvedValue(node);
+    const validateSpy = vi
+      .spyOn(session, 'validate_page_after_action')
+      .mockResolvedValue();
     vi.spyOn(session, 'get_current_page').mockResolvedValue({
       title: vi.fn(async () => 'Example Title'),
       evaluate: vi.fn(
@@ -733,6 +736,7 @@ describe('skill-cli alignment', () => {
     expect((getAttributes.data as any).attributes).toEqual({
       'data-id': 'target',
     });
+    expect(validateSpy).toHaveBeenCalledTimes(6);
     expect(extract.success).toBe(false);
     expect(String(extract.error)).toContain('extract requires agent mode');
   });

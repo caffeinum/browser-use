@@ -28,6 +28,33 @@ describe('actor alignment', () => {
     expect(keySpy).toHaveBeenCalledWith('Control+A');
   });
 
+  it('blocks Page title reads from disallowed current pages', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://evil.test/title?token=secret';
+    const rawPage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => 'Secret Title'),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+
+    const page = new Page(session);
+
+    await expect(page.get_title()).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(rawPage.title).not.toHaveBeenCalled();
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+  });
+
   it('creates Element wrappers from index lookups and delegates click/fill', async () => {
     const session = new BrowserSession();
     const page = new Page(session);

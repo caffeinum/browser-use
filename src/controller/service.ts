@@ -1371,7 +1371,14 @@ export class Controller<Context = unknown> {
       param_model: ExtractStructuredDataActionSchema,
     })(async function extract_structured_data(
       params: ExtractStructuredAction,
-      { page, page_extraction_llm, extraction_schema, file_system, signal }
+      {
+        browser_session,
+        page,
+        page_extraction_llm,
+        extraction_schema,
+        file_system,
+        signal,
+      }
     ) {
       throwIfAborted(signal);
       if (!page) {
@@ -1381,10 +1388,15 @@ export class Controller<Context = unknown> {
         throw new BrowserError('page_extraction_llm is not configured.');
       }
       const fsInstance = file_system ?? new FileSystem(process.cwd(), false);
+      await validateBrowserPageAfterAction(browser_session, page, signal);
       const pageHtml = await runWithTimeoutAndSignal(
         async () => {
-          const value = await page.content?.();
-          return typeof value === 'string' ? value : '';
+          try {
+            const value = await page.content?.();
+            return typeof value === 'string' ? value : '';
+          } finally {
+            await validateBrowserPageAfterAction(browser_session, page, signal);
+          }
         },
         10000,
         signal,

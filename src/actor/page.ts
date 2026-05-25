@@ -28,11 +28,13 @@ export class Page {
 
   async get_url() {
     const page = await this._currentPage();
+    await this.browser_session.validate_page_after_action(page);
     return typeof page.url === 'function' ? page.url() : '';
   }
 
   async get_title() {
     const page = await this._currentPage();
+    await this.browser_session.validate_page_after_action(page);
     return typeof page.title === 'function' ? page.title() : '';
   }
 

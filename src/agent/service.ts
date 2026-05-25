@@ -3299,10 +3299,16 @@ export class Agent<
       if (!page || typeof page.content !== 'function') {
         throw new Error('No page available for markdown extraction');
       }
+      await this.browser_session.validate_page_after_action(page, signal);
       if (typeof page.url === 'function') {
         currentUrl = page.url();
       }
-      const html = (await page.content()) || '';
+      let html = '';
+      try {
+        html = (await page.content()) || '';
+      } finally {
+        await this.browser_session.validate_page_after_action(page, signal);
+      }
       const extracted = extractCleanMarkdownFromHtml(html, {
         extract_links: extractLinks,
       });

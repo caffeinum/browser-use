@@ -717,6 +717,7 @@ describe('skill-cli direct alignment', () => {
         ),
       })),
       get_page_html: vi.fn(async () => '<html></html>'),
+      validate_page_after_action: vi.fn(async () => {}),
       event_bus: { stop: vi.fn(async () => {}) },
       detach_all_watchdogs: vi.fn(),
     };
@@ -787,6 +788,7 @@ describe('skill-cli direct alignment', () => {
       expect(output).toContain('"data-id":"target"');
       expect(output).toContain('"width":3');
       expect(output).toContain('extract requires agent mode');
+      expect(session.validate_page_after_action).toHaveBeenCalledTimes(10);
       expect(stderr.read()).toBe('');
     } finally {
       clear_direct_state(stateFile);
