@@ -57,17 +57,24 @@ import { productTelemetry } from '../telemetry/service.js';
 import { MCPServerTelemetryEvent } from '../telemetry/views.js';
 import { get_browser_use_version } from '../utils.js';
 
-// Redirect console logs to stderr to prevent JSON-RPC interference
-const originalLog = console.log;
-const originalInfo = console.info;
-const originalWarn = console.warn;
-const originalError = console.error;
-
-console.log = (...args: any[]) => console.error(...args);
-console.info = (...args: any[]) => console.error(...args);
-console.warn = (...args: any[]) => console.error(...args);
-
 const logger = createLogger('browser_use.mcp.server');
+
+const redirectConsoleToStderr = () => {
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  const originalWarn = console.warn;
+  const writeToStderr = (...args: any[]) => console.error(...args);
+
+  console.log = writeToStderr;
+  console.info = writeToStderr;
+  console.warn = writeToStderr;
+
+  return () => {
+    console.log = originalLog;
+    console.info = originalInfo;
+    console.warn = originalWarn;
+  };
+};
 
 export interface MCPPromptTemplate {
   name: string;
@@ -114,6 +121,7 @@ export class MCPServer {
   private activeSessions: Map<string, MCPTrackedSession> = new Map();
   private sessionTimeoutMinutes = 10;
   private sessionCleanupInterval: NodeJS.Timeout | null = null;
+  private restoreConsoleRedirect: (() => void) | null = null;
 
   constructor(name: string, version: string) {
     this.server = new Server(
@@ -1215,6 +1223,7 @@ export class MCPServer {
       logger.warning('MCP Server is already running');
       return;
     }
+    this.restoreConsoleRedirect ??= redirectConsoleToStderr();
 
     // Capture telemetry for server start
     productTelemetry.capture(
@@ -1234,6 +1243,8 @@ export class MCPServer {
       );
     } catch (error) {
       this.isRunning = false;
+      this.restoreConsoleRedirect?.();
+      this.restoreConsoleRedirect = null;
       logger.error(`Failed to start MCP server: ${error}`);
       throw error;
     }
@@ -1245,6 +1256,8 @@ export class MCPServer {
   public async stop(): Promise<void> {
     if (!this.isRunning) {
       logger.warning('MCP Server is not running');
+      this.restoreConsoleRedirect?.();
+      this.restoreConsoleRedirect = null;
       return;
     }
 
@@ -1282,6 +1295,9 @@ export class MCPServer {
       );
     } catch (error) {
       logger.error(`Error stopping MCP server: ${error}`);
+    } finally {
+      this.restoreConsoleRedirect?.();
+      this.restoreConsoleRedirect = null;
     }
   }
 

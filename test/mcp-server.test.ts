@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const mockAgentInstances: any[] = [];
+const originalConsoleLog = console.log;
 
 vi.mock('../src/config.js', () => ({
   CONFIG: {
@@ -101,6 +102,10 @@ import { MCPServer } from '../src/mcp/server.js';
 import { BrowserStateRequestEvent } from '../src/browser/events.js';
 
 describe('MCPServer browser_click new_tab', () => {
+  it('does not redirect console output at module import time', () => {
+    expect(console.log).toBe(originalConsoleLog);
+  });
+
   it('opens href targets in a new tab and reports tab index', async () => {
     const server = new MCPServer('test-mcp', '1.0.0');
     const createNewTab = vi.fn(async () => ({}));
