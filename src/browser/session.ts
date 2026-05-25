@@ -7239,6 +7239,29 @@ export class BrowserSession {
         );
       }
 
+      try {
+        await this._assert_page_url_allowed_or_rollback(newPage);
+      } catch (error) {
+        if (error instanceof URLNotAllowedError) {
+          this.logger.warning(
+            `Skipping recovery reopen after redirect to disallowed URL: ${error.message}`
+          );
+          try {
+            await newPage.close?.();
+          } catch {
+            // Ignore cleanup errors; the page was already reset best effort.
+          }
+          if (this.agent_current_page === newPage) {
+            this.agent_current_page = null;
+          }
+          if (this.human_current_page === newPage) {
+            this.human_current_page = null;
+          }
+          return false;
+        }
+        throw error;
+      }
+
       // Wait a bit for any transient blocking to resolve
       await new Promise((resolve) => setTimeout(resolve, 1000));
 

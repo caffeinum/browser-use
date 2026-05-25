@@ -2269,6 +2269,52 @@ esac
     expect(newPage).not.toHaveBeenCalled();
   });
 
+  it('closes crash recovery pages that redirect to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'about:blank';
+    const page = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl =
+          url === 'https://example.com/crashed'
+            ? 'https://evil.test/recovered?token=secret'
+            : url;
+      }),
+      url: vi.fn(() => pageUrl),
+      close: vi.fn(async () => {}),
+      setViewportSize: vi.fn(async () => {}),
+    };
+    session.browser_context = {
+      newPage: vi.fn(async () => page),
+    } as any;
+    const warningSpy = vi
+      .spyOn(session.logger, 'warning')
+      .mockImplementation(() => undefined);
+
+    try {
+      const reopened = await (session as any)._tryReopenUrl(
+        'https://example.com/crashed',
+        1000
+      );
+
+      expect(reopened).toBe(false);
+      expect(page.goto).toHaveBeenCalledWith(
+        'about:blank',
+        expect.objectContaining({ waitUntil: 'load' })
+      );
+      expect(page.close).toHaveBeenCalledTimes(1);
+      expect(session.agent_current_page).toBeNull();
+      const logs = warningSpy.mock.calls.flat().join('\n');
+      expect(logs).toContain('https://evil.test/recovered?<redacted>');
+      expect(logs).not.toContain('token=secret');
+    } finally {
+      warningSpy.mockRestore();
+    }
+  });
+
   it('redacts crash recovery URLs before logging', async () => {
     const session = new BrowserSession();
     const rawUrl = 'https://example.com/crashed?token=abc#section';
