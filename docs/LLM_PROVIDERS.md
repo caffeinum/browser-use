@@ -145,6 +145,26 @@ npx browser-use auth codex login --force
 npx browser-use auth codex logout
 ```
 
+### Local Smoke E2E
+
+After logging in with `browser-use auth codex login`, run the local Codex smoke
+suite from the repo:
+
+```bash
+pnpm test:e2e:codex
+```
+
+This validates the browser-use auth store, CLI JSON status path, a direct Codex
+Responses call, and structured output. To also run a real one-step Agent smoke
+that verifies agent monitoring events, use:
+
+```bash
+pnpm test:e2e:codex:agent
+```
+
+These tests intentionally require local auth and real network access, so they
+are excluded from the default unit test command.
+
 ### Environment Overrides
 
 ```bash
