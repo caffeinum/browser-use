@@ -81,6 +81,11 @@
       "import": "./dist/llm/browser-use/index.js",
       "default": "./dist/llm/browser-use/index.js"
     },
+    "./llm/codex": {
+      "types": "./dist/llm/codex/index.d.ts",
+      "import": "./dist/llm/codex/index.js",
+      "default": "./dist/llm/codex/index.js"
+    },
     "./llm/base": {
       "types": "./dist/llm/base.d.ts",
       "import": "./dist/llm/base.js",

@@ -17,6 +17,7 @@ import {
   normalizeCliHistory,
   parseCliArgs,
   runDoctorChecks,
+  runAuthCommand,
   runInstallCommand,
   runSetupCommand,
   saveCliHistory,
@@ -24,6 +25,7 @@ import {
 } from '../src/cli.js';
 import { save_cloud_api_token } from '../src/sync/auth.js';
 import { CloudManagementClient } from '../src/browser/cloud/management.js';
+import { saveCodexTokens } from '../src/llm/codex/auth.js';
 
 const MANAGED_ENV_KEYS = [
   'OPENAI_API_KEY',
@@ -48,6 +50,9 @@ const MANAGED_ENV_KEYS = [
   'OCI_COMPARTMENT_ID',
   'OCI_MODEL_ID',
   'BROWSER_USE_API_KEY',
+  'BROWSER_USE_CODEX_ACCESS_TOKEN',
+  'BROWSER_USE_CODEX_MODEL',
+  'BROWSER_USE_CODEX_BASE_URL',
   'BROWSER_USE_CONFIG_DIR',
   'BROWSER_USE_CLI_FORCE_INTERACTIVE',
   'HOME',
@@ -254,6 +259,17 @@ describe('CLI argument parsing', () => {
     });
   });
 
+  it('extracts auth subcommands after leading global flags', () => {
+    expect(
+      extractPrefixedSubcommand(['--json', 'auth', 'codex', 'status'])
+    ).toEqual({
+      command: 'auth',
+      argv: ['codex', 'status'],
+      debug: false,
+      forwardedArgs: ['--json'],
+    });
+  });
+
   it('dispatches api-key-prefixed task subcommands through main', async () => {
     let output = '';
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(((
@@ -335,6 +351,7 @@ describe('CLI argument parsing', () => {
     expect(usage).toContain('browser-use doctor');
     expect(usage).toContain('browser-use install');
     expect(usage).toContain('browser-use setup');
+    expect(usage).toContain('browser-use auth codex');
     expect(usage).toContain('browser-use tunnel <port>');
     expect(usage).toContain('--provider <name>');
     expect(usage).toContain('--model <model>');
@@ -503,6 +520,25 @@ describe('CLI model routing', () => {
     expect(llm.model).toBe('bu-2-0');
   });
 
+  it('supports explicit Codex provider defaults without OpenAI API key', () => {
+    const args = parseCliArgs(['--provider', 'codex', '-p', 'x']);
+    const llm = getLlmFromCliArgs(args);
+    expect(llm.provider).toBe('codex');
+    expect(llm.model).toBe('gpt-5.1-codex');
+  });
+
+  it('routes codex-prefixed model names to Codex provider', () => {
+    const args = parseCliArgs([
+      '--model',
+      'codex:gpt-5.1-codex-mini',
+      '-p',
+      'x',
+    ]);
+    const llm = getLlmFromCliArgs(args);
+    expect(llm.provider).toBe('codex');
+    expect(llm.model).toBe('gpt-5.1-codex-mini');
+  });
+
   it('supports vercel provider defaults when api key is configured', () => {
     process.env.VERCEL_API_KEY = 'test-vercel';
     const args = parseCliArgs(['--provider', 'vercel', '-p', 'x']);
@@ -600,6 +636,105 @@ describe('CLI model routing', () => {
     const llm = getLlmFromCliArgs(args);
     expect(llm.provider).toBe('oci-raw');
     expect(llm.model).toBe('ocid1.generativeaimodel.oc1.region.example');
+  });
+});
+
+describe('CLI Codex auth commands', () => {
+  afterEach(async () => {
+    restoreManagedEnv();
+    await Promise.all(
+      TEMP_DIRS.splice(0).map((dir) =>
+        fs.rm(dir, { recursive: true, force: true })
+      )
+    );
+  });
+
+  it('imports, reports, and clears browser-use Codex auth state', async () => {
+    clearManagedEnv();
+    const configDir = await makeTempDir();
+    let output = '';
+    let errorOutput = '';
+    const stdout = {
+      write: (chunk: string) => {
+        output += chunk;
+      },
+    };
+    const stderr = {
+      write: (chunk: string) => {
+        errorOutput += chunk;
+      },
+    };
+    const importStub = vi.fn(async (options: { configDir?: string | null }) => {
+      await saveCodexTokens(
+        { access_token: 'imported-access', refresh_token: 'imported-refresh' },
+        { configDir: options.configDir, source: 'test-import' }
+      );
+      return true;
+    });
+
+    await expect(
+      runAuthCommand(['codex', 'import'], {
+        configDir,
+        stdout,
+        stderr,
+        import_codex_cli: importStub as any,
+      })
+    ).resolves.toBe(0);
+    expect(output).toContain('Imported Codex CLI credentials');
+    expect(errorOutput).toBe('');
+
+    output = '';
+    await expect(
+      runAuthCommand(['codex', 'status', '--json'], {
+        configDir,
+        stdout,
+        stderr,
+      })
+    ).resolves.toBe(0);
+    expect(JSON.parse(output)).toMatchObject({
+      authenticated: true,
+      provider: 'openai-codex',
+      source: 'test-import',
+    });
+
+    output = '';
+    await expect(
+      runAuthCommand(['codex', 'logout'], { configDir, stdout, stderr })
+    ).resolves.toBe(0);
+    expect(output).toContain('Codex auth cleared');
+
+    output = '';
+    await expect(
+      runAuthCommand(['codex', 'status'], { configDir, stdout, stderr })
+    ).resolves.toBe(1);
+    expect(output).toContain('not authenticated');
+  });
+
+  it('reuses existing Codex auth on login unless force is requested', async () => {
+    clearManagedEnv();
+    const configDir = await makeTempDir();
+    await saveCodexTokens(
+      { access_token: 'access', refresh_token: 'refresh' },
+      { configDir }
+    );
+    let output = '';
+    const stdout = {
+      write: (chunk: string) => {
+        output += chunk;
+      },
+    };
+    const loginStub = vi.fn();
+
+    await expect(
+      runAuthCommand(['codex', 'login'], {
+        configDir,
+        stdout,
+        login_device_code: loginStub as any,
+      })
+    ).resolves.toBe(0);
+
+    expect(loginStub).not.toHaveBeenCalled();
+    expect(output).toContain('Existing browser-use Codex credentials found');
   });
 });
 

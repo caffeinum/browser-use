@@ -33,6 +33,14 @@ import { ChatVercel } from './llm/vercel/chat.js';
 import { ChatAnthropicBedrock } from './llm/aws/chat-anthropic.js';
 import { ChatBedrockConverse } from './llm/aws/chat-bedrock.js';
 import { ChatBrowserUse } from './llm/browser-use/chat.js';
+import { ChatCodex } from './llm/codex/chat.js';
+import {
+  clearCodexTokens,
+  getCodexAuthStatus,
+  loginAndSaveCodexDeviceCode,
+  saveImportedCodexCliTokens,
+  type CodexAuthStatus,
+} from './llm/codex/auth.js';
 import type { BaseChatModel } from './llm/base.js';
 import { MCPServer } from './mcp/server.js';
 import { get_browser_use_version } from './utils.js';
@@ -53,6 +61,7 @@ type CliModelProvider =
   | 'groq'
   | 'openrouter'
   | 'azure'
+  | 'codex'
   | 'mistral'
   | 'cerebras'
   | 'vercel'
@@ -71,6 +80,8 @@ const CLI_PROVIDER_ALIASES: Record<string, CliModelProvider> = {
   groq: 'groq',
   openrouter: 'openrouter',
   azure: 'azure',
+  codex: 'codex',
+  'openai-codex': 'codex',
   mistral: 'mistral',
   cerebras: 'cerebras',
   vercel: 'vercel',
@@ -143,7 +154,7 @@ const parseProvider = (value: string): CliModelProvider => {
   const provider = CLI_PROVIDER_ALIASES[normalized];
   if (!provider) {
     throw new Error(
-      `Unsupported provider "${value}". Supported values: openai, anthropic, google, deepseek, groq, openrouter, azure, mistral, cerebras, vercel, oci, ollama, browser-use, aws, aws-anthropic.`
+      `Unsupported provider "${value}". Supported values: openai, anthropic, google, deepseek, groq, openrouter, azure, codex, mistral, cerebras, vercel, oci, ollama, browser-use, aws, aws-anthropic.`
     );
   }
   return provider;
@@ -495,6 +506,9 @@ const inferProviderFromModel = (model: string): CliModelProvider | null => {
   if (lower.startsWith('azure:')) {
     return 'azure';
   }
+  if (lower.startsWith('codex:') || lower.startsWith('openai-codex:')) {
+    return 'codex';
+  }
   if (lower.startsWith('mistral:')) {
     return 'mistral';
   }
@@ -565,6 +579,12 @@ const normalizeModelValue = (
   if (provider === 'azure' && lower.startsWith('azure:')) {
     return model.slice('azure:'.length);
   }
+  if (provider === 'codex' && lower.startsWith('codex:')) {
+    return model.slice('codex:'.length);
+  }
+  if (provider === 'codex' && lower.startsWith('openai-codex:')) {
+    return model.slice('openai-codex:'.length);
+  }
   if (provider === 'mistral' && lower.startsWith('mistral:')) {
     return model.slice('mistral:'.length);
   }
@@ -629,6 +649,8 @@ const getDefaultModelForProvider = (
       return 'openai/gpt-5-mini';
     case 'azure':
       return 'gpt-4o';
+    case 'codex':
+      return 'gpt-5.1-codex';
     case 'mistral':
       return 'mistral-large-latest';
     case 'cerebras':
@@ -681,6 +703,8 @@ const createLlmForProvider = (
       requireEnv('AZURE_OPENAI_API_KEY');
       requireEnv('AZURE_OPENAI_ENDPOINT');
       return new ChatAzure(model);
+    case 'codex':
+      return new ChatCodex({ model });
     case 'mistral':
       return new ChatMistral({
         model,
@@ -743,7 +767,7 @@ export const getLlmFromCliArgs = (args: ParsedCliArgs): BaseChatModel => {
     const provider = args.provider ?? inferredProvider;
     if (!provider) {
       throw new Error(
-        `Cannot infer provider from model "${args.model}". Provide --provider or use a supported model prefix: gpt*/o*, claude*, gemini*, deepseek*, groq:, openrouter:, azure:, mistral:, cerebras:, vercel:, oci:, ollama:, browser-use:, bu-*, bedrock:.`
+        `Cannot infer provider from model "${args.model}". Provide --provider or use a supported model prefix: gpt*/o*, claude*, gemini*, deepseek*, groq:, openrouter:, azure:, codex:, mistral:, cerebras:, vercel:, oci:, ollama:, browser-use:, bu-*, bedrock:.`
       );
     }
     const normalizedModel = normalizeModelValue(args.model, provider);
@@ -994,6 +1018,7 @@ export const getCliUsage = () => `Usage:
   browser-use doctor
   browser-use install
   browser-use setup [--mode <local|remote|full>]
+  browser-use auth codex <login|status|logout|import>
   browser-use tunnel <port>
   browser-use task <list|status|stop|logs>
   browser-use session <list|get|stop|create|share>
@@ -1010,8 +1035,8 @@ Options:
   --mcp                       Run as MCP server
   --json                      Output command results as JSON when supported
   -y, --yes                   Skip optional setup prompts where supported
-  --provider <name>           Force provider (openai|anthropic|google|deepseek|groq|openrouter|azure|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic)
-  --model <model>             Set model (e.g., gpt-5-mini, claude-4-sonnet, gemini-2.5-pro)
+  --provider <name>           Force provider (openai|anthropic|google|deepseek|groq|openrouter|azure|codex|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic)
+  --model <model>             Set model (e.g., gpt-5-mini, codex:gpt-5.1-codex, claude-4-sonnet)
   -p, --prompt <task>         Run a single task
   --mode <name>              Setup mode for setup command (local|remote|full)
   --api-key <value>          Browser Use API key for setup or cloud operations
@@ -1166,6 +1191,179 @@ export const runInstallCommand = (options: RunInstallCommandOptions = {}) => {
 
 const writeLine = (stream: WritableLike, value: string) => {
   stream.write(`${value}\n`);
+};
+
+export interface RunAuthCommandOptions {
+  stdout?: WritableLike;
+  stderr?: WritableLike;
+  json_output?: boolean;
+  configDir?: string | null;
+  authStorePath?: string | null;
+  login_device_code?: typeof loginAndSaveCodexDeviceCode;
+  import_codex_cli?: typeof saveImportedCodexCliTokens;
+}
+
+const formatCodexAuthStatus = (status: CodexAuthStatus) => {
+  if (!status.authenticated) {
+    return [
+      'Codex auth: not authenticated',
+      `Auth store: ${status.auth_store_path}`,
+      'Run `browser-use auth codex login` to authenticate.',
+    ].join('\n');
+  }
+
+  return [
+    'Codex auth: authenticated',
+    `Provider: ${status.provider}`,
+    `Base URL: ${status.base_url}`,
+    `Source: ${status.source ?? 'unknown'}`,
+    `Last refresh: ${status.last_refresh ?? 'unknown'}`,
+    `Access token expiring: ${String(status.access_token_expiring)}`,
+    `Auth store: ${status.auth_store_path}`,
+  ].join('\n');
+};
+
+const parseCodexAuthArgs = (argv: string[]) => {
+  const flags = {
+    json: false,
+    force: false,
+    importFromCodexCli: false,
+    parts: [] as string[],
+  };
+
+  for (const arg of argv) {
+    if (arg === '--json') {
+      flags.json = true;
+      continue;
+    }
+    if (arg === '--force') {
+      flags.force = true;
+      continue;
+    }
+    if (arg === '--import') {
+      flags.importFromCodexCli = true;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      throw new Error(`Unknown auth option: ${arg}`);
+    }
+    flags.parts.push(arg);
+  }
+
+  return flags;
+};
+
+export const runAuthCommand = async (
+  argv: string[],
+  options: RunAuthCommandOptions = {}
+) => {
+  const output = options.stdout ?? process.stdout;
+  const errorOutput = options.stderr ?? process.stderr;
+  const loginDeviceCode =
+    options.login_device_code ?? loginAndSaveCodexDeviceCode;
+  const importCodexCli = options.import_codex_cli ?? saveImportedCodexCliTokens;
+
+  try {
+    const flags = parseCodexAuthArgs(argv);
+    const jsonOutput = options.json_output ?? flags.json;
+    const provider = flags.parts[0] ?? 'codex';
+    const action = flags.parts[1] ?? 'status';
+
+    if (provider !== 'codex' && provider !== 'openai-codex') {
+      throw new Error(
+        'Usage: browser-use auth codex <login|status|logout|import>'
+      );
+    }
+
+    const authOptions = {
+      configDir: options.configDir,
+      authStorePath: options.authStorePath,
+    };
+
+    if (action === 'status') {
+      const status = await getCodexAuthStatus(authOptions);
+      if (jsonOutput) {
+        writeLine(output, JSON.stringify(status, null, 2));
+      } else {
+        writeLine(output, formatCodexAuthStatus(status));
+      }
+      return status.authenticated ? 0 : 1;
+    }
+
+    if (action === 'logout') {
+      await clearCodexTokens(authOptions);
+      const status = await getCodexAuthStatus(authOptions);
+      if (jsonOutput) {
+        writeLine(output, JSON.stringify(status, null, 2));
+      } else {
+        writeLine(output, 'Codex auth cleared from browser-use auth store.');
+      }
+      return 0;
+    }
+
+    if (action === 'import' || flags.importFromCodexCli) {
+      const imported = await importCodexCli(authOptions);
+      if (!imported) {
+        writeLine(
+          errorOutput,
+          'No valid Codex CLI credentials found. Run `browser-use auth codex login` for a separate browser-use session.'
+        );
+        return 1;
+      }
+      const status = await getCodexAuthStatus(authOptions);
+      if (jsonOutput) {
+        writeLine(output, JSON.stringify(status, null, 2));
+      } else {
+        writeLine(
+          output,
+          'Imported Codex CLI credentials into browser-use auth store.'
+        );
+        writeLine(
+          output,
+          'browser-use will refresh its own copy and will not write ~/.codex/auth.json.'
+        );
+      }
+      return 0;
+    }
+
+    if (action === 'login') {
+      if (!flags.force) {
+        const status = await getCodexAuthStatus(authOptions);
+        if (status.authenticated) {
+          if (jsonOutput) {
+            writeLine(output, JSON.stringify(status, null, 2));
+          } else {
+            writeLine(output, 'Existing browser-use Codex credentials found.');
+            writeLine(
+              output,
+              'Use `browser-use auth codex login --force` to create a fresh session.'
+            );
+          }
+          return 0;
+        }
+      }
+
+      await loginDeviceCode({
+        ...authOptions,
+        stdout: output as NodeJS.WriteStream,
+      });
+      const status = await getCodexAuthStatus(authOptions);
+      if (jsonOutput) {
+        writeLine(output, JSON.stringify(status, null, 2));
+      } else {
+        writeLine(output, 'Codex login successful.');
+        writeLine(output, `Auth store: ${status.auth_store_path}`);
+      }
+      return 0;
+    }
+
+    throw new Error(
+      'Usage: browser-use auth codex <login|status|logout|import>'
+    );
+  } catch (error) {
+    writeLine(errorOutput, `Error: ${(error as Error).message}`);
+    return 1;
+  }
 };
 
 const parseTunnelPort = (value: string | undefined | null) => {
@@ -2770,7 +2968,7 @@ const hasExplicitRemoteRunFlag = (argv: string[]) => {
 };
 
 type PrefixedSubcommand = {
-  command: 'run' | 'task' | 'session' | 'profile';
+  command: 'run' | 'task' | 'session' | 'profile' | 'auth';
   argv: string[];
   debug: boolean;
   forwardedArgs: string[];
@@ -2840,7 +3038,8 @@ export const extractPrefixedSubcommand = (
     command !== 'run' &&
     command !== 'task' &&
     command !== 'session' &&
-    command !== 'profile'
+    command !== 'profile' &&
+    command !== 'auth'
   ) {
     return null;
   }
@@ -3340,6 +3539,14 @@ export async function main(argv: string[] = process.argv.slice(2)) {
 
     if (prefixedSubcommand.command === 'session') {
       const exitCode = await runSessionCommand(subcommandArgv);
+      if (exitCode !== 0) {
+        process.exit(exitCode);
+      }
+      return;
+    }
+
+    if (prefixedSubcommand.command === 'auth') {
+      const exitCode = await runAuthCommand(subcommandArgv);
       if (exitCode !== 0) {
         process.exit(exitCode);
       }
