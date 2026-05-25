@@ -3,6 +3,7 @@ import {
   formatMcpCommandForLog,
   formatMcpToolArgsForLog,
   MCPClient,
+  redactMcpLogMessage,
 } from '../src/mcp/client.js';
 import { Tools } from '../src/tools/service.js';
 import { Controller } from '../src/controller/service.js';
@@ -126,5 +127,24 @@ describe('MCPClient tools alignment', () => {
     expect(formatted).not.toContain('env-secret');
     expect(formatted).not.toContain('bearer-secret');
     expect(formatted).not.toContain('query-secret');
+  });
+
+  it('redacts sensitive MCP error messages before logging or telemetry', () => {
+    const formatted = redactMcpLogMessage(
+      new Error(
+        'Request failed api_key=sk-test Authorization: Bearer bearer-secret at https://example.com/callback?token=query-secret#frag data:text/html,<secret>'
+      )
+    );
+
+    expect(formatted).toContain('api_key=<redacted>');
+    expect(formatted).toContain('Authorization:<redacted>');
+    expect(formatted).toContain(
+      'https://example.com/callback?<redacted>#<redacted>'
+    );
+    expect(formatted).toContain('data:<redacted>');
+    expect(formatted).not.toContain('sk-test');
+    expect(formatted).not.toContain('bearer-secret');
+    expect(formatted).not.toContain('query-secret');
+    expect(formatted).not.toContain('<secret>');
   });
 });

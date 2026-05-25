@@ -145,6 +145,34 @@ const redactMcpProcessArgs = (args: string[]) => {
 export const formatMcpCommandForLog = (command: string, args: string[]) =>
   [command, ...redactMcpProcessArgs(args)].filter(Boolean).join(' ');
 
+export const redactMcpLogMessage = (value: unknown) => {
+  let message =
+    value instanceof Error
+      ? value.message
+      : typeof value === 'string'
+        ? value
+        : String(value);
+
+  message = message.replace(/https?:\/\/[^\s"'<>]+/gi, (match) =>
+    redactStringForMcpLog(match)
+  );
+  message = message.replace(/\bdata:\S+/gi, () => 'data:<redacted>');
+  message = message.replace(/\bblob:[^\s"'<>]+/gi, (match) =>
+    redactStringForMcpLog(match)
+  );
+  message = message.replace(
+    /\b(Bearer|Basic)\s+[^\s,;]+/gi,
+    (_match, scheme: string) => `${scheme} ${REDACTED_VALUE}`
+  );
+  message = message.replace(
+    /\b([A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|secret[_-]?key|credential|authorization|cookie|session)[A-Za-z0-9_.-]*)\s*([:=])\s*([^\s,;]+)/gi,
+    (_match, key: string, separator: string) =>
+      `${key}${separator}${REDACTED_VALUE}`
+  );
+
+  return message;
+};
+
 const redactMcpToolArgs = (
   value: unknown,
   seen = new WeakSet<object>()
@@ -294,7 +322,7 @@ export class MCPClient {
           backoffMultiplier: 2,
           onRetry: (error, attempt, delay) => {
             logger.warning(
-              `Connection attempt ${attempt} failed for '${this.serverName}': ${error.message}. Retrying in ${delay}ms...`
+              `Connection attempt ${attempt} failed for '${this.serverName}': ${redactMcpLogMessage(error)}. Retrying in ${delay}ms...`
             );
           },
         }
@@ -326,7 +354,7 @@ export class MCPClient {
       // Start health checks
       this._startHealthCheck();
     } catch (error) {
-      errorMsg = error instanceof Error ? error.message : String(error);
+      errorMsg = redactMcpLogMessage(error);
       this._connected = false;
       throw error;
     } finally {
@@ -402,7 +430,7 @@ export class MCPClient {
         `Disconnected from '${this.serverName}' (${stats.toolCallCount} tool calls, ${(stats.successRate * 100).toFixed(1)}% success rate)`
       );
     } catch (error) {
-      errorMsg = error instanceof Error ? error.message : String(error);
+      errorMsg = redactMcpLogMessage(error);
       logger.error(`Error disconnecting from MCP server: ${errorMsg}`);
     } finally {
       // Capture telemetry for disconnect action
@@ -461,7 +489,7 @@ export class MCPClient {
       return (result as any).content;
     } catch (error) {
       this._errorCount++;
-      errorMsg = error instanceof Error ? error.message : String(error);
+      errorMsg = redactMcpLogMessage(error);
       logger.error(`MCP tool '${name}' failed: ${errorMsg}`);
       throw error;
     } finally {
@@ -571,7 +599,7 @@ export class MCPClient {
           long_term_memory: `Used MCP tool '${tool.name}' from ${this.serverName}`,
         });
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = redactMcpLogMessage(error);
         logger.error(`MCP tool '${tool.name}' failed: ${errorMsg}`);
         return new ActionResult({
           error: `MCP tool '${tool.name}' failed: ${errorMsg}`,
@@ -866,7 +894,9 @@ export class MCPClient {
       );
       return result as any;
     } catch (error) {
-      logger.error(`Failed to get prompt '${name}': ${error}`);
+      logger.error(
+        `Failed to get prompt '${name}': ${redactMcpLogMessage(error)}`
+      );
       throw error;
     }
   }
@@ -884,7 +914,7 @@ export class MCPClient {
         await this._performHealthCheck();
       } catch (error) {
         logger.warning(
-          `Health check failed for '${this.serverName}': ${error}`
+          `Health check failed for '${this.serverName}': ${redactMcpLogMessage(error)}`
         );
         if (this.autoReconnect) {
           await this._attemptReconnect();
@@ -931,7 +961,9 @@ export class MCPClient {
       await this.connect(this.connectionTimeout);
       logger.info(`✅ Reconnected to '${this.serverName}'`);
     } catch (error) {
-      logger.error(`Failed to reconnect to '${this.serverName}': ${error}`);
+      logger.error(
+        `Failed to reconnect to '${this.serverName}': ${redactMcpLogMessage(error)}`
+      );
     }
   }
 
