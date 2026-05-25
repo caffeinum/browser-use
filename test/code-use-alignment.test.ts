@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { BrowserProfile } from '../src/browser/profile.js';
 import { BrowserSession } from '../src/browser/session.js';
+import { URLNotAllowedError } from '../src/browser/views.js';
 import { DOMElementNode } from '../src/dom/views.js';
 import {
   CodeAgent,
@@ -69,6 +71,39 @@ describe('code-use alignment', () => {
     expect(namespace._task_done).toBe(true);
     expect(namespace._task_success).toBe(true);
     expect(namespace._task_result).toContain('"done":true');
+  });
+
+  it('rolls back disallowed navigations from namespace evaluate', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/start';
+    const page = {
+      evaluate: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-evaluate?token=secret';
+        return 'ok';
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(page as any);
+
+    const namespace = create_namespace(session);
+
+    await expect(
+      (namespace.evaluate as any)('() => "ok"')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(page.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
   });
 
   it('executes cells through CodeAgent and records history/state', async () => {

@@ -88,19 +88,23 @@ export const create_namespace = (
     ...args: unknown[]
   ) => {
     const page = await browser_session.get_current_page();
-    if (!page) {
+    if (!page?.evaluate) {
       throw new Error('No active page for evaluate');
     }
 
-    if (typeof code === 'function') {
-      return page.evaluate(code as any, ...args);
-    }
+    try {
+      if (typeof code === 'function') {
+        return page.evaluate(code as any, ...args);
+      }
 
-    if (args.length === 0) {
-      return page.evaluate(code);
-    }
+      if (args.length === 0) {
+        return page.evaluate(code);
+      }
 
-    return page.evaluate(buildExpression(code, args));
+      return page.evaluate(buildExpression(code, args));
+    } finally {
+      await browser_session.validate_page_after_action(page);
+    }
   };
 
   namespace.done = (result: unknown = null, success: boolean | null = true) => {

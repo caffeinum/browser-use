@@ -49,6 +49,11 @@ export class Element {
     if (!locator?.evaluate) {
       throw new Error('Element evaluate is unavailable for this node');
     }
-    return (locator as any).evaluate(page_function, ...args);
+    const page = await this.browser_session.get_current_page();
+    try {
+      return await (locator as any).evaluate(page_function, ...args);
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 }

@@ -4431,6 +4431,18 @@ export class BrowserSession {
     }
   }
 
+  async validate_page_after_action(
+    page: Page | null,
+    signal: AbortSignal | null = null
+  ): Promise<void> {
+    await this._waitForLoad(page, 5000, signal);
+    if (page) {
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
+    }
+    this.cachedBrowserState = null;
+  }
+
   // ==================== Page Information ====================
 
   /**

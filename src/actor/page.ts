@@ -3,6 +3,9 @@ import type { BrowserSession } from '../browser/session.js';
 import { Element } from './element.js';
 import { Mouse } from './mouse.js';
 
+const buildExpression = (source: string, args: unknown[]) =>
+  `(${source})(${args.map((arg) => JSON.stringify(arg)).join(',')})`;
+
 export class Page {
   private _mouse: Mouse | null = null;
 
@@ -67,16 +70,17 @@ export class Page {
     ...args: unknown[]
   ) {
     const page = await this._currentPage();
-    if (typeof page_function === 'function') {
-      return page.evaluate(page_function as any, ...args);
+    try {
+      if (typeof page_function === 'function') {
+        return page.evaluate(page_function as any, ...args);
+      }
+      if (args.length === 0) {
+        return page.evaluate(page_function);
+      }
+      return page.evaluate(buildExpression(page_function, args));
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
     }
-    if (args.length === 0) {
-      return page.evaluate(page_function);
-    }
-    const expression = `(${page_function})(${args
-      .map((arg) => JSON.stringify(arg))
-      .join(',')})`;
-    return page.evaluate(expression);
   }
 
   async screenshot(options: { full_page?: boolean } = {}) {

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Page, Mouse, Utils } from '../src/actor/index.js';
+import { Element, Page, Mouse, Utils } from '../src/actor/index.js';
+import { BrowserProfile } from '../src/browser/profile.js';
 import { BrowserSession } from '../src/browser/session.js';
+import { URLNotAllowedError } from '../src/browser/views.js';
 import { DOMElementNode } from '../src/dom/views.js';
 
 describe('actor alignment', () => {
@@ -63,6 +65,84 @@ describe('actor alignment', () => {
     await mouse.click(100, 200, { button: 'right' });
 
     expect(clickSpy).toHaveBeenCalledWith(100, 200, { button: 'right' });
+  });
+
+  it('rolls back disallowed navigations from Page.evaluate', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/start';
+    const rawPage = {
+      evaluate: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-page-evaluate?token=secret';
+        return 'ok';
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+
+    const page = new Page(session);
+
+    await expect(page.evaluate('() => "ok"')).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it('rolls back disallowed navigations from Element.evaluate', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/form';
+    const rawPage = {
+      evaluate: vi.fn(),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    const locator = {
+      evaluate: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-element-evaluate?token=secret';
+        return 'ok';
+      }),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+
+    const node = new DOMElementNode(
+      true,
+      null,
+      'button',
+      '/html/body/button[1]',
+      {},
+      []
+    );
+    const element = new Element(session, node);
+
+    await expect(element.evaluate('() => "ok"')).rejects.toBeInstanceOf(
+      URLNotAllowedError
+    );
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
   });
 
   it('maps key metadata with python-aligned get_key_info helper', () => {
