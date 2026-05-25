@@ -808,8 +808,15 @@ export class MCPServer {
         if (locator && typeof locator.click === 'function') {
           const modifier: 'Meta' | 'Control' =
             process.platform === 'darwin' ? 'Meta' : 'Control';
-          await locator.click({ modifiers: [modifier] });
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          const pageBeforeClick = await browserSession.get_current_page();
+          try {
+            await locator.click({ modifiers: [modifier] });
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          } finally {
+            const pageAfterClick =
+              (await browserSession.get_current_page()) ?? pageBeforeClick;
+            await browserSession.validate_page_after_action(pageAfterClick);
+          }
           return `Clicked element ${index} with ${modifier} key (new tab if supported)`;
         }
 

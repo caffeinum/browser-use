@@ -140,15 +140,23 @@ describe('MCPServer browser_click new_tab', () => {
     try {
       const server = new MCPServer('test-mcp', '1.0.0');
       const locatorClick = vi.fn(async () => undefined);
+      const pageBeforeClick = { url: () => 'https://example.com/start' };
+      const pageAfterClick = { url: () => 'https://example.com/after' };
+      const validatePageAfterAction = vi.fn(async () => undefined);
       const browserSession = {
         initialized: true,
         start: vi.fn(),
         get_dom_element_by_index: vi.fn(async () => ({
           attributes: {},
         })),
+        get_current_page: vi
+          .fn()
+          .mockResolvedValueOnce(pageBeforeClick)
+          .mockResolvedValueOnce(pageAfterClick),
         get_locate_element: vi.fn(async () => ({
           click: locatorClick,
         })),
+        validate_page_after_action: validatePageAfterAction,
       };
 
       (server as any).ensureBrowserSession = vi.fn(async () => browserSession);
@@ -166,6 +174,7 @@ describe('MCPServer browser_click new_tab', () => {
       expect(locatorClick).toHaveBeenCalledWith({
         modifiers: [expectedModifier],
       });
+      expect(validatePageAfterAction).toHaveBeenCalledWith(pageAfterClick);
       expect(result).toContain('new tab if supported');
       expect((server as any).executeControllerAction).not.toHaveBeenCalled();
     } finally {
