@@ -67,6 +67,89 @@ describe('actor alignment', () => {
     expect(clickSpy).toHaveBeenCalledWith(100, 200, { button: 'right' });
   });
 
+  it('rolls back disallowed navigations from Element.hover', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/form';
+    const rawPage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    const locator = {
+      hover: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-element-hover?token=secret';
+      }),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+    vi.spyOn(session, 'get_locate_element').mockResolvedValue(locator as any);
+
+    const node = new DOMElementNode(
+      true,
+      null,
+      'button',
+      '/html/body/button[1]',
+      {},
+      []
+    );
+    const element = new Element(session, node);
+
+    await expect(element.hover()).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
+  it.each([
+    ['move', async (mouse: Mouse) => mouse.move(100, 200)],
+    ['down', async (mouse: Mouse) => mouse.down({ button: 'left' })],
+    ['up', async (mouse: Mouse) => mouse.up({ button: 'left' })],
+  ])('rolls back disallowed navigations from Mouse.%s', async (_name, run) => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+    let pageUrl = 'https://example.com/start';
+    const rawPage = {
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      mouse: {
+        down: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-mouse-down?token=secret';
+        }),
+        move: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-mouse-move?token=secret';
+        }),
+        up: vi.fn(async () => {
+          pageUrl = 'https://evil.test/from-mouse-up?token=secret';
+        }),
+      },
+      title: vi.fn(async () => pageUrl),
+      url: vi.fn(() => pageUrl),
+      waitForLoadState: vi.fn(async () => {}),
+    };
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(rawPage as any);
+
+    const mouse = new Mouse(session);
+
+    await expect(run(mouse)).rejects.toBeInstanceOf(URLNotAllowedError);
+    expect(rawPage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('rolls back disallowed navigations from Page.evaluate', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({

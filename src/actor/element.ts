@@ -22,7 +22,12 @@ export class Element {
     if (!locator?.hover) {
       return;
     }
-    await locator.hover({ timeout: 5000 });
+    const page = await this.browser_session.get_current_page();
+    try {
+      await locator.hover({ timeout: 5000 });
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async get_attribute(name: string) {

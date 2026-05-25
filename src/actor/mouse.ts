@@ -31,7 +31,11 @@ export class Mouse {
     if (!page?.mouse?.move) {
       return;
     }
-    await page.mouse.move(x, y);
+    try {
+      await page.mouse.move(x, y);
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async down(options: { button?: MouseButton } = {}) {
@@ -39,7 +43,11 @@ export class Mouse {
     if (!page?.mouse?.down) {
       return;
     }
-    await page.mouse.down({ button: options.button ?? 'left' });
+    try {
+      await page.mouse.down({ button: options.button ?? 'left' });
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 
   async up(options: { button?: MouseButton } = {}) {
@@ -47,6 +55,10 @@ export class Mouse {
     if (!page?.mouse?.up) {
       return;
     }
-    await page.mouse.up({ button: options.button ?? 'left' });
+    try {
+      await page.mouse.up({ button: options.button ?? 'left' });
+    } finally {
+      await this.browser_session.validate_page_after_action(page);
+    }
   }
 }
