@@ -2066,6 +2066,32 @@ describe('Regression Coverage', () => {
     expect(result.extracted_content).toContain('United Kingdom');
   });
 
+  it('validates the page after Google Sheets keyboard actions', async () => {
+    const controller = new Controller();
+    const page = {
+      keyboard: {
+        press: vi.fn(async () => {}),
+        type: vi.fn(async () => {}),
+      },
+      url: vi.fn(() => 'https://docs.google.com/spreadsheets/d/test'),
+    };
+    const validatePageAfterAction = vi.fn(async () => {});
+    const browserSession = {
+      get_current_page: vi.fn(async () => page),
+      validate_page_after_action: validatePageAfterAction,
+    };
+
+    const result = await controller.registry.execute_action(
+      'sheets_input',
+      { text: 'hello' },
+      { browser_session: browserSession as any }
+    );
+
+    expect(result.extracted_content).toContain('Inputted text hello');
+    expect(page.keyboard.type).toHaveBeenCalledWith('hello', { delay: 100 });
+    expect(validatePageAfterAction).toHaveBeenCalledWith(page, null);
+  });
+
   it('select_dropdown_option matches options case-insensitively by text/value', async () => {
     const controller = new Controller();
     const frame = {

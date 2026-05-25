@@ -207,6 +207,27 @@ const dispatchBrowserEventIfAvailable = async <T = unknown>(
   return fallback();
 };
 
+const validateBrowserPageAfterAction = async (
+  browser_session: any,
+  page: Page | null,
+  signal: AbortSignal | null = null
+) => {
+  if (typeof browser_session?.validate_page_after_action === 'function') {
+    await browser_session.validate_page_after_action(page, signal);
+    return;
+  }
+
+  const assertUrlAllowed =
+    browser_session?._assert_page_url_allowed_or_rollback;
+  if (typeof assertUrlAllowed === 'function' && page) {
+    await assertUrlAllowed.call(browser_session, page);
+  }
+  const syncCurrentTab = browser_session?._syncCurrentTabFromPage;
+  if (typeof syncCurrentTab === 'function') {
+    await syncCurrentTab.call(browser_session, page);
+  }
+};
+
 const runWithTimeoutAndSignal = async <T>(
   operation: () => Promise<T>,
   timeoutMs: number,
@@ -3207,19 +3228,23 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
-      await page?.keyboard?.press('Enter');
-      await page?.keyboard?.press('Escape');
-      await page?.keyboard?.press('ControlOrMeta+A');
-      await page?.keyboard?.press('ControlOrMeta+C');
-      const content = await page?.evaluate?.(() =>
-        navigator.clipboard.readText()
-      );
-      return new ActionResult({
-        extracted_content: content ?? '',
-        include_in_memory: true,
-        long_term_memory: 'Retrieved sheet contents',
-        include_extracted_content_only_once: true,
-      });
+      try {
+        await page?.keyboard?.press('Enter');
+        await page?.keyboard?.press('Escape');
+        await page?.keyboard?.press('ControlOrMeta+A');
+        await page?.keyboard?.press('ControlOrMeta+C');
+        const content = await page?.evaluate?.(() =>
+          navigator.clipboard.readText()
+        );
+        return new ActionResult({
+          extracted_content: content ?? '',
+          include_in_memory: true,
+          long_term_memory: 'Retrieved sheet contents',
+          include_extracted_content_only_once: true,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
     });
 
     type SheetsRange = z.infer<typeof SheetsRangeActionSchema>;
@@ -3236,18 +3261,22 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
-      await gotoSheetsRange(page, params.cell_or_range, signal);
-      await page?.keyboard?.press('ControlOrMeta+C');
-      await waitWithSignal(100, signal);
-      const content = await page?.evaluate?.(() =>
-        navigator.clipboard.readText()
-      );
-      return new ActionResult({
-        extracted_content: content ?? '',
-        include_in_memory: true,
-        long_term_memory: `Retrieved contents from ${params.cell_or_range}`,
-        include_extracted_content_only_once: true,
-      });
+      try {
+        await gotoSheetsRange(page, params.cell_or_range, signal);
+        await page?.keyboard?.press('ControlOrMeta+C');
+        await waitWithSignal(100, signal);
+        const content = await page?.evaluate?.(() =>
+          navigator.clipboard.readText()
+        );
+        return new ActionResult({
+          extracted_content: content ?? '',
+          include_in_memory: true,
+          long_term_memory: `Retrieved contents from ${params.cell_or_range}`,
+          include_extracted_content_only_once: true,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
     });
 
     type SheetsUpdate = z.infer<typeof SheetsUpdateActionSchema>;
@@ -3264,18 +3293,22 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
-      await gotoSheetsRange(page, params.cell_or_range, signal);
-      await page?.evaluate?.((value: string) => {
-        const clipboardData = new DataTransfer();
-        clipboardData.setData('text/plain', value);
-        document.activeElement?.dispatchEvent(
-          new ClipboardEvent('paste', { clipboardData })
-        );
-      }, params.value);
-      return new ActionResult({
-        extracted_content: `Updated cells: ${params.cell_or_range} = ${params.value}`,
-        long_term_memory: `Updated cells ${params.cell_or_range} with ${params.value}`,
-      });
+      try {
+        await gotoSheetsRange(page, params.cell_or_range, signal);
+        await page?.evaluate?.((value: string) => {
+          const clipboardData = new DataTransfer();
+          clipboardData.setData('text/plain', value);
+          document.activeElement?.dispatchEvent(
+            new ClipboardEvent('paste', { clipboardData })
+          );
+        }, params.value);
+        return new ActionResult({
+          extracted_content: `Updated cells: ${params.cell_or_range} = ${params.value}`,
+          long_term_memory: `Updated cells ${params.cell_or_range} with ${params.value}`,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
     });
 
     this.registry.action(
@@ -3291,12 +3324,16 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
-      await gotoSheetsRange(page, params.cell_or_range, signal);
-      await page?.keyboard?.press('Backspace');
-      return new ActionResult({
-        extracted_content: `Cleared cells: ${params.cell_or_range}`,
-        long_term_memory: `Cleared cells ${params.cell_or_range}`,
-      });
+      try {
+        await gotoSheetsRange(page, params.cell_or_range, signal);
+        await page?.keyboard?.press('Backspace');
+        return new ActionResult({
+          extracted_content: `Cleared cells: ${params.cell_or_range}`,
+          long_term_memory: `Cleared cells ${params.cell_or_range}`,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
     });
 
     this.registry.action(
@@ -3312,11 +3349,15 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
-      await gotoSheetsRange(page, params.cell_or_range, signal);
-      return new ActionResult({
-        extracted_content: `Selected cells: ${params.cell_or_range}`,
-        long_term_memory: `Selected cells ${params.cell_or_range}`,
-      });
+      try {
+        await gotoSheetsRange(page, params.cell_or_range, signal);
+        return new ActionResult({
+          extracted_content: `Selected cells: ${params.cell_or_range}`,
+          long_term_memory: `Selected cells ${params.cell_or_range}`,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
     });
 
     this.registry.action(
@@ -3332,13 +3373,17 @@ You will be given a query and the markdown of a webpage that has been filtered t
       if (!browser_session) throw new Error('Browser session missing');
       throwIfAborted(signal);
       const page: Page | null = await browser_session.get_current_page();
-      await page?.keyboard?.type(params.text, { delay: 100 });
-      await page?.keyboard?.press('Enter');
-      await page?.keyboard?.press('ArrowUp');
-      return new ActionResult({
-        extracted_content: `Inputted text ${params.text}`,
-        long_term_memory: `Inputted text '${params.text}' into cell`,
-      });
+      try {
+        await page?.keyboard?.type(params.text, { delay: 100 });
+        await page?.keyboard?.press('Enter');
+        await page?.keyboard?.press('ArrowUp');
+        return new ActionResult({
+          extracted_content: `Inputted text ${params.text}`,
+          long_term_memory: `Inputted text '${params.text}' into cell`,
+        });
+      } finally {
+        await validateBrowserPageAfterAction(browser_session, page, signal);
+      }
     });
   }
 
