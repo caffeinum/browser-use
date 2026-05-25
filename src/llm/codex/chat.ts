@@ -2,7 +2,10 @@ import OpenAI from 'openai';
 import type { BaseChatModel, ChatInvokeOptions } from '../base.js';
 import { ModelProviderError, ModelRateLimitError } from '../exceptions.js';
 import type { Message } from '../messages.js';
-import { ResponsesAPIMessageSerializer } from '../openai/responses-serializer.js';
+import {
+  ResponsesAPIMessageSerializer,
+  type ResponsesInputMessage,
+} from '../openai/responses-serializer.js';
 import { SchemaOptimizer, zodSchemaToJsonSchema } from '../schema.js';
 import { ChatInvokeCompletion, type ChatInvokeUsage } from '../views.js';
 import {
@@ -41,6 +44,8 @@ interface CodexClientConfig {
   apiKey: string;
   baseURL: string;
 }
+
+const DEFAULT_CODEX_INSTRUCTIONS = 'You are a helpful assistant.';
 
 const isCodexBackendURL = (baseURL: string): boolean => {
   try {
@@ -226,13 +231,100 @@ export class ChatCodex implements BaseChatModel {
     return '';
   }
 
+  private async collectResponse(responseOrStream: any): Promise<any> {
+    if (
+      !responseOrStream ||
+      typeof responseOrStream[Symbol.asyncIterator] !== 'function'
+    ) {
+      return responseOrStream;
+    }
+
+    let terminalResponse: any = null;
+    const outputItems: any[] = [];
+    const textDeltas: string[] = [];
+
+    for await (const event of responseOrStream) {
+      const eventType = event?.type;
+
+      if (
+        eventType === 'response.output_text.delta' &&
+        typeof event?.delta === 'string'
+      ) {
+        textDeltas.push(event.delta);
+      }
+
+      if (eventType === 'response.output_item.done' && event?.item) {
+        outputItems.push(event.item);
+      }
+
+      if (
+        eventType === 'response.completed' ||
+        eventType === 'response.incomplete' ||
+        eventType === 'response.failed'
+      ) {
+        terminalResponse = event.response ?? null;
+      }
+    }
+
+    const fallbackOutputText = textDeltas.join('');
+    if (!terminalResponse) {
+      return {
+        output_text: fallbackOutputText,
+        output: outputItems,
+        status: fallbackOutputText ? 'completed' : 'incomplete',
+      };
+    }
+
+    if (
+      typeof terminalResponse.output_text !== 'string' &&
+      fallbackOutputText
+    ) {
+      terminalResponse.output_text = fallbackOutputText;
+    }
+    if (
+      (!Array.isArray(terminalResponse.output) ||
+        terminalResponse.output.length === 0) &&
+      outputItems.length > 0
+    ) {
+      terminalResponse.output = outputItems;
+    }
+
+    return terminalResponse;
+  }
+
+  private getInputText(content: unknown): string {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (!Array.isArray(content)) {
+      return '';
+    }
+
+    return content
+      .map((part) => {
+        if (
+          part &&
+          typeof part === 'object' &&
+          'text' in part &&
+          typeof part.text === 'string'
+        ) {
+          return part.text;
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
   private getModelParamsForResponses(baseURL: string): Record<string, unknown> {
+    const codexBackend = isCodexBackendURL(baseURL);
     const modelParams: Record<string, unknown> = {
       store: false,
-      reasoning: { effort: this.reasoningEffort },
+      reasoning: codexBackend
+        ? { effort: this.reasoningEffort, summary: 'auto' }
+        : { effort: this.reasoningEffort },
     };
-
-    const codexBackend = isCodexBackendURL(baseURL);
 
     if (this.maxCompletionTokens !== null && !codexBackend) {
       modelParams.max_output_tokens = this.maxCompletionTokens;
@@ -246,11 +338,43 @@ export class ChatCodex implements BaseChatModel {
     if (this.serviceTier !== null) {
       modelParams.service_tier = this.serviceTier;
     }
-    if (this.include !== null) {
+
+    if (codexBackend) {
+      modelParams.stream = true;
+      modelParams.include = this.include ?? ['reasoning.encrypted_content'];
+      modelParams.tools = [];
+      modelParams.tool_choice = 'auto';
+      modelParams.parallel_tool_calls = true;
+    } else if (this.include !== null) {
       modelParams.include = this.include;
     }
 
     return modelParams;
+  }
+
+  private buildCodexBackendInput(inputMessages: ResponsesInputMessage[]): {
+    input: ResponsesInputMessage[];
+    instructions: string;
+  } {
+    const instructionParts: string[] = [];
+    const input: ResponsesInputMessage[] = [];
+
+    for (const message of inputMessages) {
+      if (message.role === 'system') {
+        const text = this.getInputText(message.content).trim();
+        if (text) {
+          instructionParts.push(text);
+        }
+        continue;
+      }
+      input.push(message);
+    }
+
+    return {
+      input: input.length > 0 ? input : [{ role: 'user', content: '' }],
+      instructions:
+        instructionParts.join('\n\n').trim() || DEFAULT_CODEX_INSTRUCTIONS,
+    };
   }
 
   private getZodSchemaCandidate(
@@ -284,11 +408,18 @@ export class ChatCodex implements BaseChatModel {
   ): Record<string, unknown> {
     const serializer = new ResponsesAPIMessageSerializer();
     const inputMessages = serializer.serialize(messages);
+    const codexBackend = isCodexBackendURL(baseURL);
+    const codexInput = codexBackend
+      ? this.buildCodexBackendInput(inputMessages)
+      : null;
     const request: Record<string, unknown> = {
       model: this.model,
-      input: inputMessages,
+      input: codexInput?.input ?? inputMessages,
       ...this.getModelParamsForResponses(baseURL),
     };
+    if (codexInput) {
+      request.instructions = codexInput.instructions;
+    }
 
     if (!zodSchemaCandidate) {
       return request;
@@ -309,26 +440,30 @@ export class ChatCodex implements BaseChatModel {
 
       if (
         this.addSchemaToSystemPrompt &&
-        inputMessages.length > 0 &&
-        inputMessages[0]?.role === 'system'
+        (codexBackend ||
+          (inputMessages.length > 0 && inputMessages[0]?.role === 'system'))
       ) {
         const schemaText = `\n<json_schema>\n${JSON.stringify(optimizedJsonSchema)}\n</json_schema>`;
-        const firstInput = inputMessages[0] as any;
-        const firstContent = firstInput?.content;
-        let patchedContent: unknown = firstContent ?? '';
-        if (typeof firstContent === 'string') {
-          patchedContent = firstContent + schemaText;
-        } else if (Array.isArray(firstContent)) {
-          patchedContent = [
-            ...firstContent,
-            { type: 'input_text', text: schemaText },
-          ];
+        if (codexBackend) {
+          request.instructions = `${String(request.instructions ?? DEFAULT_CODEX_INSTRUCTIONS)}${schemaText}`;
+        } else {
+          const firstInput = inputMessages[0] as any;
+          const firstContent = firstInput?.content;
+          let patchedContent: unknown = firstContent ?? '';
+          if (typeof firstContent === 'string') {
+            patchedContent = firstContent + schemaText;
+          } else if (Array.isArray(firstContent)) {
+            patchedContent = [
+              ...firstContent,
+              { type: 'input_text', text: schemaText },
+            ];
+          }
+          inputMessages[0] = {
+            ...inputMessages[0],
+            content: patchedContent as any,
+          };
+          request.input = inputMessages;
         }
-        inputMessages[0] = {
-          ...inputMessages[0],
-          content: patchedContent as any,
-        };
-        request.input = inputMessages;
       }
 
       if (!this.dontForceStructuredOutput) {
@@ -382,10 +517,11 @@ export class ChatCodex implements BaseChatModel {
         clientConfig.baseURL
       );
       const client = this.createClient(clientConfig);
-      const response = await (client as any).responses.create(
+      const responseOrStream = await (client as any).responses.create(
         request,
         options.signal ? { signal: options.signal } : undefined
       );
+      const response = await this.collectResponse(responseOrStream);
 
       const content = this.getResponseOutputText(response);
       const usage = this.getResponsesUsage(response);

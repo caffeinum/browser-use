@@ -115,12 +115,62 @@ describe('ChatCodex', () => {
     expect(request).toMatchObject({
       model: 'gpt-5.5',
       store: false,
-      reasoning: { effort: 'medium' },
+      stream: true,
+      reasoning: { effort: 'medium', summary: 'auto' },
+      include: ['reasoning.encrypted_content'],
+      tools: [],
+      tool_choice: 'auto',
+      parallel_tool_calls: true,
+      instructions: 'You are a helpful assistant.',
       input: [{ role: 'user', content: 'hello' }],
     });
     expect(request).not.toHaveProperty('max_output_tokens');
     expect(request).not.toHaveProperty('top_p');
     expect(request).not.toHaveProperty('seed');
+  });
+
+  it('collects Codex backend stream events', async () => {
+    async function* streamResponse() {
+      yield { type: 'response.output_text.delta', delta: 'streamed ' };
+      yield { type: 'response.output_text.delta', delta: 'ok' };
+      yield {
+        type: 'response.completed',
+        response: {
+          status: 'completed',
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            total_tokens: 3,
+          },
+        },
+      };
+    }
+    responsesCreateMock.mockResolvedValue(streamResponse());
+    const llm = new ChatCodex({ apiKey: 'opaque-token' });
+
+    const result = await llm.ainvoke([new UserMessage('hello')]);
+
+    expect(result.completion).toBe('streamed ok');
+    expect(result.stop_reason).toBe('completed');
+    expect(result.usage).toMatchObject({
+      prompt_tokens: 1,
+      completion_tokens: 2,
+      total_tokens: 3,
+    });
+  });
+
+  it('moves system messages into Codex backend instructions', async () => {
+    const llm = new ChatCodex({ apiKey: 'opaque-token' });
+
+    await llm.ainvoke([
+      new SystemMessage('primary system'),
+      new UserMessage('hello'),
+      new SystemMessage('secondary system'),
+    ]);
+
+    const request = responsesCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.instructions).toBe('primary system\n\nsecondary system');
+    expect(request.input).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
   it('keeps optional model parameters for custom Responses-compatible endpoints', async () => {
@@ -138,6 +188,9 @@ describe('ChatCodex', () => {
     expect(request.max_output_tokens).toBe(2048);
     expect(request.top_p).toBe(0.7);
     expect(request.seed).toBe(42);
+    expect(request.reasoning).toEqual({ effort: 'low' });
+    expect(request).not.toHaveProperty('instructions');
+    expect(request).not.toHaveProperty('include');
   });
 
   it('uses Responses JSON schema format for zod structured output', async () => {
@@ -167,7 +220,9 @@ describe('ChatCodex', () => {
     expect(JSON.stringify(request.text?.format?.schema)).not.toContain(
       '"default"'
     );
-    expect(request.input?.[0]?.content).toContain('<json_schema>');
+    expect(request.instructions).toContain('system');
+    expect(request.instructions).toContain('<json_schema>');
+    expect(request.input).toEqual([{ role: 'user', content: 'user' }]);
     expect((response.completion as any).items).toEqual(['alpha']);
   });
 
