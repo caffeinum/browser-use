@@ -99,6 +99,10 @@ npx browser-use --model claude-sonnet-4-20250514 -p "Search for AI news"
 # Select provider explicitly (uses provider default model)
 npx browser-use --provider anthropic -p "Search for AI news"
 
+# Experimental Codex OAuth provider
+npx browser-use auth codex login
+npx browser-use --provider codex -p "Search for AI news"
+
 # Headless mode
 npx browser-use --headless -p "Check the weather"
 
@@ -120,8 +124,8 @@ Interactive mode commands:
 Supported CLI options:
 
 - `--version`: print package version
-- `--provider <name>`: force provider (`openai|anthropic|google|deepseek|groq|openrouter|azure|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic`)
-- `--model <name>`: choose model/provider (for example `gpt-*`, `claude-*`, `gemini-*`)
+- `--provider <name>`: force provider (`openai|anthropic|google|deepseek|groq|openrouter|azure|codex|mistral|cerebras|vercel|oci|ollama|browser-use|aws|aws-anthropic`)
+- `--model <name>`: choose model/provider (for example `gpt-*`, `codex:gpt-5.1-codex`, `claude-*`, `gemini-*`)
 - `-p, --prompt <task>`: one-shot task
 - `--headless`: headless browser mode
 - `--allowed-domains <items>`: comma-separated navigation allowlist

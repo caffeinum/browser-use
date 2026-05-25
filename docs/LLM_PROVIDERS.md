@@ -4,23 +4,24 @@ Browser-Use supports multiple LLM providers through a unified interface. This gu
 
 ## Supported Providers
 
-| Provider      | Vision Support | Reasoning Models | Caching | Notes                      |
-| ------------- | -------------- | ---------------- | ------- | -------------------------- |
-| OpenAI        | ✅             | ✅ (o1, o3, o4)  | ❌      | Default provider           |
-| Anthropic     | ✅             | ❌               | ✅      | Best for complex tasks     |
-| Google Gemini | ✅             | ✅               | ❌      | Extended thinking support  |
-| Azure OpenAI  | ✅             | ✅               | ❌      | Enterprise deployment      |
-| AWS Bedrock   | ✅             | ❌               | ❌      | Claude via AWS             |
-| Groq          | ❌             | ❌               | ❌      | Fastest inference          |
-| Ollama        | ❌             | ❌               | ❌      | Local models               |
-| DeepSeek      | ❌             | ❌               | ❌      | Cost-effective             |
-| OpenRouter    | Varies         | Varies           | ❌      | Multi-model routing        |
-| Mistral       | Varies         | ❌               | ❌      | Mistral-hosted models      |
-| Cerebras      | ❌             | ❌               | ❌      | Fast hosted inference      |
-| Browser Use   | Varies         | Varies           | ❌      | Browser Use hosted LLM     |
-| LiteLLM       | Varies         | Varies           | Varies  | OpenAI-compatible gateway  |
-| OCI Raw       | Varies         | Varies           | ❌      | Oracle Cloud GenAI         |
-| Vercel        | Varies         | Varies           | Varies  | AI Gateway / routed models |
+| Provider      | Vision Support | Reasoning Models | Caching | Notes                                |
+| ------------- | -------------- | ---------------- | ------- | ------------------------------------ |
+| OpenAI        | ✅             | ✅ (o1, o3, o4)  | ❌      | Default provider                     |
+| Codex         | ✅             | ✅               | ❌      | Experimental ChatGPT/Codex OAuth     |
+| Anthropic     | ✅             | ❌               | ✅      | Best for complex tasks               |
+| Google Gemini | ✅             | ✅               | ❌      | Extended thinking support            |
+| Azure OpenAI  | ✅             | ✅               | ❌      | Enterprise deployment                |
+| AWS Bedrock   | ✅             | ❌               | ❌      | Claude via AWS                       |
+| Groq          | ❌             | ❌               | ❌      | Fastest inference                    |
+| Ollama        | ❌             | ❌               | ❌      | Local models                         |
+| DeepSeek      | ❌             | ❌               | ❌      | Cost-effective                       |
+| OpenRouter    | Varies         | Varies           | ❌      | Multi-model routing                  |
+| Mistral       | Varies         | ❌               | ❌      | Mistral-hosted models                |
+| Cerebras      | ❌             | ❌               | ❌      | Fast hosted inference                |
+| Browser Use   | Varies         | Varies           | ❌      | Browser Use hosted LLM               |
+| LiteLLM       | Varies         | Varies           | Varies  | OpenAI-compatible gateway            |
+| OCI Raw       | Varies         | Varies           | ❌      | Oracle Cloud GenAI                   |
+| Vercel        | Varies         | Varies           | Varies  | AI Gateway / routed models           |
 
 ## OpenAI
 
@@ -84,6 +85,75 @@ const llm = new ChatOpenAI({
   maxRetries: 3,
 });
 ```
+
+---
+
+## Codex OAuth Provider
+
+Codex support is an experimental independent provider for ChatGPT/Codex OAuth
+sessions. It is separate from the standard OpenAI API-key provider and uses the
+Codex Responses API backend at `https://chatgpt.com/backend-api/codex` by
+default.
+
+### Setup
+
+Run a browser-use-owned Codex login:
+
+```bash
+npx browser-use auth codex login
+```
+
+This stores tokens in the browser-use config directory, for example
+`~/.config/browseruse/auth.json`. The file is written with private permissions
+on Unix systems. Browser-use does not write to `~/.codex/auth.json`.
+
+You can explicitly import existing Codex CLI credentials:
+
+```bash
+npx browser-use auth codex import
+```
+
+Importing is a one-time copy into the browser-use auth store. Browser-use keeps
+its own refresh lifecycle after import and still does not write the Codex CLI
+auth file.
+
+### Usage
+
+```typescript
+import { ChatCodex } from 'browser-use/llm/codex';
+
+const llm = new ChatCodex({
+  model: 'gpt-5.1-codex',
+  reasoningEffort: 'medium',
+});
+```
+
+CLI usage:
+
+```bash
+npx browser-use --provider codex -p "Open example.com and summarize it"
+npx browser-use --model codex:gpt-5.1-codex -p "Check this workflow"
+```
+
+### Auth Commands
+
+```bash
+npx browser-use auth codex status
+npx browser-use auth codex login --force
+npx browser-use auth codex logout
+```
+
+### Environment Overrides
+
+```bash
+export BROWSER_USE_CODEX_MODEL=gpt-5.1-codex
+export BROWSER_USE_CODEX_BASE_URL=https://chatgpt.com/backend-api/codex
+export BROWSER_USE_CODEX_ACCESS_TOKEN=your-access-token
+```
+
+`BROWSER_USE_CODEX_ACCESS_TOKEN` is intended for short-lived testing and
+automation. Prefer `browser-use auth codex login` for normal local use so
+browser-use can refresh its own token store.
 
 ---
 
