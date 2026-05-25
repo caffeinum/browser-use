@@ -5865,14 +5865,15 @@ export class BrowserSession {
     if (!denialReason) {
       return;
     }
+    const safeUrl = BrowserSession._redact_url_for_logging(url);
     this._recordRecentEvent('navigation_blocked', {
-      url,
+      url: safeUrl,
       error_message: denialReason,
     });
 
     if (denialReason === 'not_in_allowed_domains') {
       throw new URLNotAllowedError(
-        `URL ${url} is not in allowed_domains. Current allowed_domains: ${this._formatDomainCollection(
+        `URL ${safeUrl} is not in allowed_domains. Current allowed_domains: ${this._formatDomainCollection(
           this.browser_profile.allowed_domains
         )}`
       );
@@ -5880,7 +5881,7 @@ export class BrowserSession {
 
     if (denialReason === 'in_prohibited_domains') {
       throw new URLNotAllowedError(
-        `URL ${url} is blocked by prohibited_domains. Current prohibited_domains: ${this._formatDomainCollection(
+        `URL ${safeUrl} is blocked by prohibited_domains. Current prohibited_domains: ${this._formatDomainCollection(
           this.browser_profile.prohibited_domains
         )}`
       );
@@ -5888,17 +5889,19 @@ export class BrowserSession {
 
     if (denialReason === 'ip_address_blocked') {
       throw new URLNotAllowedError(
-        `URL ${url} is blocked because block_ip_addresses=true`
+        `URL ${safeUrl} is blocked because block_ip_addresses=true`
       );
     }
 
     if (denialReason === 'opaque_origin_blocked') {
       throw new URLNotAllowedError(
-        `URL ${url} is blocked because its origin cannot be validated against domain restrictions`
+        `URL ${safeUrl} is blocked because its origin cannot be validated against domain restrictions`
       );
     }
 
-    throw new URLNotAllowedError(`URL ${url} is not allowed (${denialReason})`);
+    throw new URLNotAllowedError(
+      `URL ${safeUrl} is not allowed (${denialReason})`
+    );
   }
 
   private async _rollback_disallowed_navigation(

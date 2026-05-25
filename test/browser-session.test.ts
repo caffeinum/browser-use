@@ -968,6 +968,34 @@ esac
     expect(pageUrl).toBe('about:blank');
   });
 
+  it('redacts blocked URL query and hash in URLNotAllowedError and recent events', () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let caught: unknown = null;
+    try {
+      (session as any)._assert_url_allowed(
+        'https://evil.test/path?token=secret#fragment'
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(URLNotAllowedError);
+    expect((caught as Error).message).toContain(
+      'https://evil.test/path?<redacted>#<redacted>'
+    );
+    expect((caught as Error).message).not.toContain('secret');
+    const recentEvents = (session as any)._getRecentEventsSummary(10);
+    expect(recentEvents).toContain(
+      'https://evil.test/path?<redacted>#<redacted>'
+    );
+    expect(recentEvents).not.toContain('secret');
+  });
+
   it('rolls back history navigation to disallowed URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
