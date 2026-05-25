@@ -4321,7 +4321,14 @@ export class BrowserSession {
     if (!page) {
       throw new Error('No page available to execute JavaScript');
     }
-    return await page.evaluate(script);
+    try {
+      return await page.evaluate(script);
+    } finally {
+      await this._waitForLoad(page, 5000);
+      await this._assert_page_url_allowed_or_rollback(page);
+      await this._syncCurrentTabFromPage(page);
+      this.cachedBrowserState = null;
+    }
   }
 
   // ==================== Page Information ====================

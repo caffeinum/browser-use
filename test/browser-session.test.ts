@@ -1271,6 +1271,42 @@ esac
     }
   });
 
+  it('rolls back JavaScript navigations to disallowed URLs', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({
+        allowed_domains: ['https://example.com'],
+      }),
+    });
+
+    let pageUrl = 'https://example.com/current';
+    const fakePage = {
+      evaluate: vi.fn(async () => {
+        pageUrl = 'https://evil.test/from-eval';
+        return 'navigated';
+      }),
+      goto: vi.fn(async (url: string) => {
+        pageUrl = url;
+      }),
+      url: vi.fn(() => pageUrl),
+      title: vi.fn(async () => 'Current'),
+    } as any;
+    session.update_current_page(
+      fakePage,
+      'Current',
+      'https://example.com/current'
+    );
+
+    await expect(
+      session.execute_javascript('window.location.href = "https://evil.test"')
+    ).rejects.toBeInstanceOf(URLNotAllowedError);
+
+    expect(fakePage.goto).toHaveBeenCalledWith(
+      'about:blank',
+      expect.objectContaining({ waitUntil: 'load' })
+    );
+    expect(session.active_tab?.url).toBe('about:blank');
+  });
+
   it('closes new tabs that settle on disallowed redirect URLs', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({
