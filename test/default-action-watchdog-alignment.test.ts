@@ -438,6 +438,9 @@ describe('default action watchdog alignment', () => {
       expect(typeof outputPath).toBe('string');
       expect(outputPath.endsWith('.pdf')).toBe(true);
       expect(fs.existsSync(outputPath)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(outputPath).mode & 0o777).toBe(0o600);
+      }
       expect(fileEvents).toHaveLength(1);
       expect(fileEvents[0].path).toBe(outputPath);
       expect(fileEvents[0].mime_type).toBe('application/pdf');

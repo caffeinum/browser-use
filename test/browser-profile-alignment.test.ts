@@ -86,6 +86,9 @@ describe('BrowserProfile alignment with latest py-browser-use defaults', () => {
     expect(typeof downloadsPath).toBe('string');
     expect(downloadsPath).toContain('browser-use-downloads-');
     expect(fs.existsSync(downloadsPath!)).toBe(true);
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(downloadsPath!).mode & 0o777).toBe(0o700);
+    }
   });
 
   it('preserves arg values containing equals signs', async () => {

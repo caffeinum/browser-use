@@ -22,6 +22,25 @@ import {
 } from '../events.js';
 import { BaseWatchdog } from './base.js';
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed) {
+    chmodPrivatePath(dirPath, 0o700);
+  }
+};
+
 export class DefaultActionWatchdog extends BaseWatchdog {
   static override LISTENS_TO = [
     NavigateToUrlEvent,
@@ -230,7 +249,7 @@ export class DefaultActionWatchdog extends BaseWatchdog {
 
       const downloadsPath =
         this.browser_session.browser_profile.downloads_path || os.tmpdir();
-      fs.mkdirSync(downloadsPath, { recursive: true });
+      ensurePrivateDirectoryIfCreated(downloadsPath);
 
       const title =
         typeof page.title === 'function' ? await page.title() : 'document';
@@ -243,7 +262,8 @@ export class DefaultActionWatchdog extends BaseWatchdog {
       );
       const finalPath = path.join(downloadsPath, uniqueFilename);
       const content = Buffer.from(pdfBase64, 'base64');
-      fs.writeFileSync(finalPath, content);
+      fs.writeFileSync(finalPath, content, { mode: 0o600 });
+      chmodPrivatePath(finalPath, 0o600);
 
       await this.event_bus.dispatch(
         new FileDownloadedEvent({

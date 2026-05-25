@@ -312,6 +312,9 @@ describe('downloads watchdog alignment', () => {
       expect(completed).toHaveLength(1);
       expect(completed[0].mime_type).toBe('application/pdf');
       expect(fs.existsSync(completed[0].path)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(completed[0].path).mode & 0o777).toBe(0o600);
+      }
     } finally {
       fs.rmSync(downloadsDir, { recursive: true, force: true });
     }
@@ -417,6 +420,9 @@ describe('downloads watchdog alignment', () => {
       expect(completed[0].file_name).toBe('report.pdf');
       expect(path.dirname(completed[0].path)).toBe(downloadsDir);
       expect(fs.existsSync(path.join(downloadsDir, 'report.pdf'))).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(completed[0].path).mode & 0o777).toBe(0o600);
+      }
       expect(fs.existsSync(path.join(downloadsDir, '..', 'outside'))).toBe(
         false
       );

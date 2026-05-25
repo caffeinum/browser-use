@@ -590,6 +590,9 @@ esac
 
       expect(downloadPath).toContain('report.csv');
       expect(fs.existsSync(downloadPath as string)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(downloadPath as string).mode & 0o777).toBe(0o600);
+      }
       expect(
         dispatchSpy.mock.calls.some(
           ([event]) =>
@@ -696,6 +699,10 @@ esac
       expect(savedPath).toContain(downloadsPath);
       expect(fs.existsSync(downloadsPath)).toBe(true);
       expect(fs.existsSync(savedPath as string)).toBe(true);
+      if (process.platform !== 'win32') {
+        expect(fs.statSync(downloadsPath).mode & 0o777).toBe(0o700);
+        expect(fs.statSync(savedPath as string).mode & 0o777).toBe(0o600);
+      }
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
     }

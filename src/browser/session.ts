@@ -3894,6 +3894,7 @@ export class BrowserSession {
 
     const downloadsDir = this.browser_profile.downloads_path;
     if (downloadsDir && page?.waitForEvent) {
+      ensurePrivateDirectoryIfCreated(downloadsDir);
       const downloadPromise = page.waitForEvent('download', { timeout: 5000 });
       await performClick();
       try {
@@ -3922,6 +3923,7 @@ export class BrowserSession {
         const downloadPath = path.join(downloadsDir, uniqueFilename);
         if (typeof download.saveAs === 'function') {
           await download.saveAs(downloadPath);
+          chmodPrivateFileBestEffort(downloadPath);
         }
         const stats = fs.existsSync(downloadPath)
           ? fs.statSync(downloadPath)
@@ -5829,7 +5831,7 @@ export class BrowserSession {
     // Check if downloads are enabled
     const downloads_path = this.browser_profile.downloads_path;
     if (downloads_path) {
-      fs.mkdirSync(downloads_path, { recursive: true });
+      ensurePrivateDirectoryIfCreated(downloads_path);
 
       // Try to detect file download.
       const download_promise = page.waitForEvent('download', {
@@ -5891,6 +5893,7 @@ export class BrowserSession {
       );
 
       await download.saveAs(download_path);
+      chmodPrivateFileBestEffort(download_path);
       this.logger.info(`⬇️ Downloaded file to: ${download_path}`);
       const stats = fs.existsSync(download_path)
         ? fs.statSync(download_path)

@@ -21,6 +21,25 @@ type CDPSessionLike = {
   detach?: () => Promise<void>;
 };
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectoryIfCreated = (dirPath: string) => {
+  const existed = fs.existsSync(dirPath);
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  if (!existed) {
+    chmodPrivatePath(dirPath, 0o700);
+  }
+};
+
 type ActiveDownload = {
   url: string;
   suggested_filename: string;
@@ -110,7 +129,7 @@ export class DownloadsWatchdog extends BaseWatchdog {
     if (!downloadsPath) {
       return;
     }
-    fs.mkdirSync(downloadsPath, { recursive: true });
+    ensurePrivateDirectoryIfCreated(downloadsPath);
   }
 
   async on_BrowserStateRequestEvent(event: BrowserStateRequestEvent) {
@@ -522,7 +541,7 @@ export class DownloadsWatchdog extends BaseWatchdog {
         return;
       }
 
-      fs.mkdirSync(downloadsPath, { recursive: true });
+      ensurePrivateDirectoryIfCreated(downloadsPath);
       const uniqueFilename = await this._getUniqueFilename(
         downloadsPath,
         metadata.suggested_filename
@@ -537,7 +556,8 @@ export class DownloadsWatchdog extends BaseWatchdog {
       const content = responseBody?.base64Encoded
         ? Buffer.from(body, 'base64')
         : Buffer.from(body, 'utf8');
-      fs.writeFileSync(filePath, content);
+      fs.writeFileSync(filePath, content, { mode: 0o600 });
+      chmodPrivatePath(filePath, 0o600);
 
       await this.event_bus.dispatch(
         new FileDownloadedEvent({

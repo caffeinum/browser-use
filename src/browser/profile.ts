@@ -23,6 +23,22 @@ const logger = createLogger('browser_use.browser.profile');
 export const CHROME_DEBUG_PORT = 9242;
 export const DOMAIN_OPTIMIZATION_THRESHOLD = 100;
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const createPrivateDirectory = (dirPath: string) => {
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  chmodPrivatePath(dirPath, 0o700);
+};
+
 export const CHROME_DISABLED_COMPONENTS = [
   'AcceptCHFrame',
   'AutoExpandDetailsElement',
@@ -884,7 +900,7 @@ export class BrowserProfile {
         `browser-use-downloads-${randomUUID().slice(0, 8)}`
       );
     }
-    fs.mkdirSync(downloadsPath, { recursive: true });
+    createPrivateDirectory(downloadsPath);
     this.options.downloads_path = downloadsPath;
   }
 
