@@ -13,6 +13,35 @@ import { CONFIG } from '../../config.js';
 
 const logger = createLogger('browser_use.gmail');
 
+const chmodPrivatePath = (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    fs.chmodSync(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectory = (dirPath: string) => {
+  fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
+  chmodPrivatePath(dirPath, 0o700);
+};
+
+const readPrivateJsonFile = (filePath: string) => {
+  chmodPrivatePath(filePath, 0o600);
+  return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+};
+
+const writePrivateJsonFile = (filePath: string, value: unknown) => {
+  fs.writeFileSync(filePath, JSON.stringify(value), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  chmodPrivatePath(filePath, 0o600);
+};
+
 export interface EmailData {
   id: string;
   thread_id: string;
@@ -54,9 +83,7 @@ export class GmailService {
 
     // Ensure config directory exists (only if not using direct token)
     if (!this.accessToken) {
-      if (!fs.existsSync(this.configDir)) {
-        fs.mkdirSync(this.configDir, { recursive: true });
-      }
+      ensurePrivateDirectory(this.configDir);
     }
 
     // Set up credential paths
@@ -95,7 +122,7 @@ export class GmailService {
       // Original file-based authentication flow
       // Try to load existing tokens
       if (fs.existsSync(this.tokenFile)) {
-        const tokenData = JSON.parse(fs.readFileSync(this.tokenFile, 'utf-8'));
+        const tokenData = readPrivateJsonFile(this.tokenFile);
         const auth = new google.auth.OAuth2();
         auth.setCredentials(tokenData);
         this.creds = auth;
@@ -129,9 +156,7 @@ export class GmailService {
             return false;
           }
 
-          const credentials = JSON.parse(
-            fs.readFileSync(this.credentialsFile, 'utf-8')
-          );
+          const credentials = readPrivateJsonFile(this.credentialsFile);
           const { client_secret, client_id, redirect_uris } =
             credentials.installed || credentials.web;
           const oAuth2Client = new google.auth.OAuth2(
@@ -160,10 +185,7 @@ export class GmailService {
         }
 
         // Save tokens for next time
-        fs.writeFileSync(
-          this.tokenFile,
-          JSON.stringify(this.creds.credentials)
-        );
+        writePrivateJsonFile(this.tokenFile, this.creds.credentials);
         logger.info(`💾 Tokens saved to ${this.tokenFile}`);
       }
 
