@@ -379,6 +379,10 @@ describe('CLI interactive helpers', () => {
     expect(loaded).toHaveLength(CLI_HISTORY_LIMIT);
     expect(loaded[0]).toBe('task-5');
     expect(loaded[CLI_HISTORY_LIMIT - 1]).toBe(`task-${CLI_HISTORY_LIMIT + 4}`);
+    if (process.platform !== 'win32') {
+      expect((await fs.stat(dir)).mode & 0o777).toBe(0o700);
+      expect((await fs.stat(historyPath)).mode & 0o777).toBe(0o600);
+    }
   });
 
   it('returns empty history for invalid history file content', async () => {

@@ -393,6 +393,22 @@ export const getCliHistoryPath = (configDir?: string | null): string => {
   return path.join(baseDir, 'command_history.json');
 };
 
+const chmodPrivatePath = async (targetPath: string, mode: number) => {
+  if (process.platform === 'win32') {
+    return;
+  }
+  try {
+    await fs.chmod(targetPath, mode);
+  } catch {
+    /* best effort */
+  }
+};
+
+const ensurePrivateDirectory = async (dirPath: string) => {
+  await fs.mkdir(dirPath, { recursive: true, mode: 0o700 });
+  await chmodPrivatePath(dirPath, 0o700);
+};
+
 export const loadCliHistory = async (
   historyPath = getCliHistoryPath()
 ): Promise<string[]> => {
@@ -417,8 +433,12 @@ export const saveCliHistory = async (
   historyPath = getCliHistoryPath()
 ): Promise<void> => {
   const normalized = normalizeCliHistory(history);
-  await fs.mkdir(path.dirname(historyPath), { recursive: true });
-  await fs.writeFile(historyPath, JSON.stringify(normalized, null, 2), 'utf-8');
+  await ensurePrivateDirectory(path.dirname(historyPath));
+  await fs.writeFile(historyPath, JSON.stringify(normalized, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  await chmodPrivatePath(historyPath, 0o600);
 };
 
 export const shouldStartInteractiveMode = (
