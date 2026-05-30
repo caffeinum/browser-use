@@ -47,6 +47,7 @@ import { get_browser_use_version } from './utils.js';
 import { setupLogging } from './logging-config.js';
 import { get_tunnel_manager } from './skill-cli/tunnel.js';
 import { DeviceAuthClient, save_cloud_api_token } from './sync/auth.js';
+import { isMainModule } from './entrypoint.js';
 import dotenv from 'dotenv';
 
 dotenv.config({ quiet: true });
@@ -3684,6 +3685,6 @@ export async function main(argv: string[] = process.argv.slice(2)) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+if (isMainModule(import.meta.url)) {
+  void main();
 }

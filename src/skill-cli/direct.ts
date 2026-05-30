@@ -7,6 +7,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 import { BrowserSession, systemChrome } from '../browser/session.js';
 import { CloudBrowserClient } from '../browser/cloud/cloud.js';
+import { isMainModule } from '../entrypoint.js';
 
 export interface DirectModeState {
   mode?: 'local' | 'remote';
@@ -1454,12 +1455,12 @@ export const run_direct_command = async (
 
 export const main = async (argv: string[] = process.argv.slice(2)) => {
   const exitCode = await run_direct_command(argv);
-  if (import.meta.url === `file://${process.argv[1]}`) {
+  if (isMainModule(import.meta.url)) {
     process.exit(exitCode);
   }
   return exitCode;
 };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   void main();
 }
