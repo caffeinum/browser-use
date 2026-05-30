@@ -97,6 +97,34 @@ function assertPackagedAssets(repoRoot, installedPackageDir) {
   }
 }
 
+function runPackagedBin(tempDir, binName, args) {
+  const binPath = path.join(
+    tempDir,
+    'node_modules',
+    '.bin',
+    process.platform === 'win32' ? `${binName}.cmd` : binName
+  );
+
+  if (process.platform === 'win32') {
+    return run(
+      'cmd',
+      ['/d', '/s', '/c', `"${binPath}" ${args.join(' ')}`],
+      tempDir
+    );
+  }
+
+  return run(binPath, args, tempDir);
+}
+
+function assertPackagedBins(tempDir) {
+  const directHelp = runPackagedBin(tempDir, 'browser-use-direct', ['--help']);
+  if (!directHelp.includes('Usage: browser-use-direct <command> [args]')) {
+    throw new Error(
+      'Packaged browser-use-direct binary did not print its help output.'
+    );
+  }
+}
+
 let tempDir = null;
 let tarballPath = null;
 
@@ -149,6 +177,7 @@ try {
   }
 
   assertPackagedAssets(repoRoot, installedPackageDir);
+  assertPackagedBins(tempDir);
 
   console.log(
     `Pack smoke test passed for ${publicSpecifiers.length} public specifiers.`
