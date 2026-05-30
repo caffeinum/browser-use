@@ -25,7 +25,7 @@ overrides:
   protobufjs: 7.6.1
   qs: 6.15.2
   rollup: 4.59.0
-  tmp: 0.2.5
+  tmp: 0.2.6
   uuid: 11.1.1
   ws: 8.21.0
 
@@ -3215,8 +3215,8 @@ packages:
     resolution: {integrity: sha512-PSkbLUoxOFRzJYjjxHJt9xro7D+iilgMX/C9lawzVuYiIdcihh9DXmVibBe8lmcFrRi/VzlPjBxbN7rH24q8/Q==}
     engines: {node: '>=14.0.0'}
 
-  tmp@0.2.5:
-    resolution: {integrity: sha512-voyz6MApa1rQGUxT3E+BK7/ROe8itEx7vD8/HEvt4xwXucvQ5G5oeEiHkmHZJuBO21RpOf+YYm9MOivj709jow==}
+  tmp@0.2.6:
+    resolution: {integrity: sha512-5sJPdPjfI5Kx+qbrDesxkglRBxW//g7hCsqspEjwkewGvBMGIKMOTKzLt1hFVJzyadba3lDUN20O9qhvbQUSTA==}
     engines: {node: '>=14.14'}
 
   to-regex-range@5.0.1:
@@ -5641,7 +5641,7 @@ snapshots:
     dependencies:
       chardet: 0.7.0
       iconv-lite: 0.4.24
-      tmp: 0.2.5
+      tmp: 0.2.6
 
   extract-zip@2.0.1:
     dependencies:
@@ -7141,7 +7141,7 @@ snapshots:
 
   tinyrainbow@3.0.3: {}
 
-  tmp@0.2.5: {}
+  tmp@0.2.6: {}
 
   to-regex-range@5.0.1:
     dependencies:

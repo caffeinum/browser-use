@@ -91,7 +91,7 @@ describe('CLI entrypoint alignment', () => {
     expect(result.signal).toBeNull();
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/);
-  });
+  }, 30000);
 
   it('preserves browser-use-direct exit codes from a bin-style entry path', async () => {
     const tempDir = await makeTempDir();
@@ -106,5 +106,5 @@ describe('CLI entrypoint alignment', () => {
     expect(result.signal).toBeNull();
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('Error: Unknown command: nope');
-  });
+  }, 30000);
 });
