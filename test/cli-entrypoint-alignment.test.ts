@@ -101,10 +101,12 @@ describe('CLI entrypoint alignment', () => {
       'browser-use-direct #cli.ts'
     );
 
-    const result = await runNode(['--import', 'tsx', entryPath, 'nope']);
+    const result = await runNode(['--import', 'tsx', entryPath]);
 
     expect(result.signal).toBeNull();
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain('Error: Unknown command: nope');
+    expect(result.stdout).toContain(
+      'Usage: browser-use-direct <command> [args]'
+    );
   }, 30000);
 });
