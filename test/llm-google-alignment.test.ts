@@ -15,7 +15,15 @@ vi.mock('@google/genai', () => {
     }
   }
 
-  return { GoogleGenAI };
+  return {
+    GoogleGenAI,
+    ThinkingLevel: {
+      MINIMAL: 'MINIMAL',
+      LOW: 'LOW',
+      MEDIUM: 'MEDIUM',
+      HIGH: 'HIGH',
+    },
+  };
 });
 
 import {
@@ -213,19 +221,25 @@ describe('Google LLM alignment', () => {
       },
     });
 
-    const response = await llm.ainvoke([
-      new SystemMessage('sys'),
-      new UserMessage('hello'),
-    ]);
+    const controller = new AbortController();
+    const response = await llm.ainvoke(
+      [new SystemMessage('sys'), new UserMessage('hello')],
+      undefined,
+      { signal: controller.signal }
+    );
     const request = generateContentMock.mock.calls[0]?.[0] ?? {};
 
-    expect(request.generationConfig.temperature).toBe(0.3);
-    expect(request.generationConfig.topP).toBe(0.8);
-    expect(request.generationConfig.seed).toBe(7);
-    expect(request.generationConfig.stopSequences).toEqual(['DONE']);
-    expect(request.generationConfig.thinkingConfig.thinkingBudget).toBe(-1);
-    expect(request.generationConfig.maxOutputTokens).toBe(512);
-    expect(request.systemInstruction.parts[0].text).toBe('sys');
+    expect(generateContentMock.mock.calls[0]).toHaveLength(1);
+    expect(request.generationConfig).toBeUndefined();
+    expect(request.systemInstruction).toBeUndefined();
+    expect(request.config.temperature).toBe(0.3);
+    expect(request.config.topP).toBe(0.8);
+    expect(request.config.seed).toBe(7);
+    expect(request.config.stopSequences).toEqual(['DONE']);
+    expect(request.config.thinkingConfig.thinkingBudget).toBe(-1);
+    expect(request.config.maxOutputTokens).toBe(512);
+    expect(request.config.systemInstruction.parts[0].text).toBe('sys');
+    expect(request.config.abortSignal).toBe(controller.signal);
     expect(response.completion).toBe('plain response');
     expect(response.usage?.completion_tokens).toBe(6);
     expect(response.usage?.prompt_cached_tokens).toBe(3);
@@ -238,9 +252,7 @@ describe('Google LLM alignment', () => {
     });
     await llmDefault.ainvoke([new UserMessage('hello')]);
     const defaultRequest = generateContentMock.mock.calls[0]?.[0] ?? {};
-    expect(defaultRequest.generationConfig.thinkingConfig.thinkingLevel).toBe(
-      'LOW'
-    );
+    expect(defaultRequest.config.thinkingConfig.thinkingLevel).toBe('LOW');
 
     generateContentMock.mockClear();
 
@@ -250,9 +262,7 @@ describe('Google LLM alignment', () => {
     });
     await llmMinimal.ainvoke([new UserMessage('hello')]);
     const minimalRequest = generateContentMock.mock.calls[0]?.[0] ?? {};
-    expect(minimalRequest.generationConfig.thinkingConfig.thinkingLevel).toBe(
-      'LOW'
-    );
+    expect(minimalRequest.config.thinkingConfig.thinkingLevel).toBe('LOW');
   });
 
   it('supports Gemini 3 flash thinking level and budget behavior', async () => {
@@ -262,7 +272,7 @@ describe('Google LLM alignment', () => {
     });
     await llmWithLevel.ainvoke([new UserMessage('hello')]);
     const levelRequest = generateContentMock.mock.calls[0]?.[0] ?? {};
-    expect(levelRequest.generationConfig.thinkingConfig).toEqual({
+    expect(levelRequest.config.thinkingConfig).toEqual({
       thinkingLevel: 'HIGH',
     });
 
@@ -273,7 +283,7 @@ describe('Google LLM alignment', () => {
     });
     await llmWithDefaultBudget.ainvoke([new UserMessage('hello')]);
     const budgetRequest = generateContentMock.mock.calls[0]?.[0] ?? {};
-    expect(budgetRequest.generationConfig.thinkingConfig).toEqual({
+    expect(budgetRequest.config.thinkingConfig).toEqual({
       thinkingBudget: -1,
     });
   });
@@ -296,9 +306,11 @@ describe('Google LLM alignment', () => {
     const request = generateContentMock.mock.calls[0]?.[0] ?? {};
 
     expect(request.systemInstruction).toBeUndefined();
+    expect(request.generationConfig).toBeUndefined();
+    expect(request.config.systemInstruction).toBeUndefined();
     expect(request.contents[0].parts[0].text as string).toContain('sys prompt');
-    expect(request.generationConfig.responseMimeType).toBe('application/json');
-    expect(request.generationConfig.responseSchema).toBeDefined();
+    expect(request.config.responseMimeType).toBe('application/json');
+    expect(request.config.responseSchema).toBeDefined();
     expect((response.completion as any).value).toBe('ok');
   });
 
@@ -318,8 +330,8 @@ describe('Google LLM alignment', () => {
     );
     const request = generateContentMock.mock.calls[0]?.[0] ?? {};
 
-    expect(request.generationConfig.responseMimeType).toBeUndefined();
-    expect(request.generationConfig.responseSchema).toBeUndefined();
+    expect(request.config.responseMimeType).toBeUndefined();
+    expect(request.config.responseSchema).toBeUndefined();
     expect((request.contents?.[0]?.parts?.[1]?.text as string) ?? '').toContain(
       'Please respond with a valid JSON object that matches this schema'
     );
@@ -361,7 +373,7 @@ describe('Google LLM alignment', () => {
 
     await llm.ainvoke([new UserMessage('extract')], schema as any);
     const request = generateContentMock.mock.calls[0]?.[0] ?? {};
-    const responseSchema = request.generationConfig.responseSchema ?? {};
+    const responseSchema = request.config.responseSchema ?? {};
     const serializedSchema = JSON.stringify(responseSchema);
 
     expect(serializedSchema).not.toContain('output_schema');
