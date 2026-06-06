@@ -1,4 +1,8 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import type {
+  GenerateContentConfig,
+  GenerateContentParameters,
+} from '@google/genai';
 import type { BaseChatModel, ChatInvokeOptions } from '../base.js';
 import { ModelProviderError } from '../exceptions.js';
 import { ChatInvokeCompletion, type ChatInvokeUsage } from '../views.js';
@@ -57,6 +61,13 @@ const buildGoogleHttpOptions = (
   resolvedHttpOptions.headers = headers;
   return resolvedHttpOptions;
 };
+
+const googleThinkingLevelByName = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+} as const;
 
 export class ChatGoogle implements BaseChatModel {
   public model: string;
@@ -349,15 +360,17 @@ export class ChatGoogle implements BaseChatModel {
       this.includeSystemInUser
     );
 
-    const generationConfig: any = this.config ? { ...this.config } : {};
+    const requestConfig: GenerateContentConfig = this.config
+      ? { ...(this.config as GenerateContentConfig) }
+      : {};
     if (this.temperature !== null) {
-      generationConfig.temperature = this.temperature;
+      requestConfig.temperature = this.temperature;
     }
     if (this.topP !== null) {
-      generationConfig.topP = this.topP;
+      requestConfig.topP = this.topP;
     }
     if (this.seed !== null) {
-      generationConfig.seed = this.seed;
+      requestConfig.seed = this.seed;
     }
 
     const isGemini3Pro = this.model.includes('gemini-3-pro');
@@ -368,16 +381,16 @@ export class ChatGoogle implements BaseChatModel {
       if (level === 'minimal' || level === 'medium') {
         level = 'low';
       }
-      generationConfig.thinkingConfig = {
-        thinkingLevel: level.toUpperCase(),
+      requestConfig.thinkingConfig = {
+        thinkingLevel: googleThinkingLevelByName[level],
       };
     } else if (isGemini3Flash) {
       if (this.thinkingLevel !== null) {
-        generationConfig.thinkingConfig = {
-          thinkingLevel: this.thinkingLevel.toUpperCase(),
+        requestConfig.thinkingConfig = {
+          thinkingLevel: googleThinkingLevelByName[this.thinkingLevel],
         };
       } else {
-        generationConfig.thinkingConfig = {
+        requestConfig.thinkingConfig = {
           thinkingBudget:
             this.thinkingBudget === null ? -1 : this.thinkingBudget,
         };
@@ -392,12 +405,12 @@ export class ChatGoogle implements BaseChatModel {
         budget = -1;
       }
       if (budget !== null) {
-        generationConfig.thinkingConfig = { thinkingBudget: budget };
+        requestConfig.thinkingConfig = { thinkingBudget: budget };
       }
     }
 
     if (this.maxOutputTokens !== null) {
-      generationConfig.maxOutputTokens = this.maxOutputTokens;
+      requestConfig.maxOutputTokens = this.maxOutputTokens;
     }
 
     // Try to get schema from output_format
@@ -437,8 +450,8 @@ export class ChatGoogle implements BaseChatModel {
     }
 
     if (cleanSchemaForJson && this.supportsStructuredOutput) {
-      generationConfig.responseMimeType = 'application/json';
-      generationConfig.responseSchema = cleanSchemaForJson;
+      requestConfig.responseMimeType = 'application/json';
+      requestConfig.responseSchema = cleanSchemaForJson;
     }
 
     const requestContents = (contents as any[]).map((entry) => ({
@@ -462,28 +475,29 @@ export class ChatGoogle implements BaseChatModel {
       }
     }
 
-    const request: any = {
-      model: this.model,
-      contents: requestContents,
-    };
-
     if (systemInstruction && !this.includeSystemInUser) {
-      request.systemInstruction = {
+      requestConfig.systemInstruction = {
         role: 'system',
         parts: [{ text: systemInstruction }],
       };
     }
 
-    if (Object.keys(generationConfig).length > 0) {
-      request.generationConfig = generationConfig;
+    if (options.signal) {
+      requestConfig.abortSignal = options.signal;
+    }
+
+    const request: GenerateContentParameters = {
+      model: this.model,
+      contents: requestContents as any,
+    };
+
+    if (Object.keys(requestConfig).length > 0) {
+      request.config = requestConfig;
     }
 
     for (let attempt = 0; attempt < this.maxRetries; attempt += 1) {
       try {
-        const result = await (this.client.models as any).generateContent(
-          request,
-          options.signal ? { signal: options.signal } : undefined
-        );
+        const result = await this.client.models.generateContent(request);
 
         const candidate = result.candidates?.[0];
         const textParts =
