@@ -181,7 +181,7 @@ export class HarRecordingWatchdog extends BaseWatchdog {
   }
 
   protected override onDetached() {
-    void this._teardownCapture();
+    this.runBackground('teardown HAR capture', this._teardownCapture());
   }
 
   private _resolveConfiguredHarPath(): string | null {

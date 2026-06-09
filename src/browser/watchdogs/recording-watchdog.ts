@@ -101,7 +101,10 @@ export class RecordingWatchdog extends BaseWatchdog {
   }
 
   protected override onDetached() {
-    void this._stopCdpScreencastIfStarted();
+    this.runBackground(
+      'stop CDP screencast',
+      this._stopCdpScreencastIfStarted()
+    );
     this._detachVideoListeners();
   }
 
@@ -211,7 +214,10 @@ export class RecordingWatchdog extends BaseWatchdog {
       } else if (typeof page.removeListener === 'function') {
         page.removeListener('close', listener);
       }
-      void this._captureVideoArtifact(page);
+      this.runBackground(
+        'capture video artifact',
+        this._captureVideoArtifact(page)
+      );
     };
     page.on('close', listener);
     this._videoCloseListeners.set(page, listener);

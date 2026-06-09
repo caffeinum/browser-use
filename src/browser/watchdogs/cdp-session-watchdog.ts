@@ -39,7 +39,10 @@ export class CDPSessionWatchdog extends BaseWatchdog {
   }
 
   protected override onDetached() {
-    void this._teardownCdpMonitoring();
+    this.runBackground(
+      'teardown CDP monitoring',
+      this._teardownCdpMonitoring()
+    );
   }
 
   private async _ensureCdpMonitoring() {

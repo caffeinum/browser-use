@@ -117,7 +117,10 @@ export class CrashWatchdog extends BaseWatchdog {
     }
 
     const crashListener = (payload?: unknown) => {
-      void this._handlePageCrash(page, payload);
+      this.runBackground(
+        'handle page crash',
+        this._handlePageCrash(page, payload)
+      );
     };
     const requestListener = (payload?: unknown) => {
       this._trackRequestStart(payload as RequestLike);
@@ -289,7 +292,7 @@ export class CrashWatchdog extends BaseWatchdog {
       return;
     }
     this._healthInterval = setInterval(() => {
-      void this._runHealthCheck();
+      this.runBackground('run health check', this._runHealthCheck());
     }, this._healthCheckIntervalMs);
   }
 

@@ -145,6 +145,19 @@ export abstract class BaseWatchdog {
 
   protected onDetached() {}
 
+  /**
+   * Run fire-and-forget background work without letting a rejection surface
+   * as an unhandled promise rejection (which terminates the process on
+   * modern Node). Failures are logged at debug level.
+   */
+  protected runBackground(label: string, work: Promise<unknown>): void {
+    void work.catch((error) => {
+      this.browser_session.logger.debug(
+        `[${this.constructor.name}] ${label} failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    });
+  }
+
   private _collectHandlerMethods() {
     const methodNames = new Set<string>();
     let prototype: object | null = Object.getPrototypeOf(this);

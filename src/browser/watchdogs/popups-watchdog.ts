@@ -40,7 +40,10 @@ export class PopupsWatchdog extends BaseWatchdog {
   }
 
   protected override onDetached() {
-    void this._detachCdpDialogHandlers();
+    this.runBackground(
+      'detach CDP dialog handlers',
+      this._detachCdpDialogHandlers()
+    );
   }
 
   private async _attachCdpDialogHandler(targetId: string, page: Page) {
@@ -55,7 +58,10 @@ export class PopupsWatchdog extends BaseWatchdog {
       await session.send?.('Page.enable');
 
       const handler = (payload: any) => {
-        void this._handleJavascriptDialog(payload, session);
+        this.runBackground(
+          'handle javascript dialog',
+          this._handleJavascriptDialog(payload, session)
+        );
       };
       session.on?.('Page.javascriptDialogOpening', handler);
 
