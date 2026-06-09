@@ -3451,7 +3451,7 @@ export class BrowserSession {
 
       if (direction === 'up' || direction === 'down') {
         const pixels =
-          direction === 'down' ? -normalizedAmount : normalizedAmount;
+          direction === 'down' ? normalizedAmount : -normalizedAmount;
         await this._withAbort(this._scrollContainer(pixels), signal);
         return;
       }
@@ -6986,7 +6986,7 @@ export class BrowserSession {
 
   /**
    * Scroll the current page container
-   * @param pixels - Number of pixels to scroll (positive = up, negative = down)
+   * @param pixels - Number of pixels to scroll (positive = down, negative = up)
    */
   private async _scrollContainer(pixels: number): Promise<void> {
     const page = await this.getCurrentPage();

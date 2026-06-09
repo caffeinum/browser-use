@@ -1925,6 +1925,30 @@ esac
     expect(session.active_tab?.url).toBe('about:blank');
   });
 
+  it('maps scroll directions to container pixel deltas (positive = down)', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+
+    const fakePage = {
+      evaluate: vi.fn(async () => false),
+      url: vi.fn(() => 'https://example.com'),
+      title: vi.fn(async () => 'Example'),
+      waitForLoadState: vi.fn(async () => {}),
+    } as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    session.update_current_page(fakePage, 'Example', 'https://example.com');
+    const scrollContainerSpy = vi
+      .spyOn(session as any, '_scrollContainer')
+      .mockResolvedValue(undefined);
+
+    await session.scroll('down', 100);
+    expect(scrollContainerSpy).toHaveBeenLastCalledWith(100);
+
+    await session.scroll('up', 250);
+    expect(scrollContainerSpy).toHaveBeenLastCalledWith(-250);
+  });
+
   it('switches tabs by 4-char tab_id aliases', async () => {
     const session = new BrowserSession({
       browser_profile: new BrowserProfile({}),
