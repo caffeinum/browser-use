@@ -1238,7 +1238,9 @@ export const run_direct_command = async (
             if (allowedCookies.length === 0 && blockedCookies.length > 0) {
               writeLine(environment.stdout, 'Cleared 0 cookies');
             } else {
-              const addCookies = session.browser_context.addCookies;
+              const addCookies = session.browser_context.addCookies?.bind(
+                session.browser_context
+              );
               if (blockedCookies.length > 0 && !addCookies) {
                 throw new Error(
                   'Browser context does not support preserving blocked cookies'
@@ -1262,7 +1264,9 @@ export const run_direct_command = async (
             (cookie) => !cookieMatchesUrl(cookie, url)
           );
           const removedCount = allCookies.length - remaining.length;
-          const addCookies = session.browser_context.addCookies;
+          const addCookies = session.browser_context.addCookies?.bind(
+            session.browser_context
+          );
           if (remaining.length > 0 && !addCookies) {
             throw new Error(
               'Browser context does not support preserving non-matching cookies'
