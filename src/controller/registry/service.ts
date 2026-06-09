@@ -567,6 +567,15 @@ export class Registry<Context = unknown> {
     const replaced = new Set<string>();
     const missing = new Set<string>();
 
+    const resolveSecret = (placeholder: string): string => {
+      replaced.add(placeholder);
+      const replacement = applicableSecrets[placeholder];
+      if (placeholder.endsWith('bu_2fa_code')) {
+        return generateTotpCode(replacement);
+      }
+      return replacement;
+    };
+
     const traverse = (value: any): any => {
       if (typeof value === 'string') {
         const withTagsReplaced = value.replace(
@@ -574,12 +583,7 @@ export class Registry<Context = unknown> {
           (_, placeholderValue) => {
             const placeholder = String(placeholderValue);
             if (placeholder in applicableSecrets) {
-              replaced.add(placeholder);
-              const replacement = applicableSecrets[placeholder];
-              if (placeholder.endsWith('bu_2fa_code')) {
-                return generateTotpCode(replacement);
-              }
-              return replacement;
+              return resolveSecret(placeholder);
             }
             missing.add(placeholder);
             return `<secret>${placeholder}</secret>`;
@@ -589,12 +593,7 @@ export class Registry<Context = unknown> {
         // Handle literal secrets ("user_name" without tags) for cases where
         // the LLM forgets the <secret> tags but uses the exact placeholder.
         if (withTagsReplaced in applicableSecrets) {
-          replaced.add(withTagsReplaced);
-          const replacement = applicableSecrets[withTagsReplaced];
-          if (withTagsReplaced.endsWith('bu_2fa_code')) {
-            return generateTotpCode(replacement);
-          }
-          return replacement;
+          return resolveSecret(withTagsReplaced);
         }
         return withTagsReplaced;
       }
