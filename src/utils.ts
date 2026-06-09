@@ -262,7 +262,7 @@ export const is_unsafe_pattern = (pattern: string) => {
     const [, ...rest] = pattern.split('://');
     pattern = rest.join('://');
   }
-  const bare_domain = pattern.replace('.*', '').replace('*.', '');
+  const bare_domain = pattern.replaceAll('.*', '').replaceAll('*.', '');
   return bare_domain.includes('*');
 };
 
