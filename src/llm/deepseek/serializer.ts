@@ -2,6 +2,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
 import {
   AssistantMessage,
   ContentPartImageParam,
+  ContentPartRefusalParam,
   ContentPartTextParam,
   SystemMessage,
   UserMessage,
@@ -50,9 +51,26 @@ export class DeepSeekMessageSerializer {
     }
 
     if (message instanceof AssistantMessage) {
+      let content: string | null | Array<{ type: 'text'; text: string }> = null;
+      if (typeof message.content === 'string') {
+        content = message.content;
+      } else if (Array.isArray(message.content)) {
+        content = message.content.flatMap((part) => {
+          if (part instanceof ContentPartTextParam) {
+            return [{ type: 'text' as const, text: part.text }];
+          }
+          if (part instanceof ContentPartRefusalParam) {
+            return [
+              { type: 'text' as const, text: `[Refusal] ${part.refusal}` },
+            ];
+          }
+          return [];
+        });
+      }
+
       return {
         role: 'assistant',
-        content: typeof message.content === 'string' ? message.content : null,
+        content,
         // DeepSeek supports tool calls in newer models
         tool_calls: message.tool_calls?.map((toolCall) => ({
           id: toolCall.id,

@@ -58,9 +58,22 @@ export class GroqMessageSerializer {
         },
       }));
 
+      let content: string | null = null;
+      if (typeof message.content === 'string') {
+        content = message.content;
+      } else if (Array.isArray(message.content)) {
+        content = message.content
+          .filter(
+            (part): part is ContentPartTextParam =>
+              part instanceof ContentPartTextParam
+          )
+          .map((part) => part.text)
+          .join('\n');
+      }
+
       return {
         role: 'assistant',
-        content: typeof message.content === 'string' ? message.content : null,
+        content,
         tool_calls: toolCalls,
       };
     }

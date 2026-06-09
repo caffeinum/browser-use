@@ -2,6 +2,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
 import {
   AssistantMessage,
   ContentPartImageParam,
+  ContentPartRefusalParam,
   ContentPartTextParam,
   SystemMessage,
   UserMessage,
@@ -58,9 +59,27 @@ export class OpenAIMessageSerializer {
         },
       }));
 
+      type AssistantContentPart =
+        | { type: 'text'; text: string }
+        | { type: 'refusal'; refusal: string };
+      let content: string | null | AssistantContentPart[] = null;
+      if (typeof message.content === 'string') {
+        content = message.content;
+      } else if (Array.isArray(message.content)) {
+        content = message.content.flatMap((part): AssistantContentPart[] => {
+          if (part instanceof ContentPartTextParam) {
+            return [{ type: 'text', text: part.text }];
+          }
+          if (part instanceof ContentPartRefusalParam) {
+            return [{ type: 'refusal', refusal: part.refusal }];
+          }
+          return [];
+        });
+      }
+
       return {
         role: 'assistant',
-        content: typeof message.content === 'string' ? message.content : null, // OpenAI expects string or null for content in assistant message if tool_calls are present
+        content,
         tool_calls: toolCalls,
         refusal: message.refusal || undefined,
       };
