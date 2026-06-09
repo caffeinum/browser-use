@@ -198,6 +198,35 @@ describe('code-use alignment', () => {
     expect(agent.history.number_of_steps()).toBe(1);
   });
 
+  it('runs pending cells in place without duplicating them', async () => {
+    const session = new BrowserSession();
+    vi.spyOn(session, 'get_current_page').mockResolvedValue({
+      url: vi.fn(() => 'https://example.com'),
+      title: vi.fn(async () => 'Example'),
+    } as any);
+
+    const executor = vi.fn(async (source: string) => `executed:${source}`);
+    const agent = new CodeAgent({
+      task: 'Collect data',
+      browser_session: session,
+      executor,
+    });
+
+    const first = agent.add_cell('return 1');
+    const second = agent.add_cell('return 2');
+
+    await agent.run();
+
+    expect(agent.session.cells).toHaveLength(2);
+    expect(first.status).toBe('success');
+    expect(second.status).toBe('success');
+    expect(executor).toHaveBeenCalledTimes(2);
+
+    await agent.run();
+    expect(executor).toHaveBeenCalledTimes(2);
+    expect(agent.session.cells).toHaveLength(2);
+  });
+
   it('exports notebooks with private file permissions', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'code-use-export-'));
     const outputDir = path.join(tempDir, 'nested');

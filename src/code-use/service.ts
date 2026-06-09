@@ -66,7 +66,10 @@ export class CodeAgent {
   }
 
   async execute_cell(source: string) {
-    const cell = this.add_cell(source);
+    return this._run_cell(this.add_cell(source));
+  }
+
+  private async _run_cell(cell: ReturnType<NotebookSession['add_cell']>) {
     const startedAt = Date.now() / 1000;
     cell.status = 'running';
     cell.execution_count = this.session.increment_execution_count();
@@ -135,7 +138,7 @@ export class CodeAgent {
     );
     const toRun = pending.slice(0, Math.max(max_steps, 0));
     for (const cell of toRun) {
-      await this.execute_cell(cell.source);
+      await this._run_cell(cell);
     }
     return this.history;
   }
