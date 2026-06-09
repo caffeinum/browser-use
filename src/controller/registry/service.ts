@@ -527,7 +527,7 @@ export class Registry<Context = unknown> {
     currentUrl: string | null
   ) {
     const secretPattern = /<secret>(.*?)<\/secret>/g;
-    const applicableSecrets: Record<string, string> = {};
+    const applicableSecrets: Record<string, string> = Object.create(null);
 
     for (const [domainOrKey, content] of Object.entries(sensitiveData)) {
       if (content && typeof content === 'object' && !Array.isArray(content)) {
@@ -540,6 +540,14 @@ export class Registry<Context = unknown> {
         }
       } else if (typeof content === 'string') {
         applicableSecrets[domainOrKey] = content;
+      }
+    }
+
+    // Filter out empty values so they are reported as missing instead of
+    // silently replacing placeholders with empty strings.
+    for (const key of Object.keys(applicableSecrets)) {
+      if (!applicableSecrets[key]) {
+        delete applicableSecrets[key];
       }
     }
 
@@ -561,19 +569,34 @@ export class Registry<Context = unknown> {
 
     const traverse = (value: any): any => {
       if (typeof value === 'string') {
-        return value.replace(secretPattern, (_, placeholderValue) => {
-          const placeholder = String(placeholderValue);
-          if (placeholder in applicableSecrets) {
-            replaced.add(placeholder);
-            const replacement = applicableSecrets[placeholder];
-            if (placeholder.endsWith('bu_2fa_code')) {
-              return generateTotpCode(replacement);
+        const withTagsReplaced = value.replace(
+          secretPattern,
+          (_, placeholderValue) => {
+            const placeholder = String(placeholderValue);
+            if (placeholder in applicableSecrets) {
+              replaced.add(placeholder);
+              const replacement = applicableSecrets[placeholder];
+              if (placeholder.endsWith('bu_2fa_code')) {
+                return generateTotpCode(replacement);
+              }
+              return replacement;
             }
-            return replacement;
+            missing.add(placeholder);
+            return `<secret>${placeholder}</secret>`;
           }
-          missing.add(placeholder);
-          return `<secret>${placeholder}</secret>`;
-        });
+        );
+
+        // Handle literal secrets ("user_name" without tags) for cases where
+        // the LLM forgets the <secret> tags but uses the exact placeholder.
+        if (withTagsReplaced in applicableSecrets) {
+          replaced.add(withTagsReplaced);
+          const replacement = applicableSecrets[withTagsReplaced];
+          if (withTagsReplaced.endsWith('bu_2fa_code')) {
+            return generateTotpCode(replacement);
+          }
+          return replacement;
+        }
+        return withTagsReplaced;
       }
       if (Array.isArray(value)) {
         return value.map(traverse);

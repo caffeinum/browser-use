@@ -1109,6 +1109,58 @@ describe('Sensitive Data Handling', () => {
     nowSpy.mockRestore();
   });
 
+  it('replaces literal placeholder values missing <secret> tags', async () => {
+    const registry = new Registry();
+    let capturedParams: any = null;
+
+    registry.action('Input with secrets', {
+      param_model: z.object({
+        text: z.string(),
+      }),
+    })(async function input_text(params: { text: string }) {
+      capturedParams = params;
+      return new ActionResult({ extracted_content: 'Done' });
+    });
+
+    await registry.execute_action(
+      'input_text',
+      { text: 'password' },
+      {
+        sensitive_data: {
+          password: 'actual_secret_value',
+        },
+      }
+    );
+
+    expect(capturedParams.text).toBe('actual_secret_value');
+  });
+
+  it('treats empty secret values as missing instead of replacing', async () => {
+    const registry = new Registry();
+    let capturedParams: any = null;
+
+    registry.action('Input with secrets', {
+      param_model: z.object({
+        text: z.string(),
+      }),
+    })(async function input_text(params: { text: string }) {
+      capturedParams = params;
+      return new ActionResult({ extracted_content: 'Done' });
+    });
+
+    await registry.execute_action(
+      'input_text',
+      { text: '<secret>password</secret>' },
+      {
+        sensitive_data: {
+          password: '',
+        },
+      }
+    );
+
+    expect(capturedParams.text).toBe('<secret>password</secret>');
+  });
+
   it('handles domain-scoped sensitive data', async () => {
     const registry = new Registry();
     let capturedParams: any = null;
