@@ -1989,11 +1989,17 @@ export class BrowserSession {
 
     const reconnectTask = this._auto_reconnect();
     this._reconnectTask = reconnectTask;
-    void reconnectTask.finally(() => {
-      if (this._reconnectTask === reconnectTask) {
-        this._reconnectTask = null;
-      }
-    });
+    void reconnectTask
+      .catch((error) => {
+        this.logger.warning(
+          `Automatic reconnect failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      })
+      .finally(() => {
+        if (this._reconnectTask === reconnectTask) {
+          this._reconnectTask = null;
+        }
+      });
   }
 
   private async _restorePagesAfterReconnect(
