@@ -286,6 +286,11 @@ export class RecordingWatchdog extends BaseWatchdog {
         flags: 'a',
         mode: 0o600,
       });
+      stream.on('error', (error) => {
+        this.browser_session.logger.warning(
+          `[RecordingWatchdog] CDP screencast stream error: ${error.message}`
+        );
+      });
       chmodPrivatePath(filePath, 0o600);
 
       const handler = (payload: any) => {

@@ -157,7 +157,7 @@ export class DownloadsWatchdog extends BaseWatchdog {
     this._downloadCompleteCallbacks = [];
     this._networkDownloads.clear();
     this._detectedDownloadUrls.clear();
-    void this._stopCdpDownloadMonitoring();
+    void this._stopCdpDownloadMonitoring().catch(() => undefined);
   }
 
   on_TabCreatedEvent() {
@@ -340,7 +340,7 @@ export class DownloadsWatchdog extends BaseWatchdog {
     this._downloadCompleteCallbacks = [];
     this._networkDownloads.clear();
     this._detectedDownloadUrls.clear();
-    void this._stopCdpDownloadMonitoring();
+    void this._stopCdpDownloadMonitoring().catch(() => undefined);
   }
 
   private _normalizeCallbackRegistration(
@@ -391,10 +391,18 @@ export class DownloadsWatchdog extends BaseWatchdog {
       this._cdpSession = session;
 
       const onResponseReceived = (payload: any) => {
-        void this._handleNetworkResponse(payload);
+        void this._handleNetworkResponse(payload).catch((error) => {
+          this.browser_session.logger.debug(
+            `[DownloadsWatchdog] Failed to handle network response: ${error instanceof Error ? error.message : String(error)}`
+          );
+        });
       };
       const onLoadingFinished = (payload: any) => {
-        void this._handleNetworkLoadingFinished(payload);
+        void this._handleNetworkLoadingFinished(payload).catch((error) => {
+          this.browser_session.logger.debug(
+            `[DownloadsWatchdog] Failed to handle loading finished: ${error instanceof Error ? error.message : String(error)}`
+          );
+        });
       };
 
       session.on?.('Network.responseReceived', onResponseReceived);
