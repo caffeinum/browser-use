@@ -58,18 +58,9 @@ export class GroqMessageSerializer {
         },
       }));
 
-      let content: string | null = null;
-      if (typeof message.content === 'string') {
-        content = message.content;
-      } else if (Array.isArray(message.content)) {
-        content = message.content
-          .filter(
-            (part): part is ContentPartTextParam =>
-              part instanceof ContentPartTextParam
-          )
-          .map((part) => part.text)
-          .join('\n');
-      }
+      // Groq expects assistant content as plain text; AssistantMessage.text
+      // already joins the text parts (refusal parts excluded).
+      const content = message.content == null ? null : message.text;
 
       return {
         role: 'assistant',
