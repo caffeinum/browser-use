@@ -300,10 +300,11 @@ export class TokenCost {
     return {
       new_prompt_tokens: usage.prompt_tokens,
       new_prompt_cost: uncachedPrompt * (pricing.input_cost_per_token ?? 0),
-      prompt_read_cached_tokens: cached || null,
-      prompt_read_cached_cost: cached
-        ? cached * (pricing.cache_read_input_token_cost ?? 0)
-        : null,
+      prompt_read_cached_tokens: usage.prompt_cached_tokens ?? null,
+      prompt_read_cached_cost:
+        cached && pricing.cache_read_input_token_cost
+          ? cached * pricing.cache_read_input_token_cost
+          : null,
       prompt_cached_creation_tokens: usage.prompt_cache_creation_tokens ?? null,
       prompt_cache_creation_cost:
         usage.prompt_cache_creation_tokens &&
