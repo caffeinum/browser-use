@@ -619,7 +619,7 @@ Follow [Semantic Versioning](https://semver.org/):
 
 ### Release Checklist
 
-1. Update version in `package.json`
+1. Update versions with `pnpm version:bump <version>`, `pnpm version:patch`, `pnpm version:minor`, or `pnpm version:major`
 2. Update CHANGELOG.md
 3. Run full test suite
 4. Build and verify package exports
