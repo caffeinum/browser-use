@@ -1,0 +1,23 @@
+test/agent-constructor.test.ts
+  s_f7a871fc9678d7::t_b004890f07052f 3278-3367
+src/agent/service.ts
+  s_f7a871fc9678d7::t_8d5686d266615a 5531
+  s_f7a871fc9678d7::t_32ab3ad0804cd1 5516,5526
+  s_f7a871fc9678d7::t_9722e137c61d19 5498-5501,5503
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "727cdad019ed9a63fc3fc6d2265322a0cf0fa740",
+  "prompts": {},
+  "sessions": {
+    "s_f7a871fc9678d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cc674448-ffd4-4dde-b911-de7349c6b36e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
