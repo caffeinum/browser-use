@@ -5495,9 +5495,12 @@ export class Agent<
     return Array.from(registryActions.keys());
   }
 
-  private _toStrictActionParamSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
+  // pydantic param models default to extra='ignore' (python parity): unknown
+  // param keys from the LLM are stripped, not parse failures. The outer
+  // action-name wrapper stays strict (python ActionModel is extra='forbid').
+  private _toLenientActionParamSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
     if (schema instanceof z.ZodObject) {
-      return schema.strict();
+      return schema.strip();
     }
     return schema;
   }
@@ -5510,7 +5513,7 @@ export class Agent<
         if (!actionInfo) {
           return null;
         }
-        const paramSchema = this._toStrictActionParamSchema(
+        const paramSchema = this._toLenientActionParamSchema(
           actionInfo.paramSchema as z.ZodTypeAny
         );
         return z.object({ [actionName]: paramSchema }).strict();
@@ -5520,12 +5523,12 @@ export class Agent<
     if (actionSchemas.length === 0) {
       const doneAction = registryActions.get('done');
       if (doneAction) {
-        const doneParams = this._toStrictActionParamSchema(
+        const doneParams = this._toLenientActionParamSchema(
           doneAction.paramSchema as z.ZodTypeAny
         );
         return z.object({ done: doneParams }).strict();
       }
-      return z.object({ done: z.object({}).strict() }).strict();
+      return z.object({ done: z.object({}) }).strict();
     }
 
     if (actionSchemas.length === 1) {

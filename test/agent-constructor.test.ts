@@ -3275,3 +3275,93 @@ describe('Agent constructor browser session alignment', () => {
     await agent.close();
   });
 });
+
+describe('Agent LLM output schema leniency (pydantic extra=ignore parity)', () => {
+  const buildOutputFormat = (agent: Agent, doneOnly = false) =>
+    (agent as any)._buildLlmOutputFormat(doneOnly) as z.ZodTypeAny;
+
+  it('strips unknown done param keys instead of failing the parse', async () => {
+    const controller = new Controller();
+    const agent = new Agent({
+      task: 'structured output done leniency',
+      llm: createLlm(),
+      controller: controller as any,
+      output_model_schema: z.object({ answer: z.string() }) as any,
+    });
+
+    const parsed: any = buildOutputFormat(agent).parse({
+      next_goal: 'finish',
+      action: [
+        {
+          done: {
+            success: true,
+            data: { answer: '42' },
+            text: 'task complete, keys delivered',
+          },
+        },
+      ],
+    });
+
+    expect(parsed.action[0].done.data).toEqual({ answer: '42' });
+    expect(parsed.action[0].done).not.toHaveProperty('text');
+
+    await agent.close();
+  });
+
+  it('strips unknown keys on regular action params', async () => {
+    const agent = new Agent({
+      task: 'regular action leniency',
+      llm: createLlm(),
+    });
+
+    const parsed: any = buildOutputFormat(agent).parse({
+      action: [{ go_back: { reason: 'model chatter' } }],
+    });
+
+    expect(parsed.action[0].go_back).toEqual({});
+
+    await agent.close();
+  });
+
+  it('still rejects unknown action names (outer wrapper stays strict)', async () => {
+    const agent = new Agent({
+      task: 'outer strictness',
+      llm: createLlm(),
+    });
+
+    expect(() =>
+      buildOutputFormat(agent).parse({
+        action: [{ not_a_real_action: {} }],
+      })
+    ).toThrow();
+
+    await agent.close();
+  });
+
+  it('accepts extra done keys in done-only recovery mode', async () => {
+    const controller = new Controller();
+    const agent = new Agent({
+      task: 'done-only leniency',
+      llm: createLlm(),
+      controller: controller as any,
+      output_model_schema: z.object({ answer: z.string() }) as any,
+    });
+
+    const parsed: any = buildOutputFormat(agent, true).parse({
+      action: [
+        {
+          done: {
+            success: false,
+            data: { answer: 'partial' },
+            text: 'ran out of steps',
+          },
+        },
+      ],
+    });
+
+    expect(parsed.action[0].done.data).toEqual({ answer: 'partial' });
+    expect(parsed.action[0].done).not.toHaveProperty('text');
+
+    await agent.close();
+  });
+});
