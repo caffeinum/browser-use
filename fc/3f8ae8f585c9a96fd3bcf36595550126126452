@@ -1,0 +1,23 @@
+test/controller.test.ts
+  s_5f12adb24bee30::t_333432a8043178 2413,2415-2429
+src/controller/views.ts
+  s_5f12adb24bee30::t_333432a8043178 46,53,226,231
+test/coerce-boolean-to-int.test.ts
+  s_5f12adb24bee30::t_333432a8043178 113,115-122,144,146-147,160-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc3f8ae8f585c9a96fd3bcf36595550126126452",
+  "prompts": {},
+  "sessions": {
+    "s_5f12adb24bee30": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "75aea8b0-be49-494a-b75f-247b98f9df9c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Aleksey Bykhun <theisease@gmail.com>"
+    }
+  }
+}
