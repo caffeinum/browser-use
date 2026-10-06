@@ -70,6 +70,7 @@ import {
 } from '../src/browser/storage-state-limits.js';
 import {
   DownloadProgressEvent,
+  ScreenshotEvent,
   TabCreatedEvent,
 } from '../src/browser/events.js';
 import { URLNotAllowedError } from '../src/browser/views.js';
@@ -2763,12 +2764,10 @@ esac
     const clickableSpy = vi
       .spyOn(DomService.prototype, 'get_clickable_elements')
       .mockResolvedValue(domState);
-    const screenshot = vi.fn(async () => Buffer.from('viewport screenshot'));
     const page = {
       url: vi.fn(() => 'https://example.com'),
       title: vi.fn(async () => 'Allowed'),
       waitForLoadState: vi.fn(async () => {}),
-      screenshot,
       evaluate: vi.fn(async () => ({
         viewportWidth: 1280,
         viewportHeight: 720,
@@ -2783,17 +2782,26 @@ esac
     });
     session.update_current_page(page, 'Allowed', 'https://example.com');
     (session as any).initialized = true;
+    const dispatchSpy = vi
+      .spyOn(session, 'dispatch_browser_event')
+      .mockImplementation(async (event: any) => {
+        event.event_result = 'viewport screenshot';
+        return { event } as any;
+      });
 
     try {
-      await session.get_browser_state_with_recovery({
+      const state = await session.get_browser_state_with_recovery({
         include_screenshot: true,
       });
 
-      expect(screenshot).toHaveBeenCalledWith({
-        type: 'png',
-        fullPage: false,
-      });
+      const screenshotEvents = dispatchSpy.mock.calls
+        .map(([event]) => event)
+        .filter((event) => event instanceof ScreenshotEvent);
+      expect(screenshotEvents).toHaveLength(1);
+      expect(screenshotEvents[0].full_page).toBe(false);
+      expect(state.screenshot).toBe('viewport screenshot');
     } finally {
+      dispatchSpy.mockRestore();
       clickableSpy.mockRestore();
     }
   });
