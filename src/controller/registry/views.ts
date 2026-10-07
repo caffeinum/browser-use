@@ -243,8 +243,11 @@ export class ActionRegistry {
     });
   }
 
+  // python parity: without a page, the unfiltered actions (system prompt); with a page, only the
+  // filtered actions that match it (unfiltered ones are already in the system prompt)
   get_prompt_description(page?: Page | null) {
     return this.getAvailableActions(page)
+      .filter((action) => !page || action.domains?.length || action.pageFilter)
       .map((action) => action.promptDescription())
       .join('\n');
   }

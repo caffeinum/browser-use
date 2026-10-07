@@ -1857,7 +1857,7 @@ describe('Regression Coverage', () => {
     );
   });
 
-  it('page prompt description includes unfiltered and page-filtered actions', async () => {
+  it('page prompt description lists only page-filtered actions (python parity)', async () => {
     const registry = new Registry();
 
     registry.action('Always available action', {
@@ -1877,8 +1877,15 @@ describe('Regression Coverage', () => {
       url: () => 'https://example.com',
     } as any);
 
-    expect(prompt).toContain('base_action');
+    expect(prompt).not.toContain('base_action');
     expect(prompt).toContain('domain_action');
+    expect(
+      registry.get_prompt_description({
+        url: () => 'https://other.com',
+      } as any)
+    ).toBe('');
+    expect(registry.get_prompt_description()).toContain('base_action');
+    expect(registry.get_prompt_description()).not.toContain('domain_action');
   });
 
   it('create_action_model filters by include_actions and page context', async () => {
