@@ -73,7 +73,11 @@ import {
   ScreenshotEvent,
   TabCreatedEvent,
 } from '../src/browser/events.js';
-import { URLNotAllowedError } from '../src/browser/views.js';
+import {
+  PLACEHOLDER_4PX_SCREENSHOT,
+  URLNotAllowedError,
+} from '../src/browser/views.js';
+import { Image } from 'canvas';
 import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
@@ -4248,6 +4252,23 @@ esac
       })
     );
     expect(cdpSession.detach).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a decodable placeholder PNG for empty pages', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+    const fakePage = { url: () => 'about:blank' } as any;
+    (session as any).browser_context = {} as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    vi.spyOn(session, 'validate_page_after_action').mockResolvedValue();
+
+    const screenshot = await session.take_screenshot();
+
+    expect(screenshot).toBe(PLACEHOLDER_4PX_SCREENSHOT);
+    const image = new Image();
+    image.src = Buffer.from(screenshot!, 'base64');
+    expect([image.width, image.height]).toEqual([4, 4]);
   });
 
   it('forwards screenshot clip regions to CDP captureScreenshot', async () => {

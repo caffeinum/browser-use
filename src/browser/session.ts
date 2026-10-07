@@ -79,6 +79,7 @@ import {
   type NetworkRequest,
   type TabInfo,
   BrowserError,
+  PLACEHOLDER_4PX_SCREENSHOT,
   URLNotAllowedError,
 } from './views.js';
 import {
@@ -5916,8 +5917,7 @@ export class BrowserSession {
       url === 'edge://newtab/'
     ) {
       this.logger.warning(`▫️ Skipping screenshot of empty page: ${logUrl}`);
-      // Return a 4px placeholder
-      return 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAD0lEQVQIHWP8//8/AxYMACgtBP9g8jqYAAAAAElFTkSuQmCC';
+      return PLACEHOLDER_4PX_SCREENSHOT;
     }
 
     // Bring page to front before rendering
