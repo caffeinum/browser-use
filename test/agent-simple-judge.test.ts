@@ -24,6 +24,17 @@ const createLlm = (completion: string) => {
   return { llm, ainvoke };
 };
 
+const addDoneSuccess = (agent: Agent, extracted_content: string) => {
+  agent.history.add_item(
+    new AgentHistory(
+      null,
+      [new ActionResult({ is_done: true, success: true, extracted_content })],
+      new BrowserStateHistory('https://example.com', 'Example', [], [], null),
+      null
+    )
+  );
+};
+
 describe('Agent simple judge alignment', () => {
   it('injects current_date into simple judge prompt with c011 wording', () => {
     const messages = construct_simple_judge_messages({
@@ -55,7 +66,11 @@ describe('Agent simple judge alignment', () => {
     const { llm, ainvoke } = createLlm(
       '{"is_correct": false, "reason": "Missing required fields"}'
     );
-    const agent = new Agent({ task: 'Extract 5 rows as JSON', llm });
+    const agent = new Agent({
+      task: 'Extract 5 rows as JSON',
+      llm,
+      use_simple_judge: true,
+    });
     try {
       agent.history.add_item(
         new AgentHistory(
@@ -95,7 +110,11 @@ describe('Agent simple judge alignment', () => {
     const { llm, ainvoke } = createLlm(
       '{"is_correct": false, "reason": "Should not be used"}'
     );
-    const agent = new Agent({ task: 'Extract rows', llm });
+    const agent = new Agent({
+      task: 'Extract rows',
+      llm,
+      use_simple_judge: true,
+    });
     try {
       agent.history.add_item(
         new AgentHistory(
@@ -122,6 +141,58 @@ describe('Agent simple judge alignment', () => {
 
       expect(ainvoke).not.toHaveBeenCalled();
       expect(agent.history.history[0].result[0].success).toBe(false);
+    } finally {
+      await agent.close();
+    }
+  });
+  it('does not run simple judge unless use_simple_judge is enabled', async () => {
+    const { llm, ainvoke } = createLlm(
+      '{"is_correct": false, "reason": "Should not be used"}'
+    );
+    const agent = new Agent({ task: 'Extract rows', llm });
+    try {
+      addDoneSuccess(agent, 'Extracted rows');
+
+      await (agent as any)._run_simple_judge();
+
+      expect(ainvoke).not.toHaveBeenCalled();
+      const finalResult = agent.history.history[0].result[0];
+      expect(finalResult.success).toBe(true);
+      expect(finalResult.extracted_content).toBe('Extracted rows');
+    } finally {
+      await agent.close();
+    }
+  });
+
+  it('keeps structured output intact when simple judge rejects with output_model_schema', async () => {
+    const { llm } = createLlm(
+      '{"is_correct": false, "reason": "Missing required fields"}'
+    );
+    const outputSchema = {
+      name: 'ResultSchema',
+      parse: (input: string) => JSON.parse(input),
+      model_json_schema: () => ({
+        type: 'object',
+        properties: { answer: { type: 'string' } },
+      }),
+    };
+    const agent = new Agent({
+      task: 'Extract the answer',
+      llm,
+      use_simple_judge: true,
+      output_model_schema: outputSchema as any,
+    });
+    try {
+      addDoneSuccess(agent, '{"answer":"42"}');
+
+      await (agent as any)._run_simple_judge();
+
+      const finalResult = agent.history.history[0].result[0];
+      expect(finalResult.success).toBe(false);
+      expect(finalResult.extracted_content).toBe('{"answer":"42"}');
+      expect(JSON.parse(finalResult.extracted_content!)).toEqual({
+        answer: '42',
+      });
     } finally {
       await agent.close();
     }

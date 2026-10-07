@@ -8,17 +8,11 @@ import { z } from 'zod';
 export const lenientInt = (min?: number) => {
   let schema = z.number().int();
   if (min !== undefined) schema = schema.min(min);
-  return z.preprocess(
-    (v) => (typeof v === 'boolean' ? Number(v) : v),
-    schema,
-  );
+  return z.preprocess((v) => (typeof v === 'boolean' ? Number(v) : v), schema);
 };
 
 export const lenientNumber = () =>
-  z.preprocess(
-    (v) => (typeof v === 'boolean' ? Number(v) : v),
-    z.number(),
-  );
+  z.preprocess((v) => (typeof v === 'boolean' ? Number(v) : v), z.number());
 
 export const SearchGoogleActionSchema = z.object({
   query: z.string(),

@@ -204,7 +204,8 @@ describe('Agent full judge alignment', () => {
       const [isDone] = await agent.takeStep(new AgentStepInfo(0, 3));
 
       expect(isDone).toBe(true);
-      expect(mainInvoke).toHaveBeenCalledTimes(1);
+      // simple judge (main llm) is opt-in via use_simple_judge
+      expect(mainInvoke).not.toHaveBeenCalled();
       expect(judgeInvoke).toHaveBeenCalledTimes(1);
       const finalResult = agent.history.history[0].result[0];
       expect(finalResult.judgement).toMatchObject({
@@ -256,7 +257,7 @@ describe('Agent full judge alignment', () => {
 
       await agent.takeStep(new AgentStepInfo(0, 2));
 
-      expect(mainInvoke).toHaveBeenCalledTimes(1);
+      expect(mainInvoke).not.toHaveBeenCalled();
       expect(judgeInvoke).toHaveBeenCalledTimes(0);
       const finalResult = agent.history.history[0].result[0];
       expect(finalResult.judgement).toBeNull();

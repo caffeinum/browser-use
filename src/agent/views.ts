@@ -917,6 +917,7 @@ export interface AgentSettings {
   use_thinking: boolean;
   flash_mode: boolean;
   use_judge: boolean;
+  use_simple_judge: boolean;
   ground_truth: string | null;
   max_history_items: number | null;
   page_extraction_llm: unknown | null;
@@ -949,6 +950,7 @@ export const defaultAgentSettings = (): AgentSettings => ({
   use_thinking: true,
   flash_mode: false,
   use_judge: true,
+  use_simple_judge: false,
   ground_truth: null,
   max_history_items: null,
   page_extraction_llm: null,
