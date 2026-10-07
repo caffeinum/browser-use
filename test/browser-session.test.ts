@@ -1458,7 +1458,9 @@ esac
   });
 
   it('_click_element_node does not leak an unhandledRejection when click throws and download wait times out', async () => {
-    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-click-leak-'));
+    const downloadsDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'bu-click-leak-')
+    );
     try {
       const session = new BrowserSession({
         profile: {
@@ -1471,7 +1473,9 @@ esac
           throw new Error('element is not clickable');
         }),
       };
-      const timeoutError = new Error('page.waitForEvent: Timeout 5000ms exceeded.');
+      const timeoutError = new Error(
+        'page.waitForEvent: Timeout 5000ms exceeded.'
+      );
       timeoutError.name = 'TimeoutError';
       // resolves async with a rejection so the rejection settles after the
       // synchronous call site, mimicking the real playwright timer behaviour.
@@ -1496,7 +1500,7 @@ esac
           session._click_element_node({ xpath: '/html/body/a[1]' } as any)
         ).rejects.toThrow('element is not clickable');
         // give the dangling waitForEvent rejection time to settle
-        await new Promise(r => setTimeout(r, 30));
+        await new Promise((r) => setTimeout(r, 30));
       } finally {
         process.off('unhandledRejection', onUnhandled);
       }

@@ -3087,7 +3087,9 @@ export class BrowserSession {
       // textual state passed to the LLM.
       try {
         const dispatchResult = await this._withAbort(
-          this.dispatch_browser_event(new ScreenshotEvent({ full_page: false })),
+          this.dispatch_browser_event(
+            new ScreenshotEvent({ full_page: false })
+          ),
           signal
         );
         screenshot =

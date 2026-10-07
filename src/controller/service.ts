@@ -3893,7 +3893,9 @@ You will be given a query and the markdown of a webpage that has been filtered t
         rendered.length > previewMax
           ? `${rendered.slice(0, previewMax)}... [+${rendered.length - previewMax} chars]`
           : rendered;
-      evaluateLogger.info(`🧪 evaluate result (${rendered.length} chars): ${preview}`);
+      evaluateLogger.info(
+        `🧪 evaluate result (${rendered.length} chars): ${preview}`
+      );
 
       const maxMemoryChars = 10000;
       const includeExtractedContentOnlyOnce = rendered.length >= maxMemoryChars;
