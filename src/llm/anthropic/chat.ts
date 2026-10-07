@@ -64,6 +64,44 @@ const withAutoToolInstruction = (
   return [...systemPrompt, { type: 'text', text: instruction }];
 };
 
+const NATIVE_UNSUPPORTED_SCHEMA_KEYS = new Set([
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'minLength',
+  'maxLength',
+  'maxItems',
+]);
+
+const toNativeJsonSchema = (node: unknown): unknown => {
+  if (Array.isArray(node)) {
+    return node.map(toNativeJsonSchema);
+  }
+  if (!node || typeof node !== 'object') {
+    return node;
+  }
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (NATIVE_UNSUPPORTED_SCHEMA_KEYS.has(key)) continue;
+    if (key === 'minItems' && typeof value === 'number' && value > 1) continue;
+    result[key] =
+      key === 'properties' || key === '$defs' || key === 'definitions'
+        ? Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+              k,
+              toNativeJsonSchema(v),
+            ])
+          )
+        : toNativeJsonSchema(value);
+  }
+  if (result.type === 'object' && result.additionalProperties === undefined) {
+    result.additionalProperties = false;
+  }
+  return result;
+};
+
 export class ChatAnthropic implements BaseChatModel {
   public model: string;
   public provider = 'anthropic';
@@ -402,6 +440,23 @@ export class ChatAnthropic implements BaseChatModel {
     return undefined;
   }
 
+  private parseNativeOutput<T>(
+    outputFormat: { parse: (input: string) => T },
+    text: string
+  ): T {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new ModelProviderError(
+        `Native structured output was not valid JSON: ${text.slice(0, 200)}`,
+        502,
+        this.model
+      );
+    }
+    return this.parseOutput(outputFormat, payload);
+  }
+
   private parseToolInput<T>(
     outputFormat: { parse: (input: string) => T },
     input: unknown
@@ -472,6 +527,7 @@ export class ChatAnthropic implements BaseChatModel {
     let toolChoice: Anthropic.ToolChoice | undefined = undefined;
     let toolName: string | undefined = undefined;
     let autoToolChoice = false;
+    let nativeSchema: Record<string, unknown> | undefined = undefined;
 
     if (output_format && zodSchemaCandidate) {
       try {
@@ -488,23 +544,30 @@ export class ChatAnthropic implements BaseChatModel {
         ) as Record<string, unknown>;
         delete optimizedJsonSchema.title;
 
-        const name: string = (output_format as any)?.name || 'response';
-        toolName = name;
-        autoToolChoice = this.requiresAutoToolChoice();
+        if (options.structured_output_mode === 'tool') {
+          const name: string = (output_format as any)?.name || 'response';
+          toolName = name;
+          autoToolChoice = this.requiresAutoToolChoice();
 
-        tools = [
-          {
-            name,
-            description: autoToolChoice
-              ? autoToolDescription(name)
-              : `Extract information in the format of ${name}`,
-            input_schema: optimizedJsonSchema as any,
-            cache_control: { type: 'ephemeral' } as any,
-          },
-        ];
-        toolChoice = autoToolChoice
-          ? ({ type: 'auto' } as Anthropic.ToolChoice)
-          : { type: 'tool', name };
+          tools = [
+            {
+              name,
+              description: autoToolChoice
+                ? autoToolDescription(name)
+                : `Extract information in the format of ${name}`,
+              input_schema: optimizedJsonSchema as any,
+              cache_control: { type: 'ephemeral' } as any,
+            },
+          ];
+          toolChoice = autoToolChoice
+            ? ({ type: 'auto' } as Anthropic.ToolChoice)
+            : { type: 'tool', name };
+        } else {
+          nativeSchema = toNativeJsonSchema(optimizedJsonSchema) as Record<
+            string,
+            unknown
+          >;
+        }
       } catch (e) {
         console.warn(
           'Failed to convert output_format to JSON schema for Anthropic',
@@ -527,6 +590,12 @@ export class ChatAnthropic implements BaseChatModel {
     if (tools?.length) {
       requestPayload.tools = tools;
       requestPayload.tool_choice = toolChoice;
+    }
+    if (nativeSchema) {
+      requestPayload.output_config = {
+        ...(this.outputConfig ?? {}),
+        format: { type: 'json_schema', schema: nativeSchema },
+      };
     }
 
     try {
@@ -555,7 +624,9 @@ export class ChatAnthropic implements BaseChatModel {
       const stopDetails = this.getStopDetails(response);
       let completion: T | string = content.text;
 
-      if (output_format) {
+      if (output_format && nativeSchema) {
+        completion = this.parseNativeOutput(output_format, content.text);
+      } else if (output_format) {
         const toolUseBlocks = response.content.filter(
           (block: any) => block.type === 'tool_use'
         );
