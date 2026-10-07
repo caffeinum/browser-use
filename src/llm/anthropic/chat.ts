@@ -4,6 +4,7 @@ import Anthropic, {
   RateLimitError,
   type ClientOptions,
 } from '@anthropic-ai/sdk';
+import type { TextBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 import type { BaseChatModel, ChatInvokeOptions } from '../base.js';
 import { ChatInvokeCompletion, ChatInvokeUsage } from '../views.js';
 import { type Message } from '../messages.js';
@@ -40,6 +41,28 @@ export interface ChatAnthropicOptions {
   removeMinItemsFromSchema?: boolean;
   removeDefaultsFromSchema?: boolean;
 }
+
+const autoToolDescription = (toolName: string) =>
+  `The only tool available. Every reply must be exactly one call to \`${toolName}\` ` +
+  `whose input matches this schema. Actions described elsewhere are not tools: ` +
+  `put them inside this tool's input.`;
+
+const withAutoToolInstruction = (
+  systemPrompt: string | TextBlockParam[] | undefined,
+  toolName: string
+): string | TextBlockParam[] => {
+  const instruction =
+    `Respond only by calling the \`${toolName}\` tool exactly once. ` +
+    `Actions listed above are not callable tools; they go inside the ` +
+    `\`${toolName}\` input.`;
+  if (systemPrompt === undefined) {
+    return instruction;
+  }
+  if (typeof systemPrompt === 'string') {
+    return `${systemPrompt}\n\n${instruction}`;
+  }
+  return [...systemPrompt, { type: 'text', text: instruction }];
+};
 
 export class ChatAnthropic implements BaseChatModel {
   public model: string;
@@ -129,8 +152,17 @@ export class ChatAnthropic implements BaseChatModel {
     );
   }
 
+  private rejectsForcedToolChoice(): boolean {
+    const model = this.model.toLowerCase();
+    return (
+      this.isAdaptiveThinkingOnlyModel() ||
+      model.includes('claude-sonnet-5-5') ||
+      model.includes('claude-opus-5-5')
+    );
+  }
+
   private requiresAutoToolChoice(): boolean {
-    if (this.isAdaptiveThinkingOnlyModel()) {
+    if (this.rejectsForcedToolChoice()) {
       return true;
     }
     return this.thinking !== null && this.thinking.type !== 'disabled';
@@ -438,6 +470,8 @@ export class ChatAnthropic implements BaseChatModel {
 
     let tools: Anthropic.Tool[] | undefined = undefined;
     let toolChoice: Anthropic.ToolChoice | undefined = undefined;
+    let toolName: string | undefined = undefined;
+    let autoToolChoice = false;
 
     if (output_format && zodSchemaCandidate) {
       try {
@@ -454,19 +488,23 @@ export class ChatAnthropic implements BaseChatModel {
         ) as Record<string, unknown>;
         delete optimizedJsonSchema.title;
 
-        const toolName = (output_format as any)?.name || 'response';
+        const name: string = (output_format as any)?.name || 'response';
+        toolName = name;
+        autoToolChoice = this.requiresAutoToolChoice();
 
         tools = [
           {
-            name: toolName,
-            description: `Extract information in the format of ${toolName}`,
+            name,
+            description: autoToolChoice
+              ? autoToolDescription(name)
+              : `Extract information in the format of ${name}`,
             input_schema: optimizedJsonSchema as any,
             cache_control: { type: 'ephemeral' } as any,
           },
         ];
-        toolChoice = this.requiresAutoToolChoice()
+        toolChoice = autoToolChoice
           ? ({ type: 'auto' } as Anthropic.ToolChoice)
-          : { type: 'tool', name: toolName };
+          : { type: 'tool', name };
       } catch (e) {
         console.warn(
           'Failed to convert output_format to JSON schema for Anthropic',
@@ -481,7 +519,9 @@ export class ChatAnthropic implements BaseChatModel {
       messages: anthropicMessages,
       ...this.getModelParams(),
     };
-    if (systemPrompt !== undefined) {
+    if (autoToolChoice && toolName) {
+      requestPayload.system = withAutoToolInstruction(systemPrompt, toolName);
+    } else if (systemPrompt !== undefined) {
       requestPayload.system = systemPrompt;
     }
     if (tools?.length) {
@@ -516,9 +556,21 @@ export class ChatAnthropic implements BaseChatModel {
       let completion: T | string = content.text;
 
       if (output_format) {
-        const toolUseBlock = response.content.find(
+        const toolUseBlocks = response.content.filter(
           (block: any) => block.type === 'tool_use'
         );
+        const toolUseBlock = toolUseBlocks.find(
+          (block: any) => !toolName || block.name === toolName
+        );
+        if (!toolUseBlock && toolName && toolUseBlocks.length > 0) {
+          throw new ModelProviderError(
+            `Model called unknown tool(s) ${toolUseBlocks
+              .map((block: any) => `"${block.name}"`)
+              .join(', ')}; expected "${toolName}"`,
+            502,
+            this.model
+          );
+        }
 
         if (toolUseBlock && toolUseBlock.type === 'tool_use') {
           completion = this.parseToolInput(output_format, toolUseBlock.input);
