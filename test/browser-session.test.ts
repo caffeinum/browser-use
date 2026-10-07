@@ -73,7 +73,11 @@ import {
   ScreenshotEvent,
   TabCreatedEvent,
 } from '../src/browser/events.js';
-import { URLNotAllowedError } from '../src/browser/views.js';
+import {
+  PLACEHOLDER_4PX_SCREENSHOT,
+  URLNotAllowedError,
+} from '../src/browser/views.js';
+import { Image } from 'canvas';
 import { DomService } from '../src/dom/service.js';
 import { DOMElementNode, DOMTextNode, DOMState } from '../src/dom/views.js';
 
@@ -1458,7 +1462,9 @@ esac
   });
 
   it('_click_element_node does not leak an unhandledRejection when click throws and download wait times out', async () => {
-    const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bu-click-leak-'));
+    const downloadsDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'bu-click-leak-')
+    );
     try {
       const session = new BrowserSession({
         profile: {
@@ -1471,7 +1477,9 @@ esac
           throw new Error('element is not clickable');
         }),
       };
-      const timeoutError = new Error('page.waitForEvent: Timeout 5000ms exceeded.');
+      const timeoutError = new Error(
+        'page.waitForEvent: Timeout 5000ms exceeded.'
+      );
       timeoutError.name = 'TimeoutError';
       // resolves async with a rejection so the rejection settles after the
       // synchronous call site, mimicking the real playwright timer behaviour.
@@ -1496,7 +1504,7 @@ esac
           session._click_element_node({ xpath: '/html/body/a[1]' } as any)
         ).rejects.toThrow('element is not clickable');
         // give the dangling waitForEvent rejection time to settle
-        await new Promise(r => setTimeout(r, 30));
+        await new Promise((r) => setTimeout(r, 30));
       } finally {
         process.off('unhandledRejection', onUnhandled);
       }
@@ -4244,6 +4252,23 @@ esac
       })
     );
     expect(cdpSession.detach).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a decodable placeholder PNG for empty pages', async () => {
+    const session = new BrowserSession({
+      browser_profile: new BrowserProfile({}),
+    });
+    const fakePage = { url: () => 'about:blank' } as any;
+    (session as any).browser_context = {} as any;
+    vi.spyOn(session, 'get_current_page').mockResolvedValue(fakePage);
+    vi.spyOn(session, 'validate_page_after_action').mockResolvedValue();
+
+    const screenshot = await session.take_screenshot();
+
+    expect(screenshot).toBe(PLACEHOLDER_4PX_SCREENSHOT);
+    const image = new Image();
+    image.src = Buffer.from(screenshot!, 'base64');
+    expect([image.width, image.height]).toEqual([4, 4]);
   });
 
   it('forwards screenshot clip regions to CDP captureScreenshot', async () => {

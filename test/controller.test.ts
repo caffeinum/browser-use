@@ -2414,7 +2414,7 @@ describe('Regression Coverage', () => {
     const controller = new Controller();
     const element = { xpath: '/html/body/button' };
     const browserSession = {
-      get_dom_element_by_index: vi.fn(async () => element),
+      get_dom_element_by_index: vi.fn(async (_index: number) => element),
       _click_element_node: vi.fn(async () => null),
     };
 

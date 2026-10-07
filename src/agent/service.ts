@@ -278,6 +278,7 @@ interface AgentConstructorParams<Context, AgentStructuredOutput> {
   use_thinking?: boolean;
   flash_mode?: boolean;
   use_judge?: boolean;
+  use_simple_judge?: boolean;
   ground_truth?: string | null;
   max_history_items?: number | null;
   page_extraction_llm?: BaseChatModel | null;
@@ -374,6 +375,7 @@ const defaultAgentOptions = () => ({
   use_thinking: true,
   flash_mode: false,
   use_judge: true,
+  use_simple_judge: false,
   ground_truth: null as string | null,
   max_history_items: null as number | null,
   page_extraction_llm: null as BaseChatModel | null,
@@ -765,6 +767,7 @@ export class Agent<
       use_thinking = true,
       flash_mode = false,
       use_judge = true,
+      use_simple_judge = false,
       ground_truth = null,
       max_history_items = null,
       page_extraction_llm = null,
@@ -1048,6 +1051,7 @@ export class Agent<
       use_thinking,
       flash_mode: effectiveFlashMode,
       use_judge,
+      use_simple_judge,
       ground_truth,
       max_history_items: validatedMaxHistoryItems,
       page_extraction_llm: effectivePageExtractionLlm,
@@ -5463,6 +5467,9 @@ export class Agent<
   }
 
   private async _run_simple_judge() {
+    if (!this.settings.use_simple_judge) {
+      return;
+    }
     const lastHistoryItem =
       this.history.history[this.history.history.length - 1];
     if (!lastHistoryItem || !lastHistoryItem.result.length) {
@@ -5503,6 +5510,10 @@ export class Agent<
           `⚠️  Simple judge overriding success to failure: ${this._redactSensitiveText(reason)}`
         );
         lastResult.success = false;
+        if (this.output_model_schema) {
+          // extracted_content is the structured output; appending prose would break parsing.
+          return;
+        }
         const note = `[Simple judge: ${reason}]`;
         if (lastResult.extracted_content) {
           lastResult.extracted_content += `\n\n${note}`;
