@@ -3006,8 +3006,16 @@ export class Agent<
     this._throwIfAborted(signal);
     await this._updateActionModelsForPage(current_page);
 
-    const page_filtered_actions =
-      this.controller.registry.get_prompt_description(current_page);
+    // fork deviation from python: bu-2-0 invents action names unless the unfiltered actions are
+    // listed too (0/6 vs 3/3 runs); other models get them from the structured-output schema
+    const page_filtered_actions = [
+      this.llm.provider === 'browser-use'
+        ? this.controller.registry.get_prompt_description()
+        : '',
+      this.controller.registry.get_prompt_description(current_page),
+    ]
+      .filter(Boolean)
+      .join('\n');
     let unavailable_skills_info: string | null = null;
     if (this.skill_service) {
       unavailable_skills_info = await this._get_unavailable_skills_info();
