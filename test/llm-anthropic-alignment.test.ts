@@ -361,6 +361,86 @@ describe('ChatAnthropic alignment', () => {
     });
   });
 
+  it('uses auto tool choice with explicit tool instructions for claude-sonnet-5-5', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'response',
+          input: { value: 'ok' },
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5-5' });
+
+    const result = await llm.ainvoke(
+      [new SystemMessage('agent rules'), new UserMessage('extract')],
+      z.object({ value: z.string() }) as any
+    );
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.tool_choice).toEqual({ type: 'auto' });
+    expect(request.tools[0].description).toContain(
+      'Every reply must be exactly one call to `response`'
+    );
+    expect(JSON.stringify(request.system)).toContain('agent rules');
+    expect(JSON.stringify(request.system)).toContain(
+      'Respond only by calling the `response` tool exactly once.'
+    );
+    expect((result.completion as any).value).toBe('ok');
+  });
+
+  it('rejects tool calls to tools other than the structured output tool', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'evaluate',
+          input: { code: 'document.title' },
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({
+      model: 'claude-sonnet-5-5',
+      thinking: { type: 'adaptive' },
+    });
+
+    await expect(
+      llm.ainvoke(
+        [new UserMessage('extract')],
+        z.object({ value: z.string() }) as any
+      )
+    ).rejects.toMatchObject({
+      name: 'ModelProviderError',
+      message: 'Model called unknown tool(s) "evaluate"; expected "response"',
+    });
+  });
+
+  it('leaves the system prompt untouched with forced tool choice', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'response',
+          input: { value: 'ok' },
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5' });
+
+    await llm.ainvoke(
+      [new SystemMessage('agent rules'), new UserMessage('extract')],
+      z.object({ value: z.string() }) as any
+    );
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.tool_choice).toEqual({ type: 'tool', name: 'response' });
+    expect(JSON.stringify(request.system)).not.toContain('Respond only by');
+  });
+
   it('keeps forced tool choice when thinking is disabled', async () => {
     anthropicMock.anthropicCreateMock.mockResolvedValue(
       buildResponse([
