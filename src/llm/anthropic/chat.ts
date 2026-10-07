@@ -64,68 +64,39 @@ const withAutoToolInstruction = (
   return [...systemPrompt, { type: 'text', text: instruction }];
 };
 
-const NATIVE_UNSUPPORTED_SCHEMA_KEYS = new Set([
-  'minimum',
-  'maximum',
-  'exclusiveMinimum',
-  'exclusiveMaximum',
-  'multipleOf',
-  'minLength',
-  'maxLength',
-  'maxItems',
-]);
-
-// Native json_schema rejects schema-valued additionalProperties (z.record); such schemas use the tool path.
-const hasSchemaValuedAdditionalProperties = (node: unknown): boolean => {
-  if (Array.isArray(node)) {
-    return node.some(hasSchemaValuedAdditionalProperties);
-  }
-  if (!node || typeof node !== 'object') {
-    return false;
-  }
-  const record = node as Record<string, unknown>;
-  if (
-    record.additionalProperties !== null &&
-    typeof record.additionalProperties === 'object'
-  ) {
-    return true;
-  }
-  return Object.entries(record).some(([key, value]) =>
-    key === 'properties' || key === '$defs' || key === 'definitions'
-      ? Object.values(value as Record<string, unknown>).some(
-          hasSchemaValuedAdditionalProperties
-        )
-      : hasSchemaValuedAdditionalProperties(value)
-  );
-};
-
+// native json_schema rejects numeric/length bounds, minItems > 1 and zod's format regexes; zod re-validates after parsing
 const toNativeJsonSchema = (node: unknown): unknown => {
-  if (Array.isArray(node)) {
-    return node.map(toNativeJsonSchema);
-  }
-  if (!node || typeof node !== 'object') {
-    return node;
-  }
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(node)) {
-    if (NATIVE_UNSUPPORTED_SCHEMA_KEYS.has(key)) continue;
-    // zod's format regexes (email, datetime, …) use syntax the API rejects; zod re-validates after parsing
-    if ((key === 'format' || key === 'pattern') && 'format' in node) continue;
-    if (key === 'minItems' && typeof value === 'number' && value > 1) continue;
-    result[key] =
-      key === 'properties' || key === '$defs' || key === 'definitions'
-        ? Object.fromEntries(
-            Object.entries(value as Record<string, unknown>).map(([k, v]) => [
-              k,
-              toNativeJsonSchema(v),
-            ])
-          )
-        : toNativeJsonSchema(value);
-  }
-  if (result.type === 'object' && result.additionalProperties === undefined) {
-    result.additionalProperties = false;
-  }
-  return result;
+  if (Array.isArray(node)) return node.map(toNativeJsonSchema);
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(
+        ([key, value]) =>
+          ![
+            'minimum',
+            'maximum',
+            'exclusiveMinimum',
+            'exclusiveMaximum',
+            'multipleOf',
+            'minLength',
+            'maxLength',
+            'maxItems',
+          ].includes(key) &&
+          !(key === 'minItems' && typeof value === 'number' && value > 1) &&
+          !((key === 'format' || key === 'pattern') && 'format' in node)
+      )
+      .map(([key, value]) => [
+        key,
+        key === 'properties' || key === '$defs'
+          ? Object.fromEntries(
+              Object.entries(value as object).map(([k, v]) => [
+                k,
+                toNativeJsonSchema(v),
+              ])
+            )
+          : toNativeJsonSchema(value),
+      ])
+  );
 };
 
 export class ChatAnthropic implements BaseChatModel {
@@ -466,23 +437,6 @@ export class ChatAnthropic implements BaseChatModel {
     return undefined;
   }
 
-  private parseNativeOutput<T>(
-    outputFormat: { parse: (input: string) => T },
-    text: string
-  ): T {
-    let payload: unknown;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      throw new ModelProviderError(
-        `Native structured output was not valid JSON: ${text.slice(0, 200)}`,
-        502,
-        this.model
-      );
-    }
-    return this.parseOutput(outputFormat, payload);
-  }
-
   private parseToolInput<T>(
     outputFormat: { parse: (input: string) => T },
     input: unknown
@@ -572,7 +526,10 @@ export class ChatAnthropic implements BaseChatModel {
 
         if (
           options.structured_output_mode === 'tool' ||
-          hasSchemaValuedAdditionalProperties(optimizedJsonSchema)
+          // native json_schema rejects schema-valued additionalProperties (z.record)
+          JSON.stringify(optimizedJsonSchema).includes(
+            '"additionalProperties":{'
+          )
         ) {
           const name: string = (output_format as any)?.name || 'response';
           toolName = name;
@@ -654,7 +611,17 @@ export class ChatAnthropic implements BaseChatModel {
       let completion: T | string = content.text;
 
       if (output_format && nativeSchema) {
-        completion = this.parseNativeOutput(output_format, content.text);
+        let payload: unknown;
+        try {
+          payload = JSON.parse(content.text);
+        } catch {
+          throw new ModelProviderError(
+            `Native structured output was not valid JSON: ${content.text.slice(0, 200)}`,
+            502,
+            this.model
+          );
+        }
+        completion = this.parseOutput(output_format, payload);
       } else if (output_format) {
         const toolUseBlocks = response.content.filter(
           (block: any) => block.type === 'tool_use'
