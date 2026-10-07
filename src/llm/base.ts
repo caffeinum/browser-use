@@ -4,6 +4,8 @@ import type { Message } from './messages.js';
 export interface ChatInvokeOptions {
   signal?: AbortSignal;
   request_type?: string;
+  /** 'tool' forces tool-call structured output (for schemas too large for native json_schema, e.g. the agent step). */
+  structured_output_mode?: 'tool' | 'native';
   [key: string]: unknown;
 }
 
