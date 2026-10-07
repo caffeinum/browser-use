@@ -912,8 +912,10 @@ describe('Agent constructor browser session alignment', () => {
 
     const invokeOptions = (invokeMock.mock.calls[0]?.[2] ?? {}) as {
       session_id?: string;
+      structured_output_mode?: string;
     };
     expect(invokeOptions.session_id).toBe(agent.session_id);
+    expect(invokeOptions.structured_output_mode).toBe('tool');
 
     await agent.close();
   });

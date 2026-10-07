@@ -64,6 +64,41 @@ const withAutoToolInstruction = (
   return [...systemPrompt, { type: 'text', text: instruction }];
 };
 
+// native json_schema rejects numeric/length bounds, minItems > 1 and zod's format regexes; zod re-validates after parsing
+const toNativeJsonSchema = (node: unknown): unknown => {
+  if (Array.isArray(node)) return node.map(toNativeJsonSchema);
+  if (!node || typeof node !== 'object') return node;
+  return Object.fromEntries(
+    Object.entries(node)
+      .filter(
+        ([key, value]) =>
+          ![
+            'minimum',
+            'maximum',
+            'exclusiveMinimum',
+            'exclusiveMaximum',
+            'multipleOf',
+            'minLength',
+            'maxLength',
+            'maxItems',
+          ].includes(key) &&
+          !(key === 'minItems' && typeof value === 'number' && value > 1) &&
+          !((key === 'format' || key === 'pattern') && 'format' in node)
+      )
+      .map(([key, value]) => [
+        key,
+        key === 'properties' || key === '$defs'
+          ? Object.fromEntries(
+              Object.entries(value as object).map(([k, v]) => [
+                k,
+                toNativeJsonSchema(v),
+              ])
+            )
+          : toNativeJsonSchema(value),
+      ])
+  );
+};
+
 export class ChatAnthropic implements BaseChatModel {
   public model: string;
   public provider = 'anthropic';
@@ -472,6 +507,7 @@ export class ChatAnthropic implements BaseChatModel {
     let toolChoice: Anthropic.ToolChoice | undefined = undefined;
     let toolName: string | undefined = undefined;
     let autoToolChoice = false;
+    let nativeSchema: Record<string, unknown> | undefined = undefined;
 
     if (output_format && zodSchemaCandidate) {
       try {
@@ -488,23 +524,36 @@ export class ChatAnthropic implements BaseChatModel {
         ) as Record<string, unknown>;
         delete optimizedJsonSchema.title;
 
-        const name: string = (output_format as any)?.name || 'response';
-        toolName = name;
-        autoToolChoice = this.requiresAutoToolChoice();
+        if (
+          options.structured_output_mode === 'tool' ||
+          // native json_schema rejects schema-valued additionalProperties (z.record)
+          JSON.stringify(optimizedJsonSchema).includes(
+            '"additionalProperties":{'
+          )
+        ) {
+          const name: string = (output_format as any)?.name || 'response';
+          toolName = name;
+          autoToolChoice = this.requiresAutoToolChoice();
 
-        tools = [
-          {
-            name,
-            description: autoToolChoice
-              ? autoToolDescription(name)
-              : `Extract information in the format of ${name}`,
-            input_schema: optimizedJsonSchema as any,
-            cache_control: { type: 'ephemeral' } as any,
-          },
-        ];
-        toolChoice = autoToolChoice
-          ? ({ type: 'auto' } as Anthropic.ToolChoice)
-          : { type: 'tool', name };
+          tools = [
+            {
+              name,
+              description: autoToolChoice
+                ? autoToolDescription(name)
+                : `Extract information in the format of ${name}`,
+              input_schema: optimizedJsonSchema as any,
+              cache_control: { type: 'ephemeral' } as any,
+            },
+          ];
+          toolChoice = autoToolChoice
+            ? ({ type: 'auto' } as Anthropic.ToolChoice)
+            : { type: 'tool', name };
+        } else {
+          nativeSchema = toNativeJsonSchema(optimizedJsonSchema) as Record<
+            string,
+            unknown
+          >;
+        }
       } catch (e) {
         console.warn(
           'Failed to convert output_format to JSON schema for Anthropic',
@@ -527,6 +576,12 @@ export class ChatAnthropic implements BaseChatModel {
     if (tools?.length) {
       requestPayload.tools = tools;
       requestPayload.tool_choice = toolChoice;
+    }
+    if (nativeSchema) {
+      requestPayload.output_config = {
+        ...(this.outputConfig ?? {}),
+        format: { type: 'json_schema', schema: nativeSchema },
+      };
     }
 
     try {
@@ -555,7 +610,19 @@ export class ChatAnthropic implements BaseChatModel {
       const stopDetails = this.getStopDetails(response);
       let completion: T | string = content.text;
 
-      if (output_format) {
+      if (output_format && nativeSchema) {
+        let payload: unknown;
+        try {
+          payload = JSON.parse(content.text);
+        } catch {
+          throw new ModelProviderError(
+            `Native structured output was not valid JSON: ${content.text.slice(0, 200)}`,
+            502,
+            this.model
+          );
+        }
+        completion = this.parseOutput(output_format, payload);
+      } else if (output_format) {
         const toolUseBlocks = response.content.filter(
           (block: any) => block.type === 'tool_use'
         );

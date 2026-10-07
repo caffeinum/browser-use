@@ -5918,6 +5918,7 @@ export class Agent<
         {
           signal: signal ?? undefined,
           session_id: this.session_id,
+          structured_output_mode: 'tool',
         }
       );
       this._throwIfAborted(signal);

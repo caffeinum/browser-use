@@ -62,6 +62,8 @@ import {
 } from '../src/llm/exceptions.js';
 import { SystemMessage, UserMessage } from '../src/llm/messages.js';
 
+const TOOL_PATH = { structured_output_mode: 'tool' } as const;
+
 const buildResponse = (content: any[], stopReason = 'end_turn') => ({
   content,
   stop_reason: stopReason,
@@ -162,7 +164,8 @@ describe('ChatAnthropic alignment', () => {
 
     const result = await llm.ainvoke(
       [new UserMessage('extract')],
-      schema as any
+      schema as any,
+      TOOL_PATH
     );
     const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
 
@@ -195,7 +198,7 @@ describe('ChatAnthropic alignment', () => {
     const llm = new ChatAnthropic();
 
     await expect(
-      llm.ainvoke([new UserMessage('extract')], schema as any)
+      llm.ainvoke([new UserMessage('extract')], schema as any, TOOL_PATH)
     ).rejects.toMatchObject({
       name: 'ModelProviderError',
       message: 'Expected tool use in response but none found',
@@ -248,7 +251,8 @@ describe('ChatAnthropic alignment', () => {
     await expect(
       llm.ainvoke(
         [new UserMessage('extract')],
-        z.object({ value: z.string() }) as any
+        z.object({ value: z.string() }) as any,
+        TOOL_PATH
       )
     ).rejects.toMatchObject({
       name: 'ModelOutputTruncatedError',
@@ -340,7 +344,8 @@ describe('ChatAnthropic alignment', () => {
 
     const result = await llm.ainvoke(
       [new UserMessage('extract')],
-      z.object({ value: z.string() }) as any
+      z.object({ value: z.string() }) as any,
+      TOOL_PATH
     );
 
     const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
@@ -376,7 +381,8 @@ describe('ChatAnthropic alignment', () => {
 
     const result = await llm.ainvoke(
       [new SystemMessage('agent rules'), new UserMessage('extract')],
-      z.object({ value: z.string() }) as any
+      z.object({ value: z.string() }) as any,
+      TOOL_PATH
     );
 
     const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
@@ -410,7 +416,8 @@ describe('ChatAnthropic alignment', () => {
     await expect(
       llm.ainvoke(
         [new UserMessage('extract')],
-        z.object({ value: z.string() }) as any
+        z.object({ value: z.string() }) as any,
+        TOOL_PATH
       )
     ).rejects.toMatchObject({
       name: 'ModelProviderError',
@@ -433,7 +440,8 @@ describe('ChatAnthropic alignment', () => {
 
     await llm.ainvoke(
       [new SystemMessage('agent rules'), new UserMessage('extract')],
-      z.object({ value: z.string() }) as any
+      z.object({ value: z.string() }) as any,
+      TOOL_PATH
     );
 
     const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
@@ -458,7 +466,8 @@ describe('ChatAnthropic alignment', () => {
 
     await llm.ainvoke(
       [new UserMessage('extract')],
-      z.object({ value: z.string() }) as any
+      z.object({ value: z.string() }) as any,
+      TOOL_PATH
     );
 
     const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
@@ -480,9 +489,123 @@ describe('ChatAnthropic alignment', () => {
 
     const result = await llm.ainvoke(
       [new UserMessage('extract')],
-      z.object({ metadata: z.object({ note: z.string() }) }) as any
+      z.object({ metadata: z.object({ note: z.string() }) }) as any,
+      TOOL_PATH
     );
 
     expect((result.completion as any).metadata.note).toBe('line 1\nline 2');
+  });
+
+  it('uses native json_schema output by default and parses the text JSON', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        { type: 'thinking', thinking: 'thought' },
+        { type: 'text', text: '{"value":"ok","count":3}' },
+      ])
+    );
+    const llm = new ChatAnthropic({
+      model: 'claude-sonnet-5-5',
+      thinking: { type: 'adaptive' },
+      outputConfig: { effort: 'high' },
+    });
+
+    const result = await llm.ainvoke(
+      [new SystemMessage('judge rules'), new UserMessage('judge')],
+      z.object({
+        value: z.string(),
+        count: z.number().int().min(0).max(10),
+      }) as any
+    );
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.tools).toBeUndefined();
+    expect(request.tool_choice).toBeUndefined();
+    expect(request.system).toBe('judge rules');
+    expect(request.output_config.effort).toBe('high');
+    expect(request.output_config.format.type).toBe('json_schema');
+    const schemaJson = JSON.stringify(request.output_config.format.schema);
+    expect(schemaJson).not.toContain('minimum');
+    expect(schemaJson).not.toContain('maximum');
+    expect(request.output_config.format.schema.additionalProperties).toBe(
+      false
+    );
+    expect(result.completion).toEqual({ value: 'ok', count: 3 });
+    expect(result.thinking).toBe('thought');
+  });
+
+  it('strips zod format regexes from native schemas but keeps zod validation', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'text',
+          text: '{"email":"not-an-email","pattern":"p","code":"ABC"}',
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5-5' });
+
+    await expect(
+      llm.ainvoke(
+        [new UserMessage('extract')],
+        z.object({
+          email: z.string().email(),
+          pattern: z.string(),
+          code: z.string().regex(/^[A-Z]{3}$/),
+        }) as any
+      )
+    ).rejects.toThrow();
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    const schema = request.output_config.format.schema;
+    expect(schema.properties.email).toEqual({ type: 'string' });
+    expect(schema.properties.code.pattern).toBe('^[A-Z]{3}$');
+    expect(Object.keys(schema.properties)).toEqual([
+      'email',
+      'pattern',
+      'code',
+    ]);
+  });
+
+  it('uses the tool path for record schemas that native json_schema rejects', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'response',
+          input: { tags: { a: 1 } },
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5' });
+
+    const result = await llm.ainvoke(
+      [new UserMessage('extract')],
+      z.object({ tags: z.record(z.string(), z.number()) }) as any
+    );
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.output_config).toBeUndefined();
+    expect(request.tools[0].name).toBe('response');
+    expect(result.completion).toEqual({ tags: { a: 1 } });
+  });
+
+  it('fails loudly when native structured output is not JSON', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([{ type: 'text', text: 'sorry, no' }])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5' });
+
+    await expect(
+      llm.ainvoke(
+        [new UserMessage('judge')],
+        z.object({ value: z.string() }) as any
+      )
+    ).rejects.toMatchObject({
+      name: 'ModelProviderError',
+      message: expect.stringContaining(
+        'Native structured output was not valid JSON'
+      ),
+    });
   });
 });
