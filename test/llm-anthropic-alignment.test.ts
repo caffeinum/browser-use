@@ -533,6 +533,63 @@ describe('ChatAnthropic alignment', () => {
     expect(result.thinking).toBe('thought');
   });
 
+  it('strips zod format regexes from native schemas but keeps zod validation', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'text',
+          text: '{"email":"not-an-email","pattern":"p","code":"ABC"}',
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5-5' });
+
+    await expect(
+      llm.ainvoke(
+        [new UserMessage('extract')],
+        z.object({
+          email: z.string().email(),
+          pattern: z.string(),
+          code: z.string().regex(/^[A-Z]{3}$/),
+        }) as any
+      )
+    ).rejects.toThrow();
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    const schema = request.output_config.format.schema;
+    expect(schema.properties.email).toEqual({ type: 'string' });
+    expect(schema.properties.code.pattern).toBe('^[A-Z]{3}$');
+    expect(Object.keys(schema.properties)).toEqual([
+      'email',
+      'pattern',
+      'code',
+    ]);
+  });
+
+  it('uses the tool path for record schemas that native json_schema rejects', async () => {
+    anthropicMock.anthropicCreateMock.mockResolvedValue(
+      buildResponse([
+        {
+          type: 'tool_use',
+          id: 'tool_1',
+          name: 'response',
+          input: { tags: { a: 1 } },
+        },
+      ])
+    );
+    const llm = new ChatAnthropic({ model: 'claude-sonnet-5' });
+
+    const result = await llm.ainvoke(
+      [new UserMessage('extract')],
+      z.object({ tags: z.record(z.string(), z.number()) }) as any
+    );
+
+    const request = anthropicMock.anthropicCreateMock.mock.calls[0]?.[0] ?? {};
+    expect(request.output_config).toBeUndefined();
+    expect(request.tools[0].name).toBe('response');
+    expect(result.completion).toEqual({ tags: { a: 1 } });
+  });
+
   it('fails loudly when native structured output is not JSON', async () => {
     anthropicMock.anthropicCreateMock.mockResolvedValue(
       buildResponse([{ type: 'text', text: 'sorry, no' }])

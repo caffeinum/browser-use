@@ -75,6 +75,30 @@ const NATIVE_UNSUPPORTED_SCHEMA_KEYS = new Set([
   'maxItems',
 ]);
 
+// Native json_schema rejects schema-valued additionalProperties (z.record); such schemas use the tool path.
+const hasSchemaValuedAdditionalProperties = (node: unknown): boolean => {
+  if (Array.isArray(node)) {
+    return node.some(hasSchemaValuedAdditionalProperties);
+  }
+  if (!node || typeof node !== 'object') {
+    return false;
+  }
+  const record = node as Record<string, unknown>;
+  if (
+    record.additionalProperties !== null &&
+    typeof record.additionalProperties === 'object'
+  ) {
+    return true;
+  }
+  return Object.entries(record).some(([key, value]) =>
+    key === 'properties' || key === '$defs' || key === 'definitions'
+      ? Object.values(value as Record<string, unknown>).some(
+          hasSchemaValuedAdditionalProperties
+        )
+      : hasSchemaValuedAdditionalProperties(value)
+  );
+};
+
 const toNativeJsonSchema = (node: unknown): unknown => {
   if (Array.isArray(node)) {
     return node.map(toNativeJsonSchema);
@@ -85,6 +109,8 @@ const toNativeJsonSchema = (node: unknown): unknown => {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
     if (NATIVE_UNSUPPORTED_SCHEMA_KEYS.has(key)) continue;
+    // zod's format regexes (email, datetime, …) use syntax the API rejects; zod re-validates after parsing
+    if ((key === 'format' || key === 'pattern') && 'format' in node) continue;
     if (key === 'minItems' && typeof value === 'number' && value > 1) continue;
     result[key] =
       key === 'properties' || key === '$defs' || key === 'definitions'
@@ -544,7 +570,10 @@ export class ChatAnthropic implements BaseChatModel {
         ) as Record<string, unknown>;
         delete optimizedJsonSchema.title;
 
-        if (options.structured_output_mode === 'tool') {
+        if (
+          options.structured_output_mode === 'tool' ||
+          hasSchemaValuedAdditionalProperties(optimizedJsonSchema)
+        ) {
           const name: string = (output_format as any)?.name || 'response';
           toolName = name;
           autoToolChoice = this.requiresAutoToolChoice();
