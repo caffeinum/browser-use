@@ -69,6 +69,30 @@ describe('DomService script safeguards', () => {
 
 describe('DOM Element Classes', () => {
   describe('DOMElementNode', () => {
+    it('keeps a full form value in the LLM element list but caps other attributes', () => {
+      const token = `eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.${'a'.repeat(224)}.${'b'.repeat(86)}`;
+      const input = new DOMElementNode(
+        true,
+        null,
+        'input',
+        '/html/body/input[1]',
+        {
+          value: token,
+          placeholder: 'a placeholder that is long',
+        },
+        []
+      );
+      input.highlight_index = 1;
+      const root = new DOMElementNode(true, null, 'body', '/html/body', {}, [
+        input,
+      ]);
+      input.parent = root;
+
+      const listing = root.clickable_elements_to_string();
+      expect(listing).toContain(`value=${token}`);
+      expect(listing).toContain('placeholder=a placeholder t...');
+    });
+
     it('creates element node with basic properties', () => {
       const element = new DOMElementNode(
         true, // is_visible
