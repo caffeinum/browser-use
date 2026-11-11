@@ -7,6 +7,15 @@ import {
 } from './history-tree-processor/view.js';
 import { HistoryTreeProcessor } from './history-tree-processor/service.js';
 
+// Most attributes are only hints, so 15 chars keep the element list compact.
+// A form field's value is content the agent may have to copy verbatim (an API
+// key or JWT shown in a read-only input); at 15 chars it arrives as a
+// plausible-looking but cut credential.
+const ATTRIBUTE_VALUE_CAP = 15;
+const FORM_VALUE_CAP = 1000;
+const attributeValueCap = (key: string) =>
+  key === 'value' ? FORM_VALUE_CAP : ATTRIBUTE_VALUE_CAP;
+
 export abstract class DOMBaseNode {
   constructor(
     public is_visible: boolean,
@@ -324,7 +333,10 @@ const CLICKABLE_ELEMENTS_TO_STRING_IMPL = time_execution_sync(
 
           if (Object.entries(attributes_to_include).length) {
             attributes_html_str = Object.entries(attributes_to_include)
-              .map(([key, value]) => `${key}=${cap_text_length(value, 15)}`)
+              .map(
+                ([key, value]) =>
+                  `${key}=${cap_text_length(value, attributeValueCap(key))}`
+              )
               .join(' ');
           }
         }
